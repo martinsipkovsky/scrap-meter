@@ -30,7 +30,6 @@ def station_out(st: Station, devices: dict) -> dict:
         "current_job": st.current_job,
         "idle_timeout_min": st.idle_timeout_min,
         "stats_default": st.stats_default,
-        "ideal_cycle_s": st.ideal_cycle_s,
         "sort_order": st.sort_order,
         "last_reading_at": st.last_reading_at,
         **stations.status(st, devices),
@@ -87,8 +86,6 @@ def update_station(
         raise HTTPException(409, "A station with that name already exists")
     if payload.sources is not None:
         st.sources = _sources(db, payload.sources)
-    if "ideal_cycle_s" in payload.model_fields_set:
-        data["ideal_cycle_s"] = payload.ideal_cycle_s  # None clears it
     for key, value in data.items():
         setattr(st, key, value)
     db.commit()

@@ -15,7 +15,8 @@ tokens (device logins, user passwords, notification settings).
 | View | Holds |
 |---|---|
 | `powerbi_station_comments` | Comments written on the stations, with the job and OK / NOK / scrap at that moment |
-| `powerbi_stations` | The stations and their settings |
+| `powerbi_stations` | The stations and their settings; `ideal_cycle_s` is the one of the current job |
+| `powerbi_jobs` | Every job the stations have counted, with its ideal cycle time |
 | `powerbi_job_totals` | OK / NOK per station and job since counting started (device counts plus manual entries) |
 | `powerbi_readings` | Every reading and manual entry (the history behind the chart and the statistics) |
 | `powerbi_devices` | The devices (connections), without their login settings |
@@ -38,10 +39,15 @@ holds the parts entered in `raw_ok` / `raw_nok`.
 
 **`powerbi_job_totals`**: `station_id`, `station_name`, `job`, `ok_count`,
 `nok_count`, `manual_ok`, `manual_nok`, `is_current_job`, `started_at_utc`,
-`updated_at_utc`.
+`updated_at_utc`, `ideal_cycle_s` (the job's ideal cycle time).
+
+**`powerbi_jobs`**: `job`, `ideal_cycle_s` (seconds per piece; empty when not
+set), `updated_at_utc`. Join it to `powerbi_readings` or `powerbi_job_totals`
+on `job`.
 
 **`powerbi_stations`**: `station_id`, `station_name`, `current_job`,
-`default_job`, `statistics` (`include` / `exclude`), `ideal_cycle_s`,
+`default_job`, `statistics` (`include` / `exclude`), `ideal_cycle_s` (the
+ideal cycle time of the current job; per job since 1.7),
 `idle_timeout_min`, `stopped_by_operator`, `last_reading_at_utc`,
 `created_at_utc`.
 
@@ -50,7 +56,7 @@ holds the parts entered in `raw_ok` / `raw_nok`.
 
 With the app's own database login (administrators) the tables behind the
 views can be read too: `stations`, `devices`, `readings`, `counter_states`,
-`station_comments`, `notification_logs`. Their columns may change between
+`jobs`, `station_comments`, `notification_logs`. Their columns may change between
 versions; reports should use the views.
 
 ## Setting it up on the server

@@ -50,11 +50,13 @@ app/
   settings_store.py  copy of the settings files in the database (survives updates)
   backup.py          backup file format, writing and restoring all data
   backup_ftp.py      FTP/FTPS upload and the automatic backup schedule
-  models.py          User, Device, Station, CounterState, Reading, StationComment,
+  models.py          User, Device, Station, Job, CounterState, Reading, StationComment,
                      Notification*, Meta
   counters.py        reset-proof accumulation (pure, unit-tested)
   stations.py        stations: values from devices to readings, manual entries,
                      the upgrade of 1.4 data (devices became stations)
+  jobs.py            the jobs list, ideal cycle times per job, the upgrade of
+                     1.6 data (station cycle times moved to the jobs)
   production.py      running / idle / stopped state per station
   scrap_stats.py     scrap statistics for a date range, Excel export
   oee.py             OEE and OK / NOK totals over the last hours (dashboard)

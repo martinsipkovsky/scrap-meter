@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app import oee, stations
 from app.database import SessionLocal, engine
-from app.models import CounterState, Device, Meta, NotificationRule, Reading, Station
+from app.models import CounterState, Device, Job, Meta, NotificationRule, Reading, Station
 
 from opcua_sim import SimServer
 from test_api import add_station_device, login
@@ -62,8 +62,7 @@ def test_ok_from_opcua_nok_from_tcp_listener(client, sim):
     assert client.get("/api/stations").json() == []  # no station unless asked for
     st = _station(client, "M1", {"ok": {"device_id": opc["id"], "key": "ns=2;s=Line1.Pass"},
                                  "nok": {"device_id": tcp["id"], "key": "fail"},
-                                 "job": {"device_id": opc["id"], "key": "ns=2;s=Line1.Job"}},
-                  ideal_cycle_s=2)
+                                 "job": {"device_id": opc["id"], "key": "ns=2;s=Line1.Job"}})
     sid = st["id"]
     assert not st["connected"] and "PLC" in st["problem"]
 
@@ -215,16 +214,16 @@ def test_restoring_a_1_4_backup_makes_stations(client, tmp_path, monkeypatch):
 
 
 def test_oee_last_24_hours(client):
-    """Availability = production time / 24 h, performance = ideal cycle x parts
-    / production time, quality = OK / (OK + NOK)."""
+    """Availability = production time / 24 h, performance = the job's ideal
+    cycle x parts / production time, quality = OK / (OK + NOK)."""
     login(client)
     now = dt.datetime(2026, 10, 6, 12, tzinfo=UTC)
     db = SessionLocal()
     try:
-        a = Station(name="A", sources={}, ideal_cycle_s=30, idle_timeout_min=30)
-        b = Station(name="B", sources={}, idle_timeout_min=30)  # no cycle time
-        x = Station(name="X", sources={}, ideal_cycle_s=30, stats_default="exclude")
-        db.add_all([a, b, x])
+        a = Station(name="A", sources={}, idle_timeout_min=30)
+        b = Station(name="B", sources={}, idle_timeout_min=30)  # runs a job without a cycle time
+        x = Station(name="X", sources={}, stats_default="exclude")
+        db.add_all([a, b, x, Job(name="J", ideal_cycle_s=30), Job(name="K")])
         db.flush()
         for st in (a, b, x):
             # 6 hours in production, a reading every 10 minutes: 4 parts each,
@@ -232,7 +231,7 @@ def test_oee_last_24_hours(client):
             t = now - dt.timedelta(hours=7)
             p = f = 0
             for i in range(37):
-                db.add(Reading(station_id=st.id, job_name="J", total_pass=p, total_fail=f, in_production=True,
+                db.add(Reading(station_id=st.id, job_name="K" if st is b else "J", total_pass=p, total_fail=f, in_production=True,
                                created_at=t + dt.timedelta(minutes=10 * i)))
                 p, f = p + (3 if i % 6 == 5 else 4), f + (1 if i % 6 == 5 else 0)
         db.commit()
@@ -251,6 +250,7 @@ def test_oee_last_24_hours(client):
     # overall: stations in the statistics; OEE from those with a cycle time
     assert r["totals"] == {"ok": 276, "nok": 12, "total": 288, "quality": round(276 / 288, 4)}
     assert r["overall"]["oee"] == a_row["oee"] and r["overall"]["without_cycle_time"] == ["B"]
+    assert r["overall"]["jobs_without_cycle_time"] == ["K"] and b_row["jobs_without_cycle_time"] == ["K"]
 
 
 def test_manual_entries(client):

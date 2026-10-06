@@ -14,11 +14,11 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import protocols, stations
+from .. import jobs, protocols, stations
 from ..config import settings
 from ..database import get_db
 from ..dependencies import require_api_user, require_permission
-from ..models import Device, Station, User
+from ..models import CounterState, Device, Job, Station, User
 from ..poller import read_device
 from ..protocols import opcua
 from ..protocols.base import ProtocolError
@@ -108,7 +108,7 @@ def _check_listen_port(db: Session, protocol: str, port: int, device_id: int | N
 
 
 DEVICE_FIELDS = ("name", "host", "port", "protocol", "protocol_config", "poll_interval", "enabled")
-STATION_FIELDS = tuple(f for f in StationExportItem.model_fields if f != "sources")
+STATION_FIELDS = tuple(f for f in StationExportItem.model_fields if f not in ("sources", "ideal_cycle_s"))
 
 
 class OpcUaBrowse(BaseModel):
@@ -151,9 +151,9 @@ def opcua_certificate(_: User = Depends(require_permission("manage_devices"))):
 
 @router.get("/export")
 def export_devices(db: Session = Depends(get_db), _: User = Depends(require_permission("view_dashboard"))):
-    """All devices and stations as a downloadable JSON file (no counter
-    history, no passwords). Devices keep the list name "cameras" of earlier
-    versions; stations name their devices."""
+    """All devices, stations and job cycle times as a downloadable JSON file
+    (no counter history, no passwords). Devices keep the list name "cameras"
+    of earlier versions; stations name their devices."""
     devices = db.query(Device).order_by(Device.name).all()
     names = {d.id: d.name for d in devices}
     cameras = [
@@ -167,10 +167,12 @@ def export_devices(db: Session = Depends(get_db), _: User = Depends(require_perm
             src = st.source(role)
             sources[role] = {"device": names.get(int(src["device_id"]), "?"), "key": src["key"]} if src else None
         out_stations.append({**{f: getattr(st, f) for f in STATION_FIELDS}, "sources": sources})
+    jobs.sync(db)
+    out_jobs = [{"name": j.name, "ideal_cycle_s": j.ideal_cycle_s} for j in db.query(Job).order_by(Job.name)]
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M")
     return JSONResponse(
-        {"version": 2, "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-         "cameras": cameras, "stations": out_stations},
+        {"version": 3, "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+         "cameras": cameras, "stations": out_stations, "jobs": out_jobs},
         headers={"Content-Disposition": f'attachment; filename="scrap-meter-devices-{stamp}.json"'},
     )
 
@@ -183,7 +185,10 @@ def import_devices(
 ):
     """Add devices and stations from an export file; one with the same name
     is updated. A file from 1.4 or older has no stations: each new device in
-    it gets its own station, with the station settings from the file.
+    it gets its own station, with the station settings from the file. Jobs in
+    the file with a cycle time set it here; a file from 1.5 / 1.6 has cycle
+    times per station instead, which go to the jobs the station has run (and
+    its default job) that have none.
 
     All or nothing: if anything in the file is invalid, nothing is changed and
     every problem is reported. A masked password keeps the stored one.
@@ -221,6 +226,7 @@ def import_devices(
         db.flush()  # so later devices in the file see this one's port
 
     st_created, st_updated = [], []
+    legacy_cycles: list[tuple[Station, float]] = []
     if payload.stations is None:
         # a file from 1.4 or older: the devices were the counted units
         taken = {n for (n,) in db.query(Station.name)}
@@ -252,19 +258,46 @@ def import_devices(
             fields = {f: getattr(item, f) for f in STATION_FIELDS}
             st = db.query(Station).filter(Station.name == item.name).first()
             if st is None:
-                db.add(Station(**fields, sources=sources))
+                st = Station(**fields, sources=sources)
+                db.add(st)
                 st_created.append(item.name)
             else:
                 for key, value in fields.items():
                     setattr(st, key, value)
                 st.sources = sources
                 st_updated.append(item.name)
+            if item.ideal_cycle_s and payload.jobs is None:
+                legacy_cycles.append((st, item.ideal_cycle_s))
+
+    jobs_set = []
+    if payload.jobs is not None:
+        job_names = [j.name for j in payload.jobs]
+        for n in sorted({n for n in job_names if job_names.count(n) > 1}):
+            errors.append(f"job {n} is listed more than once")
+        for item in payload.jobs:
+            if item.ideal_cycle_s:
+                jobs.set_cycle(db, item.name.strip(), item.ideal_cycle_s)
+                jobs_set.append(item.name)
+    elif legacy_cycles and not errors:
+        db.flush()
+        epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
+        picks = []
+        for st, seconds in legacy_cycles:
+            ran = {j: t for j, t in db.query(CounterState.job_name, CounterState.updated_at)
+                   .filter(CounterState.station_id == st.id)}
+            ran.setdefault(st.default_job, None)
+            picks += [(jobs.aware(t) if t else epoch, st.name, j, seconds) for j, t in ran.items()]
+        before = set(jobs.cycle_times(db))
+        jobs.copy_station_cycles(db, picks)
+        db.flush()
+        jobs_set = sorted(set(jobs.cycle_times(db)) - before)
 
     if errors:
         db.rollback()
         raise HTTPException(400, "Nothing was imported. " + "; ".join(errors))
     db.commit()
-    return {"created": created, "updated": updated, "stations_created": st_created, "stations_updated": st_updated}
+    return {"created": created, "updated": updated, "stations_created": st_created, "stations_updated": st_updated,
+            "job_cycle_times": jobs_set}
 
 
 @router.get("", response_model=list[DeviceOut])

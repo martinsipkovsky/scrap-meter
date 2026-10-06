@@ -62,7 +62,7 @@ def utcnow() -> dt.datetime:
 # Granular permission keys. Admin implicitly has all of them.
 PERMISSIONS = {
     "view_dashboard": "View dashboards and device data",
-    "manage_devices": "Create, edit and delete devices and stations",
+    "manage_devices": "Create, edit and delete devices and stations; set job cycle times",
     "control_connections": "Start/stop device connections, polling and production; reset counters",
     "view_data": "Browse logged readings and counters",
     "exclude_readings": "Exclude readings from the scrap statistics",
@@ -185,7 +185,9 @@ class Station(Base):
     # included one at a time or by period (Reading.included).
     stats_default: Mapped[str] = mapped_column(String(16), default="include")
 
-    # ideal seconds per part, for the OEE performance factor (None = unknown)
+    # up to 1.6: ideal seconds per part for the OEE. Cycle times are per job
+    # since 1.7 (Job.ideal_cycle_s); app.jobs.upgrade copied this value to the
+    # jobs the station had run. Kept so a downgrade still finds it.
     ideal_cycle_s: Mapped[Optional[float]] = mapped_column(nullable=True)
 
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -214,6 +216,21 @@ class Station(Base):
 
     def device_ids(self) -> set[int]:
         return {int(s["device_id"]) for r in ("ok", "nok", "count", "job") if (s := self.source(r))}
+
+
+class Job(Base):
+    """A job (product, recipe) the stations count, by name: the names in
+    CounterState.job_name / Reading.job_name. Made when a station first counts
+    a job; holds the job's ideal cycle time for the OEE performance factor."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # ideal seconds per piece at full speed (None = not set)
+    ideal_cycle_s: Mapped[Optional[float]] = mapped_column(nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class CounterState(Base):

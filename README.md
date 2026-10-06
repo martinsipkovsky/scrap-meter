@@ -35,7 +35,8 @@ versions keep working.
   reject counter that pushes over TCP. Parts counted by hand are added as
   manual entries on the station.
 - **OEE meter:** availability, performance and quality over the last 24 hours,
-  with total OK and NOK, at the bottom of the dashboard.
+  with total OK and NOK, at the bottom of the dashboard. Ideal cycle times are
+  set per job, so a station that changes job is weighed correctly.
 - **Reset-proof counters:** if an operator resets the counters on the device,
   the running totals keep going. A job change freezes the old job's totals and
   starts new ones.
@@ -63,7 +64,7 @@ versions keep working.
 - **WhatsApp group commands:** `!status` (or your own commands) in a group
   answers with live production state, OK / NOK and scrap per station.
 - **Users and permissions:** login required, with granular permissions per user.
-- **Export/import** of devices and stations as JSON, and an admin **Database tab** to move the
+- **Export/import** of devices, stations and job cycle times as JSON, and an admin **Database tab** to move the
   app to another PostgreSQL server.
 - **Backups:** download all data as one file, import it again, and automatic
   scheduled backups to an FTP/FTPS server, with a reminder when the last

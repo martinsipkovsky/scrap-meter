@@ -359,9 +359,10 @@ async function importDevices(input) {
     `${devs.length - upd} new, ${upd} existing (same name) will be updated.
 Counters and history are not touched.`)) return;
   try {
-    const r = await postJSON('/api/devices/import', { version: data.version || 1, cameras: devs, stations: data.stations || null });
+    const r = await postJSON('/api/devices/import', { version: data.version || 1, cameras: devs, stations: data.stations || null, jobs: data.jobs || null });
     toast(`Imported devices: ${r.created.length} added, ${r.updated.length} updated; stations: ` +
-      `${r.stations_created.length} added, ${r.stations_updated.length} updated`);
+      `${r.stations_created.length} added, ${r.stations_updated.length} updated` +
+      (r.job_cycle_times.length ? `; job cycle times: ${r.job_cycle_times.length}` : ''));
     load();
   } catch (e) { toast(e.message, true); }
 }

@@ -113,8 +113,6 @@ class StationCreate(BaseModel):
     idle_timeout_min: int = Field(default=30, ge=1, le=10080)
     # whether the station's readings count in the overall statistics
     stats_default: Literal["include", "exclude"] = "include"
-    # ideal seconds per part (OEE performance); None = unknown
-    ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
     sort_order: int = 0
 
 
@@ -124,7 +122,6 @@ class StationUpdate(BaseModel):
     default_job: Optional[str] = Field(default=None, min_length=1, max_length=255)
     idle_timeout_min: Optional[int] = Field(default=None, ge=1, le=10080)
     stats_default: Optional[Literal["include", "exclude"]] = None
-    ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
     sort_order: Optional[int] = None
 
 
@@ -139,17 +136,26 @@ class StationExportItem(BaseModel):
     default_job: str = "MAIN"
     idle_timeout_min: int = Field(default=30, ge=1, le=10080)
     stats_default: Literal["include", "exclude"] = "include"
-    ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
     sort_order: int = 0
+    # files from 1.5 / 1.6 only: the station's cycle time, given on import to
+    # the jobs the station has run (and its default job) that have none
+    ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400, exclude=True)
+
+
+class JobExportItem(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
 
 
 class DeviceImport(BaseModel):
     """An export file. "cameras" holds the devices (the name of the list in
-    every version); "stations" is there from version 2 (1.5)."""
+    every version); "stations" is there from version 2 (1.5), "jobs" from
+    version 3 (1.7)."""
 
     version: int = 1
     cameras: list[DeviceExportItem]
     stations: Optional[list[StationExportItem]] = None
+    jobs: Optional[list[JobExportItem]] = None
 
 
 # ---- Notifications --------------------------------------------------------

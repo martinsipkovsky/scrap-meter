@@ -80,7 +80,6 @@ Add a station with:
 | Job (optional) | Device and value holding the job or recipe; without it the station uses *Job name when no job value is set* (default `MAIN`) |
 | Order | Lower numbers come first on the dashboard |
 | Production idle timeout | Minutes without an OK increase before the station counts as idle (default 30) |
-| Ideal cycle time | Seconds per part at full speed, for the OEE performance factor (optional) |
 | Statistics | **Include** (default) or **Exclude**, see [Stations excluded from the statistics](#stations-excluded-from-the-statistics) |
 
 Pick OK, NOK or both; a missing one counts as 0. A station with no device at
@@ -93,6 +92,27 @@ values and data types are shown to help pick the right node.
 A station is **online** when every device it uses is online and has delivered
 its value; otherwise the list and the dashboard say what is missing (e.g. "no
 value 'ns=2;s=M1.Bad' from device 'PLC' yet").
+
+### Jobs and ideal cycle times
+
+Below the stations, **Jobs** lists every job the stations have counted, from a
+device's job value, a station's default job or a manual entry. A job appears
+there by itself the first time it is counted, with no cycle time yet. For each
+job the list shows the stations running it now, the stations that have
+counted it, and when it was last counted.
+
+The **ideal cycle time** is the seconds one piece of the job takes at full
+speed; it is the OEE performance factor. Users with `manage_devices` type it
+next to the job and press **Save** (or Enter); an empty field clears it. A job
+no station has counted any more (its stations were deleted) can be removed
+with **Remove**.
+
+Up to version 1.6 the cycle time was set per station. When 1.7 starts on an
+older database (or an older backup is imported), each station's cycle time is
+copied to the jobs that station has run, where the job has none yet. When
+several stations ran the same job with different cycle times, the one of the
+station that ran it most recently is kept, and the app log says so (`upgrade:
+stations had different cycle times for job ...`).
 
 Deleting a station deletes its counters, readings and alert rules; its devices
 stay.
@@ -195,9 +215,12 @@ The bottom of the dashboard shows OEE over the last 24 hours:
 - **Availability** = time in production / 24 h. There are no shifts or planned
   stops yet, so the whole 24 hours counts as planned time; a line that runs
   one shift a day can reach at most about 33 %.
-- **Performance** = ideal cycle time × parts made / time in production. It
-  needs the station's ideal cycle time; a value above 100 % means the ideal
-  cycle time is set too long.
+- **Performance** = ideal time of the parts made / time in production. The
+  parts of each reading are weighed with the [ideal cycle time of their
+  job](#jobs-and-ideal-cycle-times), so a station that changes job during the
+  day is weighed correctly. Parts of a job without a cycle time, and the time
+  spent making them, are left out of performance, and the panel names those
+  jobs. A value above 100 % means a cycle time is set too long.
 - **Quality** = OK / (OK + NOK).
 - **OEE** = availability × performance × quality.
 
@@ -206,9 +229,10 @@ was in production (a gap counts at most the idle timeout); manual entries add
 parts but no time. Parts are counted like
 Scrap statistics: excluded readings and parts made while not in production are
 left out. The meter, the factors and the total OK / NOK cover the stations
-included in the statistics; the OEE itself covers those of them with an ideal
-cycle time, and the panel names the stations without one. **Per station**
-under the meter shows the same figures for every station.
+included in the statistics; the OEE itself covers those of them that made
+parts of a job with a cycle time, or stand on such a job (an idle station on
+it counts with availability 0). **Per station** under the meter shows the
+same figures for every station, and which of its jobs have no cycle time.
 
 ## Data log
 
@@ -280,11 +304,15 @@ Changing the setting applies to all readings of the station, old and new.
 ## Export and import
 
 **Export** on the Devices tab downloads every device and station as one JSON
-file (devices without passwords; stations name their devices). **Import**
-reads such a file: devices and stations with a new name are added, existing
-ones (same name) are updated, and a missing password keeps the saved one.
-Counters and history are never touched. If anything in the file is invalid,
-nothing is imported.
+file (devices without passwords; stations name their devices), with the jobs
+and their ideal cycle times. **Import** reads such a file: devices and
+stations with a new name are added, existing ones (same name) are updated, a
+missing password keeps the saved one, and jobs in the file with a cycle time
+get it. Counters and history are never touched. If anything in the file is
+invalid, nothing is imported.
+
+Files from 1.5 and 1.6 hold a cycle time per station instead: it is given to
+the jobs that station has run and to its default job, where they have none.
 
 Files exported by earlier versions (Cognex Monitor, or Scrap Meter 1.4) import
 too: each new device in them also gets its own station, with the idle timeout
@@ -306,7 +334,7 @@ assign permissions. The last administrator can't be deleted.
 | Permission | Allows |
 |---|---|
 | `view_dashboard` | View the dashboard, stations, devices and the OEE meter; write comments on stations; export settings |
-| `manage_devices` | Create, edit, delete and import devices and stations, browse OPC UA servers |
+| `manage_devices` | Create, edit, delete and import devices and stations, set job cycle times, browse OPC UA servers |
 | `control_connections` | Poll devices, start/stop production, reset the dashboard counters |
 | `view_data` | Browse logged readings and counters, scrap statistics |
 | `exclude_readings` | Exclude readings from (or include them in) the scrap statistics |

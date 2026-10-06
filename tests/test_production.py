@@ -143,7 +143,7 @@ def test_export_import_roundtrip(client):
     exp = client.get("/api/devices/export")
     assert "attachment" in exp.headers["content-disposition"]
     data = exp.json()
-    assert data["version"] == 2
+    assert data["version"] == 3
     assert [c["name"] for c in data["cameras"]] == ["A", "B"]
     assert "id" not in data["cameras"][0]
     assert data["stations"][0]["sources"]["ok"] == {"device": "A", "key": "pass"}
@@ -156,7 +156,7 @@ def test_export_import_roundtrip(client):
     r = client.post("/api/devices/import", json=data)
     assert r.status_code == 200, r.text
     assert r.json() == {"created": ["C"], "updated": ["A", "B"], "stations_created": ["C"],
-                        "stations_updated": ["A", "B"]}
+                        "stations_updated": ["A", "B"], "job_cycle_times": []}
     devs = {d["name"]: d for d in client.get("/api/devices").json()}
     sts = {s["name"]: s for s in client.get("/api/stations").json()}
     assert set(devs) == {"A", "B", "C"} and sts["A"]["idle_timeout_min"] == 15

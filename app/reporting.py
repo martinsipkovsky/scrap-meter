@@ -43,7 +43,7 @@ FROM station_comments c
 """,
     ),
     "powerbi_stations": (
-        "The stations and their settings",
+        "The stations and their settings; ideal_cycle_s is the one of the current job",
         """
 SELECT
     s.id AS station_id,
@@ -51,7 +51,7 @@ SELECT
     s.current_job AS current_job,
     s.default_job AS default_job,
     s.stats_default AS statistics,
-    s.ideal_cycle_s AS ideal_cycle_s,
+    (SELECT j.ideal_cycle_s FROM jobs j WHERE j.name = s.current_job) AS ideal_cycle_s,
     s.idle_timeout_min AS idle_timeout_min,
     s.manual_stop AS stopped_by_operator,
     s.last_reading_at AS last_reading_at_utc,
@@ -72,9 +72,22 @@ SELECT
     COALESCE(t.manual_fail, 0) AS manual_nok,
     t.is_active AS is_current_job,
     t.started_at AS started_at_utc,
-    t.updated_at AS updated_at_utc
+    t.updated_at AS updated_at_utc,
+    j.ideal_cycle_s AS ideal_cycle_s
 FROM counter_states t
 LEFT JOIN stations s ON s.id = t.station_id
+LEFT JOIN jobs j ON j.name = t.job_name
+""",
+    ),
+    "powerbi_jobs": (
+        "Every job the stations have counted, with its ideal cycle time (seconds per piece; empty when not set)",
+        """
+SELECT
+    n.job AS job,
+    j.ideal_cycle_s AS ideal_cycle_s,
+    j.updated_at AS updated_at_utc
+FROM (SELECT name AS job FROM jobs UNION SELECT job_name FROM counter_states) n
+LEFT JOIN jobs j ON j.name = n.job
 """,
     ),
     "powerbi_readings": (

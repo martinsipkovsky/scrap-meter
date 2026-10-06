@@ -136,10 +136,11 @@ async function loadOee() {
   const ts = document.getElementById('tScrap');
   ts.textContent = t.total ? fmtPct(t.nok / t.total) : '—';
   ts.className = 'stat value ' + (t.total ? scrapClass(t.nok / t.total) : '');
-  const missing = o.without_cycle_time;
+  const missing = o.jobs_without_cycle_time;
   document.getElementById('oeeNote').textContent = !r.stations.length ? ''
-    : o.stations === 0 ? 'OEE needs an ideal cycle time per station (Stations tab); shown: availability and quality.'
-    : missing.length ? 'OEE covers ' + o.stations + ' station(s); without a cycle time: ' + missing.join(', ') + '.'
+    : o.stations === 0 ? 'OEE needs ideal cycle times per job (Jobs list on the Stations tab); shown: availability and quality.'
+      + (missing.length ? ' Jobs without one: ' + missing.join(', ') + '.' : '')
+    : missing.length ? 'Performance leaves out jobs without an ideal cycle time: ' + missing.join(', ') + ' (set them on the Stations tab).'
     : 'Availability counts the whole 24 h as planned time.';
   const tb = document.getElementById('oeeRows'); tb.innerHTML = '';
   for (const s of r.stations) {
@@ -149,7 +150,11 @@ async function loadOee() {
       el('td', {}, s.ok.toLocaleString()), el('td', {}, s.nok.toLocaleString()),
       el('td', {}, h + ' h ' + m + ' min'),
       el('td', {}, pct(s.availability)),
-      el('td', {}, s.ideal_cycle_s ? pct(s.performance) : el('span', { class: 'muted', title: 'Set an ideal cycle time on the Stations tab' }, 'no cycle time')),
+      el('td', {}, s.performance !== null
+        ? el('span', {}, pct(s.performance), s.jobs_without_cycle_time.length
+          ? el('div', { class: 'muted', title: 'Pieces of these jobs are left out of performance' }, 'without ' + s.jobs_without_cycle_time.join(', ')) : null)
+        : s.jobs_without_cycle_time.length ? el('span', { class: 'muted', title: 'Set the job\'s ideal cycle time in the Jobs list on the Stations tab' }, 'no cycle time: ' + s.jobs_without_cycle_time.join(', '))
+        : el('span', { class: 'muted' }, '—')),
       el('td', {}, pct(s.quality)),
       el('td', {}, el('strong', {}, pct(s.oee)))));
   }

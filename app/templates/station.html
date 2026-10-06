@@ -178,7 +178,7 @@ async function load() {
   document.getElementById('title').textContent = d.name;
   document.getElementById('sub').textContent = (d.devices.length ? 'Devices: ' + d.devices.join(', ') : 'Manual entries only') +
     (d.stats_default === 'exclude' ? ' · not in statistics totals' : '') +
-    (d.ideal_cycle_s ? ' · ideal cycle ' + d.ideal_cycle_s + ' s' : '');
+    (d.job_cycle_s ? ' · ideal cycle ' + d.job_cycle_s + ' s / piece for job ' + d.current_job : '');
   const [cls, label] = PROD_BADGE[d.production_state];
   const ps = document.getElementById('prodState');
   ps.innerHTML = ''; ps.append(el('span', { class: 'badge ' + cls, style: 'font-size:14px' }, label));

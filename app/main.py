@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from . import __version__, commands, reporting, settings_store, stations
+from . import __version__, commands, jobs, reporting, settings_store, stations
 from .notifications import startup_notice
 from .config import settings
 from .database import Base, SessionLocal, engine, migrate_schema
@@ -24,7 +24,7 @@ from .notifiers.whatsapp_linked import link as whatsapp_link
 from .poller import listener, poller
 from .routers import (account, auth_routes, backup_admin, commands as commands_api, comments as comments_api, data,
                       database_admin,
-                      devices, notifications, pages, stations as stations_api, users)
+                      devices, jobs as jobs_api, notifications, pages, stations as stations_api, users)
 from .seed import seed_admin
 from .templating import templates
 
@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     migrate_schema(engine)
     stations.upgrade(engine)  # 1.4 databases: every device becomes a station
+    jobs.upgrade(engine)  # 1.6 databases: station cycle times move to the jobs
     reporting.ensure_views(engine)  # read-only views for Power BI and other reports
     db = SessionLocal()
     try:
@@ -82,6 +83,7 @@ app.include_router(account.router)
 app.include_router(users.router)
 app.include_router(devices.router)
 app.include_router(stations_api.router)
+app.include_router(jobs_api.router)
 app.include_router(comments_api.router)
 app.include_router(data.router)
 app.include_router(commands_api.router)  # before notifications: /commands/... is more specific

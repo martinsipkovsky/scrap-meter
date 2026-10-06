@@ -11,10 +11,19 @@
 </div>
 
 <table>
-  <thead><tr><th>Status</th><th>Station</th><th>OK from</th><th>NOK from</th><th>Total / job</th><th>OEE settings</th><th></th></tr></thead>
+  <thead><tr><th>Status</th><th>Station</th><th>OK from</th><th>NOK from</th><th>Total / job</th><th>Production</th><th></th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
 <div id="empty" class="empty" style="display:none">No stations yet. Add one, or add a device with "Also add a station".</div>
+
+<div class="toolbar" style="margin-top:28px">
+  <div><h2 style="margin:0">Jobs</h2><p class="lead">Every job the stations have counted appears here by itself. The ideal cycle time is the seconds one piece of the job takes at full speed: the OEE performance factor. Pieces of a job without one are left out of performance, and the OEE panel names the job.</p></div>
+</div>
+<table>
+  <thead><tr><th>Job</th><th>Ideal cycle time</th><th>Running on</th><th>Counted on</th><th>Last counted</th><th></th></tr></thead>
+  <tbody id="jobRows"></tbody>
+</table>
+<div id="jobsEmpty" class="empty" style="display:none">No jobs yet: a job appears when a station first counts it (from a device or a manual entry).</div>
 
 <div class="modal-back" id="modal">
   <div class="modal" style="width:620px">
@@ -33,14 +42,14 @@
     </div>
     <div class="hint">If OK does not increase for this long, the station counts as not in production: grayed on the dashboard, no scrap alerts.</div>
     <div class="row">
-      <div><label>Ideal cycle time (seconds per part)</label><input id="f_cycle" type="number" min="0" step="any" placeholder="e.g. 2.5" /></div>
       <div><label>Statistics</label>
         <select id="f_stats">
           <option value="include">Include in overall figures</option>
           <option value="exclude">Exclude by default</option>
         </select></div>
+      <div></div>
     </div>
-    <div class="hint">The ideal cycle time is the OEE performance factor; without it the OEE meter shows only availability and quality for this station.
+    <div class="hint">Ideal cycle times for the OEE are set per job, in the Jobs list below the stations.
       Excluded stations keep their own rows in Scrap statistics but stay out of the totals, the Excel export totals, chat command totals and the OEE meter; single readings or periods can be included again.</div>
     <div class="actions" style="margin-top:20px;justify-content:flex-end">
       <button class="btn secondary" onclick="closeModal('modal')">Cancel</button>
@@ -104,8 +113,7 @@ async function load() {
       el('td', {}, srcText(s.sources.nok)),
       el('td', {}, s.sources.count ? srcText(s.sources.count) : el('span', { class: 'muted' }, 'OK + NOK'),
         el('div', { class: 'muted' }, s.sources.job ? 'job: ' + devName(s.sources.job.device_id) + ' · ' + s.sources.job.key : 'job: ' + s.default_job)),
-      el('td', {}, s.ideal_cycle_s ? s.ideal_cycle_s + ' s / part' : el('span', { class: 'muted' }, 'no cycle time'),
-        el('div', { class: 'muted' }, 'idle after ' + s.idle_timeout_min + ' min')),
+      el('td', {}, el('span', { class: 'muted' }, 'idle after ' + s.idle_timeout_min + ' min')),
       el('td', {}, actions),
     ));
   }
@@ -213,7 +221,6 @@ async function openForm(s) {
   document.getElementById('f_order').value = s ? s.sort_order : 0;
   document.getElementById('f_job').value = s ? s.default_job : 'MAIN';
   document.getElementById('f_idle').value = s ? s.idle_timeout_min : 30;
-  document.getElementById('f_cycle').value = s && s.ideal_cycle_s ? s.ideal_cycle_s : '';
   document.getElementById('f_stats').value = s ? s.stats_default : 'include';
   buildSources();
   for (const [role] of ROLES) setSource(role, s ? s.sources[role] : null);
@@ -225,13 +232,11 @@ async function save() {
   err.style.display = 'none';
   try {
     const id = document.getElementById('f_id').value;
-    const cycle = parseFloat(document.getElementById('f_cycle').value);
     const payload = {
       name: document.getElementById('f_name').value.trim(),
       sources: readSources(),
       default_job: document.getElementById('f_job').value.trim() || 'MAIN',
       idle_timeout_min: parseInt(document.getElementById('f_idle').value, 10) || 30,
-      ideal_cycle_s: cycle > 0 ? cycle : null,
       stats_default: document.getElementById('f_stats').value,
       sort_order: parseInt(document.getElementById('f_order').value, 10) || 0,
     };
@@ -247,7 +252,59 @@ async function remove(s) {
   try { await delJSON('/api/stations/' + s.id); load(); } catch (e) { toast(e.message, true); }
 }
 
+// ---- jobs --------------------------------------------------------------------
+const jobsEditing = () => [...document.querySelectorAll('#jobRows input')].some(i => i === document.activeElement || i.dataset.dirty);
+async function loadJobs() {
+  let list;
+  try { list = await getJSON('/api/jobs'); } catch (e) { return; }
+  const tb = document.getElementById('jobRows');
+  tb.innerHTML = '';
+  document.getElementById('jobsEmpty').style.display = list.length ? 'none' : 'block';
+  for (const j of list) {
+    let cell;
+    if (CAN_MANAGE) {
+      const inp = el('input', { type: 'number', min: '0', step: 'any', placeholder: 'not set', style: 'width:110px',
+        value: j.ideal_cycle_s ?? '', 'aria-label': 'Ideal cycle time of ' + j.name });
+      const btn = el('button', { class: 'btn small', style: 'visibility:hidden', onclick: () => saveJob(j, inp) }, 'Save');
+      inp.addEventListener('input', () => { inp.dataset.dirty = '1'; btn.style.visibility = 'visible'; });
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveJob(j, inp); });
+      cell = el('div', { style: 'display:flex;gap:6px;align-items:center' }, inp, el('span', { class: 'muted' }, 's / piece'), btn);
+    } else {
+      cell = j.ideal_cycle_s ? j.ideal_cycle_s + ' s / piece' : el('span', { class: 'muted' }, 'not set');
+    }
+    tb.append(el('tr', {},
+      el('td', {}, el('strong', {}, j.name)),
+      el('td', {}, cell),
+      el('td', {}, j.running_on.length ? j.running_on.join(', ') : el('span', { class: 'muted' }, '—')),
+      el('td', { class: 'muted' }, j.stations.join(', ') || '—'),
+      el('td', { class: 'muted' }, j.last_counted_at ? fmtAgo(j.last_counted_at) : '—'),
+      el('td', {}, CAN_MANAGE && !j.stations.length
+        ? el('button', { class: 'btn danger small', title: 'No station has counted this job any more', onclick: () => removeJob(j) }, 'Remove') : null)));
+  }
+}
+async function removeJob(j) {
+  if (!confirm('Remove job "' + j.name + '" from the list? It comes back with no cycle time if a station counts it again.')) return;
+  try { await delJSON('/api/jobs/' + j.id); loadJobs(); } catch (e) { toast(e.message, true); }
+}
+async function saveJob(j, inp) {
+  const raw = inp.value.trim();
+  const v = raw === '' ? null : parseFloat(raw);
+  if (v !== null && !(v > 0)) { toast('The cycle time must be more than 0 seconds (empty clears it).', true); return; }
+  try {
+    await patchJSON('/api/jobs/' + j.id, { ideal_cycle_s: v });
+    toast(v === null ? 'Cycle time of ' + j.name + ' cleared' : j.name + ': ' + v + ' s / piece');
+    delete inp.dataset.dirty;
+    inp.blur();
+    loadJobs();
+  } catch (e) { toast(e.message, true); }
+}
+
 load();
-setInterval(() => { if (!document.querySelector('.modal-back.open')) load(); }, 5000);
+loadJobs();
+setInterval(() => {
+  if (document.querySelector('.modal-back.open')) return;
+  load();
+  if (!jobsEditing()) loadJobs();
+}, 5000);
 </script>
 {% endblock %}

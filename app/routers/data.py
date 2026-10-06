@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import comments, oee, production, scrap_stats, stations
+from .. import comments, jobs, oee, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import CounterState, Reading, Station, User, utcnow
@@ -27,7 +27,9 @@ def _aware(t: dt.datetime) -> dt.datetime:
     return t.replace(tzinfo=dt.timezone.utc) if t.tzinfo is None else t
 
 
-def _station_summary(db: Session, st: Station, devices: dict) -> dict:
+def _station_summary(db: Session, st: Station, devices: dict, cycles: dict | None = None) -> dict:
+    if cycles is None:
+        cycles = jobs.cycle_times(db)
     active = (
         db.query(CounterState)
         .filter(CounterState.station_id == st.id, CounterState.is_active.is_(True))
@@ -43,7 +45,8 @@ def _station_summary(db: Session, st: Station, devices: dict) -> dict:
         "current_job": st.current_job,
         "last_poll_at": st.last_reading_at,
         "stats_default": st.stats_default,
-        "ideal_cycle_s": st.ideal_cycle_s,
+        # the current job's ideal cycle time (OEE), None when not set
+        "job_cycle_s": cycles.get(st.current_job),
         **production.describe(st),
         "active_job": None
         if active is None
@@ -69,7 +72,8 @@ def summary(db: Session = Depends(get_db), _: User = Depends(require_permission(
     rows = _stations(db)
     devices = stations.devices_of(db, rows)
     latest = comments.latest(db, [st.id for st in rows])
-    return [{**_station_summary(db, st, devices),
+    cycles = jobs.cycle_times(db)
+    return [{**_station_summary(db, st, devices, cycles),
              "latest_comment": comments.out(latest[st.id]) if st.id in latest else None} for st in rows]
 
 

@@ -19,6 +19,13 @@ and the same history, so the dashboard looks as before. From 1.5 to 1.7 a
 station took each role (OK, NOK, total, job) from one device; 1.8 turns that
 into one source per device, see [Upgrading to 1.8](#upgrading-to-18).
 
+## The left menu
+
+The **‹** button at the top of the menu hides it down to a strip of icons
+(hover an icon for its name), and **›** brings it back. The browser remembers
+the choice. On a narrow screen, such as a phone, the menu is always the icon
+strip; **›** opens it over the page, and a tap next to it closes it again.
+
 ## Dashboard
 
 One block per station with its connection state, its devices, current job,
@@ -37,8 +44,11 @@ time, scrap at that moment). **+ Comment** / **Comments** opens the station's
 comments to read them or write a new one without leaving the dashboard. See
 [Comments](#comments).
 
-At the bottom, **Last 24 hours** shows the OEE meter and the total OK and NOK
-of the stations included in the statistics. See [OEE](#oee).
+**Last 24 hours**, pinned to the bottom of the screen, shows the OEE meter and
+the total OK and NOK of the stations included in the statistics, and stays in
+view while the station blocks scroll (the last blocks always end above it).
+**Per station** opens the figures of each station inside the bar. See
+[OEE](#oee).
 
 ## Devices tab
 
@@ -424,3 +434,38 @@ imported; their devices become stations as on an update. See
 The tab's **Reading the data** section is a short manual for reading all data
 from the database with Power BI, Excel or SQL: connection details, the
 read-only login, the views and example queries. See [Reports](reporting.md).
+
+## Raw data tab
+
+Administrators also see a *Raw data* tab: every table of the app, to look at
+and fix single values without a database tool. The banner at the top has a
+**Download backup first** button; changes go straight into the database, so
+take one before larger fixes.
+
+- **Tables:** pick a table on the left. Rows come page by page (25 to 200),
+  newest first. Click a column header to sort, type in **Search** to find a
+  text in any column (JSON settings aside), and add **Filters** (=, ≠, <, >,
+  contains, starts with, is empty, ...).
+- **Editing:** click a value to change it. The input fits the column: numbers,
+  date and time (in UTC), true / false, a list of rows for a column that
+  points to another table (e.g. a reading's station), JSON for settings.
+  **✓** or Enter saves, **✕** or Esc cancels, **∅** empties a value that may be
+  empty. A value of the wrong type is refused with the reason.
+- **+ Add row** opens a form with an input per column; empty inputs get the
+  column's default. **Delete** removes a row after a confirmation. Users and
+  notification providers are added on their own tabs.
+- **Change log:** every change made here, newest first, with who made it,
+  when, the table, the row, and the values before and after. **Undo** puts the
+  old values back, removes an added row, or puts a deleted row back with its
+  id; the undo is logged too. A change can't be undone when the same values
+  were changed again since (undo the later change first).
+- **SQL (read only):** one SELECT query (or WITH ... SELECT), run in a
+  read-only transaction; at most 500 rows are shown. Use it to look things up;
+  changes belong in the grid, where they are logged.
+
+Secrets stay hidden: password hashes and the notification providers' settings
+(tokens) are shown as *hidden* and can't be edited, and passwords inside
+settings (an OPC UA login) are masked; saving a masked password keeps the
+stored one. The SQL box refuses those tables and columns and the backup and
+database settings, as well as server functions that reach outside the data
+(reading files, sleeping, and so on). The change log is read-only.

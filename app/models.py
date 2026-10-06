@@ -543,3 +543,29 @@ class CommandLog(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
+
+
+# --------------------------------------------------------------------------- #
+# Raw data tab (app.rawdb)
+# --------------------------------------------------------------------------- #
+
+
+class DbAuditLog(Base):
+    """A change made on the Raw data tab: who, when, which table and row, and
+    the values before and after (only the changed columns of an update; the
+    whole row of an insert or delete, so it can be undone)."""
+
+    __tablename__ = "db_audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(64))
+    table_name: Mapped[str] = mapped_column(String(64), index=True)
+    row_key: Mapped[str] = mapped_column(String(255))
+    # "update" | "insert" | "delete" | "undo"
+    action: Mapped[str] = mapped_column(String(16))
+    old_values: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    new_values: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # an undo names the change it reversed; that change names its undo
+    undo_of: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    undone_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

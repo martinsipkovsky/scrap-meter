@@ -5,36 +5,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Scrap Meter{% endblock %}</title>
   <link rel="stylesheet" href="{{ static_url('style.css') }}" />
+  {# before the first paint, so a hidden menu doesn't flash open #}
+  <script>try { if (localStorage.getItem('sm.nav') === 'collapsed') document.documentElement.classList.add('nav-collapsed'); } catch (e) {}</script>
 </head>
 <body>
+  {% set icons = {
+    'dashboard': '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    'stations': '<path d="M3 21V10l5 3V10l5 3V10l5 3V4h3v17z"/><path d="M3 21h18"/>',
+    'devices': '<rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8 6l1.5-2.5h5L16 6"/>',
+    'data': '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+    'scrap': '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    'notifications': '<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 21a2 2 0 0 0 4 0"/>',
+    'users': '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    'database': '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+    'rawdb': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/>',
+    'account': '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    'signout': '<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11"/>',
+  } %}
+  {% macro icon(name) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icons[name] | safe }}</svg>{% endmacro %}
+  {% macro link(href, key, label) %}<a href="{{ href }}" class="{{ 'active' if page==key }}" title="{{ label }}">{{ icon(key) }}<span class="label">{{ label }}</span></a>{% endmacro %}
   <div class="app">
-    <aside class="sidebar">
-      <div class="brand">Scrap<span> Meter</span></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-text">Scrap<span> Meter</span></span>
+        <button class="nav-toggle" id="navToggle" type="button" aria-controls="sidebar" aria-expanded="true" title="Hide the menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+      </div>
       <nav class="nav">
         {% if user.has_permission('view_dashboard') %}
-        <a href="/" class="{{ 'active' if page=='dashboard' }}">Dashboard</a>
-        <a href="/stations" class="{{ 'active' if page=='stations' }}">Stations</a>
-        <a href="/devices" class="{{ 'active' if page=='devices' }}">Devices</a>
+        {{ link('/', 'dashboard', 'Dashboard') }}
+        {{ link('/stations', 'stations', 'Stations') }}
+        {{ link('/devices', 'devices', 'Devices') }}
         {% endif %}
         {% if user.has_permission('view_data') %}
-        <a href="/data" class="{{ 'active' if page=='data' }}">Data log</a>
-        <a href="/scrap" class="{{ 'active' if page=='scrap' }}">Scrap statistics</a>
+        {{ link('/data', 'data', 'Data log') }}
+        {{ link('/scrap', 'scrap', 'Scrap statistics') }}
         {% endif %}
         {% if user.has_permission('manage_notifications') %}
-        <a href="/notifications" class="{{ 'active' if page=='notifications' }}">Notifications</a>
+        {{ link('/notifications', 'notifications', 'Notifications') }}
         {% endif %}
         {% if user.has_permission('manage_users') %}
-        <a href="/users" class="{{ 'active' if page=='users' }}">Users</a>
+        {{ link('/users', 'users', 'Users') }}
         {% endif %}
         {% if user.is_admin %}
-        <a href="/database" class="{{ 'active' if page=='database' }}">Database</a>
+        {{ link('/database', 'database', 'Database') }}
+        {{ link('/rawdb', 'rawdb', 'Raw data') }}
         {% endif %}
       </nav>
       <div class="spacer"></div>
       <div class="userbox">
-        <div style="color:var(--text); font-weight:600;">{{ user.username }}</div>
-        <div>{{ 'Administrator' if user.is_admin else 'User' }}</div>
-        <div style="margin-top:8px;"><a href="/account">Account</a> · <a href="/logout">Sign out</a></div>
+        <div class="full">
+          <div style="color:var(--text); font-weight:600;">{{ user.username }}</div>
+          <div>{{ 'Administrator' if user.is_admin else 'User' }}</div>
+          <div style="margin-top:8px;"><a href="/account">Account</a> · <a href="/logout">Sign out</a></div>
+        </div>
+        <div class="compact">
+          <a href="/account" title="Account: {{ user.username }}">{{ icon('account') }}</a>
+          <a href="/logout" title="Sign out">{{ icon('signout') }}</a>
+        </div>
       </div>
     </aside>
     <main class="main">

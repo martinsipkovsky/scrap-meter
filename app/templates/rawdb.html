@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+{% block title %}Raw data · Scrap Meter{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div><h1>Raw data</h1><p class="lead">Every table of the app, row by row. Click a value to change it; every change is logged and can be undone from the change log.</p></div>
+</div>
+
+<div class="warnbox raw-banner">
+  <div><strong>Changes here go straight into the database.</strong> A wrong value can confuse the counters, statistics or logins. Download a backup first, so you can always go back (Database tab → Import).</div>
+  <a class="btn small" href="/api/database/backup/download" id="backupBtn">Download backup first</a>
+</div>
+
+<div class="seg" id="views" style="margin-bottom:14px">
+  <button data-v="tables" class="on">Tables</button><button data-v="log">Change log</button><button data-v="sql">SQL (read only)</button>
+</div>
+
+<div id="v_tables" class="raw-layout">
+  <div class="raw-tables card" id="tableList"></div>
+  <div class="raw-main">
+    <div class="toolbar raw-tools">
+      <div><h2 id="tName" style="margin:0">Pick a table</h2><div class="muted" id="tInfo"></div></div>
+      <div class="actions">
+        <input id="q" placeholder="Search" title="Searches every column except JSON settings" style="width:200px" aria-label="Search the rows" />
+        <button class="btn secondary small" onclick="addFilter()">+ Filter</button>
+        <button class="btn small" id="addRowBtn" onclick="openInsert()">+ Add row</button>
+      </div>
+    </div>
+    <div id="filters" class="raw-filters"></div>
+    <div id="gridError" class="error" style="display:none"></div>
+    <div class="raw-grid-wrap"><table class="raw-grid"><thead id="gHead"></thead><tbody id="gBody"></tbody></table></div>
+    <div class="raw-pager">
+      <button class="btn secondary small" id="prev" onclick="go(-1)">‹ Previous</button>
+      <span class="muted" id="pageInfo"></span>
+      <button class="btn secondary small" id="next" onclick="go(1)">Next ›</button>
+      <select id="size" style="width:auto" aria-label="Rows per page" onchange="state.size=+this.value;state.page=1;loadRows()">
+        <option>25</option><option selected>50</option><option>100</option><option>200</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div id="v_log" style="display:none">
+  <p class="hint" style="margin-top:0">The latest changes made on this tab, newest first. Undo puts the old values back (or removes an added row, or puts a deleted row back), and is logged too. A change can't be undone when the row was changed again since; undo the later change first.</p>
+  <table><thead><tr><th>When</th><th>Who</th><th>Table</th><th>Row</th><th>Change</th><th></th></tr></thead><tbody id="logRows"></tbody></table>
+  <div id="logEmpty" class="empty" style="display:none">No changes yet.</div>
+</div>
+
+<div id="v_sql" style="display:none">
+  <p class="hint" style="margin-top:0">One SELECT query, run read-only: nothing can be changed from here (use the table grid, so changes are logged). At most 500 rows are shown. Password hashes and the notification and backup settings are not available. The powerbi_* views are the easiest way in, see the Database tab's manual.</p>
+  <textarea id="sql" spellcheck="false" placeholder="SELECT name, current_job FROM stations ORDER BY name" style="min-height:110px"></textarea>
+  <div class="actions" style="margin:8px 0 12px"><button class="btn" onclick="runSql()">Run</button><span class="muted" style="align-self:center">Ctrl+Enter runs it</span></div>
+  <div id="sqlError" class="error" style="display:none"></div>
+  <div class="muted" id="sqlInfo"></div>
+  <div class="raw-grid-wrap"><table class="raw-grid"><thead id="sHead"></thead><tbody id="sBody"></tbody></table></div>
+</div>
+
+<div class="modal-back" id="rowModal">
+  <div class="modal" style="width:640px">
+    <h2 id="rowTitle">Add row</h2>
+    <div id="rowError" class="error" style="display:none"></div>
+    <div id="rowFields"></div>
+    <div class="actions" style="margin-top:18px;justify-content:flex-end">
+      <button class="btn secondary" onclick="closeModal('rowModal')">Cancel</button>
+      <button class="btn" id="rowSave">Save</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const state = { table: null, page: 1, size: 50, sort: null, desc: false, q: '', filters: [], data: null };
+let TABLES = [];
+const fkCache = {};
+
+// ---- views ----------------------------------------------------------------------
+document.querySelectorAll('#views button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#views button').forEach(x => x.classList.toggle('on', x === b));
+  for (const v of ['tables', 'log', 'sql']) document.getElementById('v_' + v).style.display = v === b.dataset.v ? '' : 'none';
+  if (b.dataset.v === 'log') loadLog();
+}));
+
+// ---- tables -----------------------------------------------------------------------
+async function loadTables() {
+  TABLES = await getJSON('/api/rawdb/tables');
+  const box = document.getElementById('tableList');
+  box.innerHTML = '';
+  for (const t of TABLES) {
+    box.append(el('button', { class: 'raw-table' + (t.name === state.table ? ' on' : ''), onclick: () => pick(t.name) },
+      el('span', {}, t.name), el('span', { class: 'muted' }, t.rows.toLocaleString())));
+  }
+  if (!state.table && TABLES.length) pick(TABLES.find(t => t.name === 'stations') ? 'stations' : TABLES[0].name);
+}
+function pick(name) {
+  Object.assign(state, { table: name, page: 1, sort: null, desc: false, q: '', filters: [] });
+  document.getElementById('q').value = '';
+  document.querySelectorAll('.raw-table').forEach(b => b.classList.toggle('on', b.firstChild.textContent === name));
+  renderFilters();
+  loadRows();
+}
+function tableInfo() { return TABLES.find(t => t.name === state.table) || {}; }
+
+async function loadRows() {
+  const err = document.getElementById('gridError'); err.style.display = 'none';
+  const p = new URLSearchParams({ page: state.page, size: state.size, desc: state.desc });
+  if (state.sort) p.set('sort', state.sort);
+  if (state.q) p.set('q', state.q);
+  const f = state.filters.filter(x => x.column && (x.op === 'empty' || x.op === 'not_empty' || x.value !== ''));
+  if (f.length) p.set('filters', JSON.stringify(f));
+  let d;
+  try { d = await getJSON('/api/rawdb/tables/' + encodeURIComponent(state.table) + '/rows?' + p); }
+  catch (e) { err.textContent = e.message; err.style.display = 'block'; return; }
+  state.data = d; state.sort = d.sort; state.desc = d.desc;
+  const info = tableInfo();
+  document.getElementById('tName').textContent = d.table;
+  document.getElementById('tInfo').textContent = d.total.toLocaleString() + ' row' + (d.total === 1 ? '' : 's') +
+    (info.read_only ? ' · read-only' : d.primary_key ? '' : ' · no key: read-only');
+  const add = document.getElementById('addRowBtn');
+  add.disabled = !info.can_insert; add.title = info.insert_note || 'Add a row';
+  renderGrid(d);
+  const pages = Math.max(1, Math.ceil(d.total / d.size));
+  document.getElementById('pageInfo').textContent = 'Page ' + d.page + ' of ' + pages;
+  document.getElementById('prev').disabled = d.page <= 1;
+  document.getElementById('next').disabled = d.page >= pages;
+  renderFilters();
+}
+function go(step) { state.page += step; loadRows(); }
+
+let qTimer = null;
+document.getElementById('q').addEventListener('input', (e) => {
+  clearTimeout(qTimer);
+  qTimer = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; loadRows(); }, 300);
+});
+
+function show(v, col) {
+  if (v === null || v === undefined) return el('span', { class: 'raw-null' }, 'NULL');
+  if (col.hidden) return el('span', { class: 'muted' }, String(v));
+  if (col.kind === 'boolean') return el('span', { class: 'badge ' + (v ? 'ok' : 'off') }, v ? 'true' : 'false');
+  if (col.kind === 'datetime') return el('span', { title: new Date(v).toLocaleString() + ' (your time)' }, v.replace('T', ' ').replace(/(\.\d+)?(\+00:00|Z)$/, '') );
+  const s = col.kind === 'json' ? JSON.stringify(v) : String(v);
+  const max = col.kind === 'json' ? 40 : 80;
+  return el('span', { title: s.length > max ? s : '' }, s.length > max ? s.slice(0, max) + '…' : s);
+}
+
+function renderGrid(d) {
+  const head = document.getElementById('gHead'), body = document.getElementById('gBody');
+  head.innerHTML = ''; body.innerHTML = '';
+  const editable = d.primary_key && !tableInfo().read_only;
+  const tr = el('tr', {});
+  for (const c of d.columns) {
+    const arrow = d.sort === c.name ? (d.desc ? ' ▼' : ' ▲') : '';
+    const th = el('th', { class: c.hidden ? '' : 'sortable', title: c.kind + (c.nullable ? ', may be empty' : '') + (c.foreign_key ? ', → ' + c.foreign_key.table : '') + (c.hidden ? ', hidden' : '') },
+      c.name + (c.primary_key ? ' 🔑' : '') + arrow);
+    if (!c.hidden) th.addEventListener('click', () => {
+      state.desc = state.sort === c.name ? !state.desc : false; state.sort = c.name; state.page = 1; loadRows();
+    });
+    tr.append(th);
+  }
+  tr.append(el('th', {}, ''));
+  head.append(tr);
+  if (!d.rows.length) body.append(el('tr', {}, el('td', { colspan: d.columns.length + 1, class: 'muted' }, 'No rows match.')));
+  for (const r of d.rows) {
+    const row = el('tr', {});
+    for (const c of d.columns) {
+      const td = el('td', { class: editable && c.editable ? 'cell editable' : 'cell' }, show(r[c.name], c));
+      if (editable && c.editable) td.addEventListener('click', () => { if (!td.querySelector('.cell-editor')) editCell(td, r, c); });
+      row.append(td);
+    }
+    row.append(el('td', {}, editable ? el('button', { class: 'btn danger small', title: 'Delete this row', onclick: () => delRow(r) }, 'Delete') : null));
+    body.append(row);
+  }
+}
+
+// ---- type-aware inputs ---------------------------------------------------------------
+function toLocalInput(iso) {  // the UTC time, as a datetime-local value
+  return iso ? iso.replace(/(\.\d+)?(\+00:00|Z)$/, '').slice(0, 19) : '';
+}
+async function fkOptions(col) {
+  const k = state.table + '.' + col.name;
+  if (!fkCache[k]) fkCache[k] = await getJSON('/api/rawdb/tables/' + encodeURIComponent(state.table) + '/options/' + encodeURIComponent(col.name));
+  return fkCache[k];
+}
+// returns { node, read() } ; read() gives the value to send
+async function inputFor(col, value) {
+  let node, read;
+  if (col.foreign_key) {
+    const opts = await fkOptions(col);
+    node = el('select', {}, col.nullable ? el('option', { value: '' }, '— none (NULL) —') : null,
+      ...opts.map(o => el('option', { value: String(o.value) }, o.label)));
+    node.value = value === null || value === undefined ? '' : String(value);
+    read = () => node.value === '' ? null : node.value;
+  } else if (col.kind === 'boolean') {
+    node = el('select', {}, el('option', { value: 'true' }, 'true'), el('option', { value: 'false' }, 'false'),
+      col.nullable ? el('option', { value: '' }, 'NULL') : null);
+    node.value = value === null || value === undefined ? (col.nullable ? '' : 'false') : String(value);
+    read = () => node.value === '' ? null : node.value === 'true';
+  } else if (col.kind === 'integer' || col.kind === 'number') {
+    node = el('input', { type: 'number', step: col.kind === 'integer' ? '1' : 'any', value: value ?? '' });
+    read = () => node.value === '' ? null : node.value;
+  } else if (col.kind === 'datetime') {
+    node = el('input', { type: 'datetime-local', step: '1', value: toLocalInput(value), title: 'UTC' });
+    read = () => node.value === '' ? null : node.value + '+00:00';
+  } else if (col.kind === 'json') {
+    node = el('textarea', { spellcheck: 'false', style: 'min-height:120px' });
+    node.value = value === null || value === undefined ? '' : JSON.stringify(value, null, 2);
+    read = () => node.value.trim() === '' ? null : node.value;
+  } else {
+    const long = !col.max_length && typeof value === 'string' && (value.length > 60 || value.includes('\n'));
+    node = long ? el('textarea', { style: 'min-height:90px;font-family:inherit' }) : el('input', { value: value ?? '' });
+    if (long) node.value = value;
+    if (col.max_length) node.setAttribute('maxlength', col.max_length);
+    read = () => node.value;
+  }
+  return { node, read };
+}
+
+async function editCell(td, r, c) {
+  const key = r[state.data.primary_key];
+  const { node, read } = await inputFor(c, r[c.name]);
+  const box = el('div', { class: 'cell-editor' }, node);
+  const save = async (value) => {
+    try {
+      const out = await patchJSON('/api/rawdb/tables/' + encodeURIComponent(state.table) + '/rows/' + encodeURIComponent(key), { values: { [c.name]: value } });
+      Object.assign(r, out);
+      td.innerHTML = ''; td.append(show(r[c.name], c));
+      toast(state.table + ' #' + key + ': ' + c.name + ' saved');
+    } catch (e) { toast(e.message, true); node.focus(); }
+  };
+  const cancel = () => { td.innerHTML = ''; td.append(show(r[c.name], c)); };
+  const btns = el('div', { class: 'cell-btns' },
+    el('button', { class: 'btn small', title: 'Save (Enter)', onclick: (e) => { e.stopPropagation(); save(read()); } }, '✓'),
+    c.nullable && !c.foreign_key && c.kind !== 'boolean' ? el('button', { class: 'btn secondary small', title: 'Set to NULL (empty)', onclick: (e) => { e.stopPropagation(); save(null); } }, '∅') : null,
+    el('button', { class: 'btn secondary small', title: 'Cancel (Esc)', onclick: (e) => { e.stopPropagation(); cancel(); } }, '✕'));
+  box.append(btns);
+  node.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') cancel();
+    if (e.key === 'Enter' && (node.tagName !== 'TEXTAREA' || e.ctrlKey)) { e.preventDefault(); save(read()); }
+  });
+  td.innerHTML = ''; td.append(box); node.focus();
+}
+
+async function delRow(r) {
+  const key = r[state.data.primary_key];
+  if (!confirm('Delete row ' + key + ' of ' + state.table + '?\n\nIt is logged and can be put back from the change log, but other rows that point to it may stop working until then.')) return;
+  try { await delJSON('/api/rawdb/tables/' + encodeURIComponent(state.table) + '/rows/' + encodeURIComponent(key)); toast('Row ' + key + ' deleted'); loadRows(); loadTables(); }
+  catch (e) { toast(e.message, true); }
+}
+
+async function openInsert() {
+  const d = state.data; if (!d) return;
+  document.getElementById('rowTitle').textContent = 'Add a row to ' + d.table;
+  document.getElementById('rowError').style.display = 'none';
+  const box = document.getElementById('rowFields'); box.innerHTML = '';
+  const readers = {};
+  for (const c of d.columns) {
+    if (c.hidden) continue;
+    const { node, read } = await inputFor(c, null);
+    if (c.primary_key) node.setAttribute('placeholder', 'automatic');
+    readers[c.name] = { read, c };
+    box.append(el('label', {}, c.name + (c.primary_key ? ' (key, leave empty)' : c.nullable ? ' (optional)' : '') + ' · ' + c.kind + (c.kind === 'datetime' ? ' (UTC)' : '')), node);
+  }
+  document.getElementById('rowSave').onclick = async () => {
+    const values = {};
+    for (const [n, { read, c }] of Object.entries(readers)) {
+      const v = read();
+      if (v === null || v === '') continue;  // empty: the column's default (or NULL; a key is made by the database)
+      values[n] = v;
+    }
+    try {
+      const out = await postJSON('/api/rawdb/tables/' + encodeURIComponent(d.table) + '/rows', { values });
+      closeModal('rowModal'); toast('Row ' + out[d.primary_key] + ' added'); loadRows(); loadTables();
+    } catch (e) { const er = document.getElementById('rowError'); er.textContent = e.message; er.style.display = 'block'; }
+  };
+  openModal('rowModal');
+}
+
+// ---- filters -------------------------------------------------------------------------
+const OPS = [['=', '='], ['!=', '≠'], ['<', '<'], ['<=', '≤'], ['>', '>'], ['>=', '≥'], ['contains', 'contains'], ['starts', 'starts with'], ['empty', 'is empty'], ['not_empty', 'is not empty']];
+function addFilter() {
+  const cols = (state.data ? state.data.columns : []).filter(c => !c.hidden);
+  state.filters.push({ column: cols[0] ? cols[0].name : '', op: 'contains', value: '' });
+  renderFilters();
+}
+function renderFilters() {
+  const box = document.getElementById('filters'); box.innerHTML = '';
+  const cols = (state.data ? state.data.columns : []).filter(c => !c.hidden);
+  state.filters.forEach((f, i) => {
+    const col = el('select', { 'aria-label': 'Filter column', onchange: () => { f.column = col.value; } }, ...cols.map(c => el('option', { value: c.name }, c.name)));
+    col.value = f.column;
+    const op = el('select', { 'aria-label': 'Filter operator', onchange: () => { f.op = op.value; val.style.display = f.op.endsWith('empty') ? 'none' : ''; } }, ...OPS.map(([v, l]) => el('option', { value: v }, l)));
+    op.value = f.op;
+    const val = el('input', { value: f.value, placeholder: 'value', 'aria-label': 'Filter value', oninput: () => { f.value = val.value; },
+      onkeydown: (e) => { if (e.key === 'Enter') { state.page = 1; loadRows(); } } });
+    val.style.display = f.op.endsWith('empty') ? 'none' : '';
+    box.append(el('div', { class: 'raw-filter' }, col, op, val,
+      el('button', { class: 'btn small', onclick: () => { state.page = 1; loadRows(); } }, 'Apply'),
+      el('button', { class: 'btn secondary small', title: 'Remove this filter', onclick: () => { state.filters.splice(i, 1); state.page = 1; loadRows(); } }, '✕')));
+  });
+}
+
+// ---- change log ---------------------------------------------------------------------
+function changeText(e) {
+  const fmt = (v) => v === null || v === undefined ? 'NULL' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+  const cut = (s) => s.length > 60 ? s.slice(0, 60) + '…' : s;
+  if (e.action === 'update' || (e.action === 'undo' && e.old && e.new)) {
+    return el('div', {}, ...Object.keys(e.new || {}).map(k => el('div', {}, el('strong', {}, k), ': ',
+      el('span', { class: 'muted', style: 'text-decoration:line-through' }, cut(fmt((e.old || {})[k]))), ' → ', cut(fmt(e.new[k])))));
+  }
+  const vals = e.new || e.old || {};
+  const label = vals.name || vals.username || vals.job_name || vals.key || '';
+  return el('span', {}, (e.action === 'insert' ? 'added' : e.action === 'delete' ? 'deleted' : e.new ? 'put back' : 'removed') + (label ? ' (' + label + ')' : ''));
+}
+async function loadLog() {
+  const rows = await getJSON('/api/rawdb/audit?limit=200');
+  const tb = document.getElementById('logRows'); tb.innerHTML = '';
+  document.getElementById('logEmpty').style.display = rows.length ? 'none' : 'block';
+  for (const e of rows) {
+    const what = e.action === 'undo' ? el('span', {}, el('span', { class: 'badge warn' }, 'undo of #' + e.undo_of), ' ', changeText(e))
+      : el('span', {}, el('span', { class: 'badge off' }, e.action), ' ', changeText(e));
+    tb.append(el('tr', { class: e.undone_by ? 'excluded' : '' },
+      el('td', { class: 'muted' }, fmtDateTime(e.at)),
+      el('td', {}, e.user),
+      el('td', {}, e.table),
+      el('td', {}, e.row),
+      el('td', {}, what),
+      el('td', {}, e.can_undo ? el('button', { class: 'btn secondary small', onclick: () => undo(e) }, 'Undo')
+        : e.undone_by ? el('span', { class: 'muted' }, 'undone') : null)));
+  }
+}
+async function undo(e) {
+  if (!confirm('Undo change #' + e.id + ' (' + e.action + ' of ' + e.table + ' row ' + e.row + ')?')) return;
+  try { await postJSON('/api/rawdb/audit/' + e.id + '/undo'); toast('Undone'); loadLog(); loadTables(); if (state.table) loadRows(); }
+  catch (err) { toast(err.message, true); }
+}
+
+// ---- SQL ---------------------------------------------------------------------------------
+async function runSql() {
+  const err = document.getElementById('sqlError'); err.style.display = 'none';
+  const head = document.getElementById('sHead'), body = document.getElementById('sBody');
+  let r;
+  try { r = await postJSON('/api/rawdb/sql', { query: document.getElementById('sql').value }); }
+  catch (e) { err.textContent = e.message; err.style.display = 'block'; head.innerHTML = ''; body.innerHTML = ''; document.getElementById('sqlInfo').textContent = ''; return; }
+  document.getElementById('sqlInfo').textContent = r.rows.length + ' row' + (r.rows.length === 1 ? '' : 's') + (r.truncated ? ' (the first ' + r.limit + ' only)' : '');
+  head.innerHTML = ''; body.innerHTML = '';
+  head.append(el('tr', {}, ...r.columns.map(c => el('th', {}, c))));
+  for (const row of r.rows) {
+    body.append(el('tr', {}, ...row.map(v => {
+      if (v === null) return el('td', {}, el('span', { class: 'raw-null' }, 'NULL'));
+      const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      return el('td', { title: s.length > 80 ? s : '' }, s.length > 80 ? s.slice(0, 80) + '…' : s);
+    })));
+  }
+}
+document.getElementById('sql').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); runSql(); } });
+
+loadTables();
+</script>
+{% endblock %}

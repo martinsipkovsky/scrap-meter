@@ -64,6 +64,8 @@ app/
   oee.py             OEE and OK / NOK totals over the last hours (dashboard)
   comments.py        station comments with their snapshot of the station
   reporting.py       powerbi_* views and the read-only login for reports
+  rawdb.py           Raw data tab: table rows, type-checked edits with the audit
+                     log (DbAuditLog) and undo, the read-only SQL box
   poller.py          background poll loop and one-shot poll
   notifications.py   rule conditions, evaluation, events and routing to providers
   commands.py        WhatsApp group commands ("!status"): parsing, replies, log
@@ -75,7 +77,7 @@ app/
   notifiers/         one file per notification transport (whatsapp, telegram;
                      whatsapp_linked runs the linked-phone client process)
   routers/           auth, account, users, devices, stations, comments, data,
-                     notifications, commands, database_admin, backup_admin, pages
+                     notifications, commands, database_admin, backup_admin, rawdb, pages
   templates/         dark-mode Jinja2 pages
   static/            style.css, app.js
 deploy/              compose file for a prebuilt image, and the optional

@@ -21,7 +21,7 @@
   </div>
 </div>
 
-<div class="card oee-panel" id="oeePanel">
+<div class="card oee-panel pinned" id="oeePanel" aria-label="OEE and totals of the last 24 hours">
   <div class="toolbar" style="margin-bottom:10px">
     <h3 style="margin:0">Last 24 hours</h3>
     <span class="muted" id="oeeNote"></span>
@@ -162,6 +162,15 @@ async function loadOee() {
       el('td', {}, el('strong', {}, pct(s.oee)))));
   }
 }
+// the bar is pinned to the bottom: keep the last stations above it
+(function () {
+  const bar = document.getElementById('oeePanel'), main = document.querySelector('.main');
+  const pad = () => { main.style.paddingBottom = (bar.offsetHeight + 24) + 'px'; };
+  if (window.ResizeObserver) new ResizeObserver(pad).observe(bar);
+  window.addEventListener('resize', pad);
+  window.addEventListener('navchange', pad);
+  pad();
+})();
 load();
 setInterval(load, 5000);
 </script>

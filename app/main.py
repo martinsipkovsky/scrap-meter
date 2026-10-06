@@ -24,7 +24,7 @@ from .notifiers.whatsapp_linked import link as whatsapp_link
 from .poller import listener, poller
 from .routers import (account, auth_routes, backup_admin, commands as commands_api, comments as comments_api, data,
                       database_admin,
-                      devices, jobs as jobs_api, notifications, pages, stations as stations_api, users)
+                      devices, jobs as jobs_api, notifications, pages, rawdb, stations as stations_api, users)
 from .seed import seed_admin
 from .templating import templates
 
@@ -90,5 +90,6 @@ app.include_router(commands_api.router)  # before notifications: /commands/... i
 app.include_router(notifications.router)
 app.include_router(database_admin.router)
 app.include_router(backup_admin.router)
+app.include_router(rawdb.router)
 # HTML pages (registered last so /api/* wins)
 app.include_router(pages.router)

@@ -72,6 +72,13 @@ def database_page(request: Request, user: User = Depends(require_user)):
     return templates.TemplateResponse(request, "database.html", _ctx(request, user, page="database"))
 
 
+@router.get("/rawdb", response_class=HTMLResponse)
+def rawdb_page(request: Request, user: User = Depends(require_user)):
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Only administrators can see the raw data")
+    return templates.TemplateResponse(request, "rawdb.html", _ctx(request, user, page="rawdb"))
+
+
 @router.get("/account", response_class=HTMLResponse)
 def account_page(request: Request, user: User = Depends(require_user)):
     return templates.TemplateResponse(request, "account.html", _ctx(request, user, page="account"))

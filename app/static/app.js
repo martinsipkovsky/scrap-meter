@@ -35,6 +35,42 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+// ---- left menu: hide / show (remembered per browser; on narrow screens it opens over the page)
+(function () {
+  const btn = document.getElementById('navToggle');
+  if (!btn) return;
+  const root = document.documentElement;
+  const narrow = () => window.matchMedia('(max-width: 760px)').matches;
+  const sync = () => {
+    const open = narrow() ? root.classList.contains('nav-open') : !root.classList.contains('nav-collapsed');
+    btn.setAttribute('aria-expanded', String(open));
+    btn.title = open ? 'Hide the menu' : 'Show the menu';
+    btn.setAttribute('aria-label', btn.title);
+    window.dispatchEvent(new Event('navchange'));
+  };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (narrow()) { root.classList.toggle('nav-open'); }
+    else {
+      root.classList.toggle('nav-collapsed');
+      try { localStorage.setItem('sm.nav', root.classList.contains('nav-collapsed') ? 'collapsed' : 'open'); } catch (err) {}
+    }
+    sync();
+  });
+  // a tap next to the open menu only closes it (it doesn't also open what is under it)
+  document.addEventListener('click', (e) => {
+    if (root.classList.contains('nav-open') && !e.target.closest('.sidebar')) {
+      e.preventDefault(); e.stopPropagation();
+      root.classList.remove('nav-open'); sync();
+    }
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && root.classList.contains('nav-open')) { root.classList.remove('nav-open'); sync(); }
+  });
+  window.matchMedia('(max-width: 760px)').addEventListener('change', () => { root.classList.remove('nav-open'); sync(); });
+  sync();
+})();
+
 function fmtPct(x) { return (x * 100).toFixed(1) + '%'; }
 function scrapClass(rate) { return rate >= 0.05 ? 'fail' : (rate >= 0.02 ? 'warn' : 'pass'); }
 

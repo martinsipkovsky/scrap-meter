@@ -50,13 +50,16 @@ app/
   settings_store.py  copy of the settings files in the database (survives updates)
   backup.py          backup file format, writing and restoring all data
   backup_ftp.py      FTP/FTPS upload and the automatic backup schedule
-  models.py          User, Device, Station, CounterState, Reading, Notification*, Meta
+  models.py          User, Device, Station, CounterState, Reading, StationComment,
+                     Notification*, Meta
   counters.py        reset-proof accumulation (pure, unit-tested)
   stations.py        stations: values from devices to readings, manual entries,
                      the upgrade of 1.4 data (devices became stations)
   production.py      running / idle / stopped state per station
   scrap_stats.py     scrap statistics for a date range, Excel export
   oee.py             OEE and OK / NOK totals over the last hours (dashboard)
+  comments.py        station comments with their snapshot of the station
+  reporting.py       powerbi_* views and the read-only login for reports
   poller.py          background poll loop and one-shot poll
   notifications.py   rule conditions, evaluation, events and routing to providers
   commands.py        WhatsApp group commands ("!status"): parsing, replies, log
@@ -67,11 +70,12 @@ app/
   protocols/         one file per device protocol (opcua.py: OPC UA client)
   notifiers/         one file per notification transport (whatsapp, telegram;
                      whatsapp_linked runs the linked-phone client process)
-  routers/           auth, account, users, devices, stations, data, notifications,
-                     commands, database_admin, backup_admin, pages
+  routers/           auth, account, users, devices, stations, comments, data,
+                     notifications, commands, database_admin, backup_admin, pages
   templates/         dark-mode Jinja2 pages
   static/            style.css, app.js
-deploy/              compose file and .env template for a prebuilt image
+deploy/              compose file for a prebuilt image, and the optional
+                     docker-compose.powerbi.yml (database port for reports)
 tests/               pytest suite; opcua_sim.py is an OPC UA simulation server
 ```
 

@@ -93,6 +93,13 @@ If a saved database server is not reachable when the app starts, it retries
 for about a minute before falling back to the bundled database (the Database
 tab then says so). `GET /healthz` shows the running version.
 
+### Updating to 1.6 (comments, Power BI)
+
+Nothing has to be done: the compose file does not change, and the new
+comments table and the `powerbi_*` views are made on the first start. To read
+the data with Power BI, add the optional `docker-compose.powerbi.yml` as
+described in [Reports](reporting.md#setting-it-up-on-the-server).
+
 ### Updating to 1.5 (stations)
 
 Version 1.5 separates devices (connections) from stations (what is counted).
@@ -133,6 +140,7 @@ and are kept from then on.
 |---|---|---|
 | `8000` (`WEB_PORT`) | TCP | Web UI and API |
 | `5100-5119` (`LISTEN_PORTS`) | TCP and UDP | Devices that push data: TCP listener, UDP listener, SLMP server. One port per device. |
+| `5432` (`POWERBI_DB_PORT`) | TCP | Optional, only with `docker-compose.powerbi.yml`: the database, for Power BI / Excel. Allow it only from the Power BI or gateway PC. |
 
 Compose publishes the whole listener range on both TCP and UDP. Open it in the
 host firewall too, for example:
@@ -155,7 +163,7 @@ Two Docker volumes hold everything that must survive an update:
 
 | Volume | Contents |
 |---|---|
-| `db_data` | The bundled PostgreSQL database: users, devices, counters, readings, alerts |
+| `db_data` | The bundled PostgreSQL database: users, devices, counters, readings, comments, alerts |
 | `app_data` | `/srv/data` in the app container: the database choice and FTP backup settings saved on the Database tab (also copied into `db_data`), backups taken before an import, and the OPC UA client certificate |
 
 The easiest backup is on the Database tab: **Download backup**, or the

@@ -17,8 +17,49 @@
 </div>
 
 <div class="section">
+  <h2>Reading the data (Power BI, Excel, SQL)</h2>
+  <p class="muted" style="margin-top:0">Reports read the data straight from the database with a read-only login. They use the <code>powerbi_*</code> views below: together they hold all counted data with the station names filled in, keep their columns when the app is updated, and leave out passwords and tokens.</p>
+  <div id="rdNote"></div>
+  <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))">
+    <div class="card"><div class="muted">Server</div><div class="stat small" id="rdHost">—</div><div class="muted" id="rdHostNote"></div></div>
+    <div class="card"><div class="muted">Port</div><div class="stat small" id="rdPort">—</div><div class="muted" id="rdPortNote"></div></div>
+    <div class="card"><div class="muted">Database</div><div class="stat small" id="rdDb">—</div><div class="muted">PostgreSQL</div></div>
+    <div class="card"><div class="muted">Read-only user / password</div><div class="stat small" id="rdUser">—</div>
+      <div class="muted"><span id="rdPw"></span> <button class="btn secondary small" id="rdPwBtn" style="display:none" onclick="showReaderPassword()">Show</button></div></div>
+  </div>
+
+  <details style="margin-top:14px"><summary style="cursor:pointer"><strong>What you can read</strong></summary>
+    <table style="margin-top:8px"><thead><tr><th>View</th><th>Holds</th></tr></thead><tbody id="rdViews"></tbody></table>
+    <p class="muted">Times are UTC (the <code>…_utc</code> columns). In <code>powerbi_readings</code> a device reading holds the device's own counters (<code>raw_ok</code> / <code>raw_nok</code>) and the running totals of its job (<code>total_ok</code> / <code>total_nok</code>); the parts made between two readings are the difference of the totals. A manual entry (<code>manual_entry</code> true) holds the parts entered in <code>raw_ok</code> / <code>raw_nok</code>. With the app's own database login (administrators) the tables behind the views can be read too: <code>stations</code>, <code>devices</code>, <code>readings</code>, <code>counter_states</code> (totals per station and job), <code>station_comments</code> and <code>notification_logs</code>.</p>
+  </details>
+
+  <details style="margin-top:10px"><summary style="cursor:pointer"><strong>Power BI Desktop</strong></summary>
+    <ol class="muted" style="margin-top:8px;line-height:1.7">
+      <li>Home &rarr; Get data &rarr; More… &rarr; <strong>PostgreSQL database</strong> &rarr; Connect.</li>
+      <li>Server: <code id="rdPbiServer">host:port</code>, Database: <code id="rdPbiDb">—</code>. Pick Import (or DirectQuery for live data) &rarr; OK.</li>
+      <li>Sign in on the <strong>Database</strong> tab with the read-only user and password above.</li>
+      <li>If Power BI says the connection isn't encrypted: the app's database has no TLS. Click OK to connect without encryption (or in File &rarr; Options and settings &rarr; Data source settings &rarr; this source &rarr; Edit permissions, clear <em>Encrypt connections</em>).</li>
+      <li>Tick the <code>powerbi_*</code> views you need (comments: <code>powerbi_station_comments</code>) &rarr; Load.</li>
+      <li>Scheduled refresh in the Power BI service: install the on-premises data gateway on a PC in the plant network that reaches this server, add a PostgreSQL data source to it with the same server, database, user and password, and pick that gateway in the semantic model's settings.</li>
+    </ol>
+  </details>
+
+  <details style="margin-top:10px"><summary style="cursor:pointer"><strong>Excel</strong></summary>
+    <ol class="muted" style="margin-top:8px;line-height:1.7">
+      <li>Data &rarr; Get Data &rarr; From Database &rarr; <strong>From PostgreSQL Database</strong>.</li>
+      <li>Server and database as above. Under Advanced options you can paste one of the SQL queries below.</li>
+      <li>Sign in on the Database tab with the read-only user, pick the views &rarr; Load. Data &rarr; Refresh All reads the latest data.</li>
+    </ol>
+  </details>
+
+  <details style="margin-top:10px"><summary style="cursor:pointer"><strong>Example SQL queries</strong></summary>
+    <div id="rdQueries"></div>
+  </details>
+</div>
+
+<div class="section">
   <h2>Backups</h2>
-  <p class="muted" style="margin-top:0">Take a backup regularly and keep it somewhere other than this server, for example with the automatic FTP backup below. A backup holds all app data: cameras, readings, counters, users and notification settings.</p>
+  <p class="muted" style="margin-top:0">Take a backup regularly and keep it somewhere other than this server, for example with the automatic FTP backup below. A backup holds all app data: devices, stations, readings, counters, comments, users and notification settings.</p>
   <div id="lastBackup"></div>
   <div id="bmsg"></div>
   <div class="actions">
@@ -88,7 +129,7 @@
     <div><label>Password</label><input id="d_pw" type="password" placeholder="" oninput="renderSnippets()" /></div>
   </div>
   <div class="hint">The app runs inside a container, so <code>localhost</code> means the app container itself. Use the IP or name of the machine running PostgreSQL.</div>
-  <label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input type="checkbox" id="d_copy" checked style="width:auto"/> Copy all current data (users, cameras, counters, history) into the new database. It must be empty.</label>
+  <label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input type="checkbox" id="d_copy" checked style="width:auto"/> Copy all current data (users, devices, stations, counters, history, comments) into the new database. It must be empty.</label>
   <div class="actions" style="margin-top:16px">
     <button class="btn secondary" onclick="testConn()">Test connection</button>
     <button class="btn" onclick="saveConn()">Save</button>
@@ -415,7 +456,76 @@ async function runImport() {
   }
 }
 
+// Example queries for the "Reading the data" section (docs/reporting.md has the same ones)
+const READ_QUERIES = [
+  ['Comments of the last 7 days', `SELECT commented_at_utc, station_name, job, ok_count, nok_count, scrap_pct, comment, author
+FROM powerbi_station_comments
+WHERE commented_at_utc > now() - interval '7 days'
+ORDER BY commented_at_utc DESC;`],
+  ['Latest comment of each station', `SELECT DISTINCT ON (station_id) station_name, commented_at_utc, job, scrap_pct, comment, author
+FROM powerbi_station_comments
+ORDER BY station_id, commented_at_utc DESC;`],
+  ['OK / NOK and scrap per station and job', `SELECT station_name, job, ok_count, nok_count,
+       ROUND(100.0 * nok_count / NULLIF(ok_count + nok_count, 0), 2) AS scrap_pct
+FROM powerbi_job_totals
+ORDER BY station_name, job;`],
+  ['Parts per station and hour (devices and manual entries)', `SELECT station_name, date_trunc('hour', read_at_utc) AS hour_utc,
+       SUM(ok) AS ok, SUM(nok) AS nok
+FROM (
+  SELECT station_name, read_at_utc,
+         CASE WHEN manual_entry THEN raw_ok ELSE total_ok - LAG(total_ok, 1, total_ok) OVER w END AS ok,
+         CASE WHEN manual_entry THEN raw_nok ELSE total_nok - LAG(total_nok, 1, total_nok) OVER w END AS nok
+  FROM powerbi_readings
+  WINDOW w AS (PARTITION BY station_id, job, manual_entry ORDER BY read_at_utc, reading_id)
+) parts
+GROUP BY station_name, hour_utc
+ORDER BY hour_utc DESC, station_name;`],
+  ['Manual entries', `SELECT read_at_utc, station_name, job, raw_ok AS ok, raw_nok AS nok, note, entered_by
+FROM powerbi_readings
+WHERE manual_entry
+ORDER BY read_at_utc DESC;`],
+];
+
+async function loadReading() {
+  const r = await getJSON('/api/database/reading');
+  const host = r.host || location.hostname;
+  document.getElementById('rdHost').textContent = host;
+  document.getElementById('rdHostNote').textContent = r.bundled ? "this server's address" : 'the database server';
+  document.getElementById('rdPort').textContent = r.port || '—';
+  document.getElementById('rdPortNote').textContent = r.port ? '' : 'not published yet';
+  document.getElementById('rdDb').textContent = r.database || '—';
+  document.getElementById('rdUser').textContent = r.reader || 'not set up';
+  document.getElementById('rdPw').textContent = r.reader ? '••••••••' : '';
+  document.getElementById('rdPwBtn').style.display = r.reader ? '' : 'none';
+  document.getElementById('rdPbiServer').textContent = host + ':' + (r.port || 'PORT');
+  document.getElementById('rdPbiDb').textContent = r.database || '—';
+  const steps = [];
+  if (!r.postgres) steps.push('The app uses a local SQLite file, which reports cannot reach. Use PostgreSQL (the Docker setup does).');
+  else if (!r.reader || (r.bundled && !r.port)) {
+    steps.push('Not set up yet. On the server, put docker-compose.powerbi.yml (from the deploy folder) next to docker-compose.yml, renamed to docker-compose.override.yml, add POWERBI_PASSWORD=<a strong password> and POWERBI_DB_PORT=5432 to the .env, and run docker compose up -d.');
+    steps.push('That opens the database port on the server: allow it in the firewall only from the PC that runs Power BI or the gateway.');
+  }
+  const note = document.getElementById('rdNote'); note.innerHTML = '';
+  if (steps.length) note.append(el('div', { class: 'warnbox' }, ...steps.map(t => el('div', {}, t))));
+  const tb = document.getElementById('rdViews'); tb.innerHTML = '';
+  for (const v of r.views) tb.append(el('tr', {}, el('td', {}, el('code', {}, v.name)), el('td', {}, v.about)));
+  const q = document.getElementById('rdQueries');
+  if (!q.childElementCount) READ_QUERIES.forEach(([title, sql], i) => {
+    q.append(el('div', { class: 'snippet-head' }, el('strong', {}, title),
+      el('button', { class: 'btn secondary small', onclick: () => copySnippet('rq' + i) }, 'Copy')));
+    q.append(el('pre', { class: 'snippet', id: 'rq' + i }, sql));
+  });
+}
+
+async function showReaderPassword() {
+  const span = document.getElementById('rdPw'), btn = document.getElementById('rdPwBtn');
+  if (btn.textContent === 'Hide') { span.textContent = '••••••••'; btn.textContent = 'Show'; return; }
+  try { const r = await postJSON('/api/database/reading/password'); span.textContent = r.password; btn.textContent = 'Hide'; }
+  catch (e) { toast(e.message, true); }
+}
+
 loadStatus().catch(e => showMsg(e.message, 'err'));
+loadReading().catch(e => box('rdNote', e.message, 'err'));
 loadBackups().catch(e => box('bmsg', e.message, 'err'));
 </script>
 {% endblock %}

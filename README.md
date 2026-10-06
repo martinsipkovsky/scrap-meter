@@ -45,6 +45,12 @@ versions keep working.
 - **Station view:** an OK/NOK chart over 1 h, 8 h, 24 h or 7 days, manual
   Start/Stop of production, and **Reset counters** for the dashboard counters
   (history and statistics are kept).
+- **Comments:** anyone on the dashboard can write a comment on a station. It
+  is saved with the time, the author, the current job and the OK / NOK / scrap
+  at that moment; the latest one shows on the station's dashboard block.
+- **Power BI and Excel:** read-only `powerbi_*` database views with all
+  counted data and the comments, an optional read-only login, and a manual on
+  the Database tab.
 - **Scrap statistics:** pass, fail and scrap % for any date range, overall,
   per station, per job and per day, with an Excel export. Time out of
   production, readings a user excluded and stations set to *Exclude* (such as
@@ -90,8 +96,9 @@ small simulation server (see [Protocols](docs/protocols.md#opc-ua-client-opcua))
 |---|---|
 | [Installation and deployment](docs/installation.md) | Building from source, running on a server, firewall ports, updates, backups |
 | [Configuration](docs/configuration.md) | Environment variables and the Database tab |
-| [User guide](docs/user-guide.md) | Devices and stations, dashboard and OEE, manual entries, production state, data, statistics, users, export/import |
+| [User guide](docs/user-guide.md) | Devices and stations, dashboard and OEE, comments, manual entries, production state, data, statistics, users, export/import |
 | [Protocols](docs/protocols.md) | How to connect each device type, with every config field |
+| [Reports: Power BI, Excel and SQL](docs/reporting.md) | Reading the data with Power BI (Desktop and scheduled refresh), Excel or SQL; the views and example queries |
 | [Notifications](docs/notifications.md) | Alert rules, WhatsApp (linked phone) and Telegram delivery |
 | [Development](docs/development.md) | Running locally, tests, project layout, adding a protocol |
 | [Known issues and limitations](docs/known-issues.md) | What is untested or doesn't work yet |
@@ -104,6 +111,9 @@ small simulation server (see [Protocols](docs/protocols.md#opc-ua-client-opcua))
   it behind HTTPS (a reverse proxy) and restrict access.
 - The listener ports (5100-5119 by default) accept data from any sender unless
   you set the device's *Host* field to its IP.
+- Publishing the database for Power BI (optional) opens its port on the
+  server: allow it in the firewall only from the Power BI or gateway PC. The
+  read-only login can read the `powerbi_*` views only.
 - OPC UA passwords are stored in the app's database (readable by its
   administrators and in backups) but are never sent back to the browser or
   written to device export files.

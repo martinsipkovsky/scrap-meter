@@ -350,6 +350,32 @@ class Reading(Base):
     station: Mapped["Station"] = relationship(back_populates="readings")
 
 
+class StationComment(Base):
+    """A comment written on a station, with a snapshot of the station at that
+    moment (its name, job, and the OK / NOK / scrap shown on the dashboard).
+    The snapshot never changes, and comments stay when their station is
+    deleted, so reports (the powerbi_station_comments view, app.comments)
+    keep their history."""
+
+    __tablename__ = "station_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # no foreign key: the comment outlives its station
+    station_id: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)
+    station_name: Mapped[str] = mapped_column(String(120))
+    job_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # the dashboard counters of the current job at that moment (since the last
+    # reset, see CounterState.shown_*); scrap_rate is NOK / all, 0..1
+    ok_count: Mapped[int] = mapped_column(Integer, default=0)
+    nok_count: Mapped[int] = mapped_column(Integer, default=0)
+    scrap_rate: Mapped[float] = mapped_column(default=0.0)
+    text: Mapped[str] = mapped_column(Text)
+    author: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Notifications
 # --------------------------------------------------------------------------- #

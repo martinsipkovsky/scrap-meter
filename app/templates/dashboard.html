@@ -10,6 +10,17 @@
 </div>
 <div id="cards" class="grid"></div>
 
+<div class="modal-back" id="commentsModal" onclick="if (event.target === this) closeModal('commentsModal')">
+  <div class="modal" style="width:620px">
+    <h2 id="commentsTitle">Comments</h2>
+    <div id="commentsBody"></div>
+    <div class="actions" style="margin-top:12px">
+      <a class="btn secondary" id="commentsStation" href="#">Open station</a>
+      <button class="btn secondary" onclick="closeModal('commentsModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="card oee-panel" id="oeePanel">
   <div class="toolbar" style="margin-bottom:10px">
     <h3 style="margin:0">Last 24 hours</h3>
@@ -68,9 +79,31 @@ async function load() {
     }
     if (job && !d.connected && d.last_error) body.push(el('div', { class: 'muted', style: 'margin-top:4px;color:var(--warn)' }, d.last_error));
     if (d.production_state === 'idle') body.push(el('div', { class: 'muted', style: 'margin-top:4px' }, idleText(d)));
+    body.push(commentLine(d));
     cards.append(el('a', { class: 'card clickable' + (d.in_production ? '' : ' not-producing'), href: '/station/' + d.id }, ...body));
   }
   loadOee();
+}
+
+const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
+function commentLine(d) {
+  const c = d.latest_comment;
+  const btn = el('button', { class: 'btn secondary small', title: 'Write or read comments',
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); openComments(d); } }, c ? 'Comments' : '+ Comment');
+  if (!c) return el('div', { class: 'card-comment comment-head' }, el('span', {}, 'No comments yet'), btn);
+  return el('div', { class: 'card-comment' },
+    el('div', { class: 'comment-head' }, el('strong', {}, c.author || '—'),
+      el('span', { title: new Date(c.created_at).toLocaleString() }, fmtDateTime(c.created_at)),
+      el('span', {}, '· scrap ' + fmtPct(c.scrap_rate)), btn),
+    el('div', { class: 'comment-text', title: c.text }, c.text));
+}
+function openComments(d) {
+  document.getElementById('commentsTitle').textContent = 'Comments · ' + d.name;
+  document.getElementById('commentsStation').href = '/station/' + d.id;
+  const b = document.getElementById('commentsBody'); b.innerHTML = '';
+  b.append(commentsPanel(d.id, { isAdmin: IS_ADMIN, onChange: load }));
+  openModal('commentsModal');
+  b.querySelector('textarea').focus();
 }
 
 const pct = (x) => x === null || x === undefined ? '—' : (x * 100).toFixed(1) + '%';

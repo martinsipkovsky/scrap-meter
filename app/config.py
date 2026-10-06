@@ -32,5 +32,14 @@ class Settings(BaseSettings):
     # Start the linked WhatsApp client (if a phone was linked) with the app.
     whatsapp_enabled: bool = True
 
+    # Read-only database login for Power BI (Postgres only, see app.reporting).
+    # Made or updated on startup when a password is set; it may only read the
+    # powerbi_* views.
+    powerbi_user: str = "powerbi"
+    powerbi_password: str = ""
+    # the port the database is published on for them (docker-compose
+    # override), shown on the Database page; 0 = not published
+    powerbi_db_port: int = 0
+
 
 settings = Settings()

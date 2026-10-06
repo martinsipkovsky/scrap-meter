@@ -1,0 +1,19 @@
+# Optional: read the data with Power BI, Excel or another SQL client.
+# Put this file next to docker-compose.yml, renamed to docker-compose.override.yml
+# (docker compose reads it automatically), set these in the .env:
+#   POWERBI_PASSWORD=<a strong password>   read-only login "powerbi", made on startup
+#   POWERBI_DB_PORT=5432                   port the database is published on
+# then run: docker compose up -d
+#
+# The database port is then open on this server: allow it in the firewall only
+# from the PC that runs Power BI Desktop or the on-premises data gateway.
+services:
+  db:
+    ports:
+      - "${POWERBI_DB_PORT:-5432}:5432"
+
+  web:
+    environment:
+      POWERBI_USER: ${POWERBI_USER:-powerbi}
+      POWERBI_PASSWORD: ${POWERBI_PASSWORD:-}
+      POWERBI_DB_PORT: ${POWERBI_DB_PORT:-5432}

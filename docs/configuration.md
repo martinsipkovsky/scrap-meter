@@ -17,6 +17,13 @@ working directory.
 | `LISTEN_PORTS` | `5100-5119` | Port range, TCP and UDP, for devices that push data |
 | `DATA_DIR` | `./data` (`/srv/data` in Docker) | Where the Database tab saves its settings (database choice, FTP backup settings, backups taken before an import), and the OPC UA client certificate (`opcua/`) |
 | `WHATSAPP_ENABLED` | `true` | Reconnect a linked WhatsApp phone when the app starts (see [Notifications](notifications.md#linked-send-from-your-own-number-no-extra-service)) |
+| `POWERBI_PASSWORD` | empty | When set (PostgreSQL only), the app creates a read-only database login with this password on startup, for Power BI and other reports. See [Reports](reporting.md). |
+| `POWERBI_USER` | `powerbi` | Name of that login |
+| `POWERBI_DB_PORT` | none | Port the database is published on for reports; shown on the Database tab |
+
+The three `POWERBI_*` variables reach the app through
+`deploy/docker-compose.powerbi.yml` (used as `docker-compose.override.yml`),
+which also publishes the database port. See [Reports](reporting.md#setting-it-up-on-the-server).
 
 Login sessions last 12 hours.
 
@@ -31,7 +38,10 @@ switch to another PostgreSQL server:
 3. **Save**, then **Restart** the app so it reconnects.
 
 The tab also shows ready-to-copy `docker run` and `docker compose` snippets for
-starting a new PostgreSQL container.
+starting a new PostgreSQL container, and **Reading the data**: the connection
+details for Power BI, Excel or SQL (server, port, database, the read-only
+login with its password shown on request), the views reports can read, steps
+for Power BI and Excel, and example queries. See [Reports](reporting.md).
 
 The choice is saved in `DATA_DIR` (the `app_data` volume), with a copy in the
 `DATABASE_URL` database, so it survives image updates (see
@@ -43,8 +53,8 @@ setting returns the app to `DATABASE_URL` after a restart.
 ## Backups (Database tab)
 
 **Download backup** saves one file, `cognex-backup-DATE-TIME.json.gz`, with all
-app data: devices, stations, readings (and manual entries), counters, users
-and notification settings. It is
+app data: devices, stations, readings (and manual entries), counters,
+comments, users and notification settings. It is
 written by the app itself (no `pg_dump`), so it can be imported into any
 database the app is configured to use. The tab shows when the last backup was
 made (downloaded or uploaded to FTP) and turns yellow when there is none or
@@ -93,4 +103,5 @@ password; protect the `app_data` and `db_data` volumes accordingly.
 
 The app creates its tables on startup and adds new columns to an existing
 database automatically when an update needs them. There is no separate
-migration step.
+migration step. The `powerbi_*` views for reports are made again on every
+start.

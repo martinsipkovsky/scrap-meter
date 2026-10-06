@@ -23,6 +23,11 @@ if one was pressed on the station view). Stations that are not in production
 (see below) are shown **grayed out**. Click a station to open its station
 view.
 
+Below the counters each block shows the station's latest comment (author,
+time, scrap at that moment). **+ Comment** / **Comments** opens the station's
+comments to read them or write a new one without leaving the dashboard. See
+[Comments](#comments).
+
 At the bottom, **Last 24 hours** shows the OEE meter and the total OK and NOK
 of the stations included in the statistics. See [OEE](#oee).
 
@@ -138,10 +143,32 @@ Opening a station shows its devices, an OK/NOK chart over 1 hour, 8 hours,
   Scrap and fail-count alerts follow the reset counters.
 
 With the `manual_entry` permission the station view also has an **Add entry**
-form, see [Manual entries](#manual-entries).
+form, see [Manual entries](#manual-entries). Every user who sees the
+dashboard gets the **Comments** box, see [Comments](#comments).
 
 The station view is at `/station/<id>`; links from earlier versions
 (`/camera/<id>`, `/device/<id>`) still open it.
+
+## Comments
+
+Comments note what happened on a station: a tool change, a material batch, a
+stop for cleaning. Write one in the **Comments** box on the station view, or
+from the station's block on the dashboard, and press **Add comment** (or
+Ctrl+Enter). Anyone who can see the dashboard can write comments.
+
+Each comment is saved with:
+
+- the time (stored in UTC, shown in your browser's time zone) and the author;
+- the station's name and current job;
+- the OK, NOK and scrap % shown on the station at that moment (the job's
+  counters since the last **Reset counters**, as on the dashboard).
+
+That snapshot never changes, even when the station is renamed or counts on.
+Comments are listed newest first, and the latest one also shows on the
+station's dashboard block. Only an administrator can delete a comment.
+Comments are kept when their station is deleted, are part of backups, and
+reports read them from the `powerbi_station_comments` view (see
+[Reports](reporting.md)).
 
 ## Manual entries
 
@@ -278,7 +305,7 @@ assign permissions. The last administrator can't be deleted.
 
 | Permission | Allows |
 |---|---|
-| `view_dashboard` | View the dashboard, stations, devices and the OEE meter; export settings |
+| `view_dashboard` | View the dashboard, stations, devices and the OEE meter; write comments on stations; export settings |
 | `manage_devices` | Create, edit, delete and import devices and stations, browse OPC UA servers |
 | `control_connections` | Poll devices, start/stop production, reset the dashboard counters |
 | `view_data` | Browse logged readings and counters, scrap statistics |
@@ -287,8 +314,8 @@ assign permissions. The last administrator can't be deleted.
 | `manage_notifications` | Configure notification rules and providers |
 | `manage_users` | Create users and edit their permissions |
 
-The navigation only shows the tabs a user may open. The Database tab is for
-administrators only.
+The navigation only shows the tabs a user may open. The Database tab, and
+deleting comments, are for administrators only.
 
 Each user can change their own password under *Account*.
 
@@ -302,3 +329,7 @@ backups regularly; the tab warns when the last one is more than 7 days old.
 Backups made by earlier versions (Cognex Monitor, Scrap Meter 1.4) can be
 imported; their devices become stations as on an update. See
 [Configuration](configuration.md#backups-database-tab) for details.
+
+The tab's **Reading the data** section is a short manual for reading all data
+from the database with Power BI, Excel or SQL: connection details, the
+read-only login, the views and example queries. See [Reports](reporting.md).

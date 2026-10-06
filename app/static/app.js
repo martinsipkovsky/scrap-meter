@@ -83,3 +83,52 @@ function downloadJSON(filename, data) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+// Station comments (station view and dashboard). See app/comments.py.
+function commentSnapshot(c) {
+  return (c.job ? 'job ' + c.job + ' · ' : '') + 'OK ' + c.ok + ' / NOK ' + c.nok + ' · scrap ' + fmtPct(c.scrap_rate);
+}
+function commentItem(c, onDelete) {
+  return el('div', { class: 'comment' },
+    el('div', { class: 'comment-head' },
+      el('strong', {}, c.author || '—'),
+      el('span', { title: new Date(c.created_at).toLocaleString() }, fmtDateTime(c.created_at)),
+      el('span', {}, '· ' + commentSnapshot(c)),
+      onDelete ? el('button', { class: 'btn secondary small', style: 'margin-left:auto', onclick: () => onDelete(c) }, 'Delete') : null),
+    el('div', { class: 'comment-text' }, c.text));
+}
+// A box to write a comment plus the station's comments, newest first.
+// opts.isAdmin shows Delete buttons; opts.onChange runs after an add or delete.
+function commentsPanel(stationId, opts = {}) {
+  const list = el('div', { class: 'comment-list' });
+  const ta = el('textarea', { rows: 2, maxlength: 2000, placeholder: 'Write a comment, e.g. what happened or what was changed. Ctrl+Enter saves.' });
+  const add = el('button', { class: 'btn' }, 'Add comment');
+  async function load() {
+    let rows;
+    try { rows = await getJSON('/api/stations/' + stationId + '/comments?limit=100'); }
+    catch (e) { list.innerHTML = ''; list.append(el('div', { class: 'muted' }, e.message)); return; }
+    list.innerHTML = '';
+    if (!rows.length) list.append(el('div', { class: 'muted' }, 'No comments yet.'));
+    rows.forEach(c => list.append(commentItem(c, opts.isAdmin ? remove : null)));
+  }
+  async function save() {
+    const text = ta.value.trim();
+    if (!text) { toast('Write a comment first', true); return; }
+    add.disabled = true;
+    try {
+      await postJSON('/api/stations/' + stationId + '/comments', { text });
+      ta.value = ''; toast('Comment saved');
+      await load(); if (opts.onChange) opts.onChange();
+    } catch (e) { toast(e.message, true); }
+    add.disabled = false;
+  }
+  async function remove(c) {
+    if (!confirm('Delete this comment? It is removed from reports too.')) return;
+    try { await delJSON('/api/comments/' + c.id); await load(); if (opts.onChange) opts.onChange(); }
+    catch (e) { toast(e.message, true); }
+  }
+  add.addEventListener('click', save);
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } });
+  load();
+  return el('div', {}, el('div', { class: 'comment-form' }, ta, add), list);
+}

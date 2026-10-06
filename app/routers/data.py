@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import oee, production, scrap_stats, stations
+from .. import comments, oee, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import CounterState, Reading, Station, User, utcnow
@@ -68,7 +68,9 @@ def summary(db: Session = Depends(get_db), _: User = Depends(require_permission(
     """Every station's dashboard block."""
     rows = _stations(db)
     devices = stations.devices_of(db, rows)
-    return [_station_summary(db, st, devices) for st in rows]
+    latest = comments.latest(db, [st.id for st in rows])
+    return [{**_station_summary(db, st, devices),
+             "latest_comment": comments.out(latest[st.id]) if st.id in latest else None} for st in rows]
 
 
 @router.get("/oee")

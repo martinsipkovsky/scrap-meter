@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import backup, database, dbconfig
+from .. import backup, database, dbconfig, reporting
+from ..config import settings
 from ..database import Base, get_db, make_engine
 from ..dependencies import require_api_user
 from ..models import User
@@ -70,6 +71,33 @@ def status(db: Session = Depends(get_db), _: User = Depends(require_admin)):
         },
         "tables": counts,
     }
+
+
+@router.get("/reading")
+def reading_access(_: User = Depends(require_admin)):
+    """How to read the data from outside the app (Power BI, Excel, SQL)."""
+    active = dbconfig.describe_url(database.active_url)
+    postgres = active["driver"].startswith("postgresql")
+    # the bundled database is only reachable inside docker ("db"); from
+    # outside it is the server's own address on the published port
+    bundled = database.active_source == "environment" and active["host"] in ("db", "localhost", "127.0.0.1")
+    return {
+        "postgres": postgres,
+        "bundled": bundled,
+        "host": None if bundled else active["host"],
+        "port": (settings.powerbi_db_port or None) if bundled else active["port"],
+        "database": active["database"],
+        "reader": settings.powerbi_user if reporting.reader_configured(database.engine) else None,
+        "views": [{"name": n, "about": about} for n, (about, _) in reporting.VIEWS.items()],
+    }
+
+
+@router.post("/reading/password")
+def reading_password(_: User = Depends(require_admin)):
+    """The read-only login's password (from POWERBI_PASSWORD), on request."""
+    if not reporting.reader_configured(database.engine):
+        raise HTTPException(404, "No read-only login is set up (POWERBI_PASSWORD is empty)")
+    return {"user": settings.powerbi_user, "password": settings.powerbi_password}
 
 
 @router.post("/test")

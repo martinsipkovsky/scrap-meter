@@ -52,6 +52,13 @@ whole last 24 hours as planned production time. A line that runs one shift
 shows an availability of about a third at best. Time in production comes from
 device readings; manual entries add parts but no time.
 
+## Report connections are not encrypted
+
+The bundled PostgreSQL database has no TLS, so Power BI or Excel connect to it
+unencrypted (Power BI asks to confirm that). Keep the database port inside the
+plant network and allow it only from the Power BI or gateway PC; see
+[Reports](reporting.md#setting-it-up-on-the-server).
+
 ## Single app instance
 
 The poller and the listeners run inside the web process. Run one app

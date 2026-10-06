@@ -32,6 +32,12 @@
 </div>
 {% endif %}
 
+<div class="card" style="margin-bottom:16px" id="commentsCard">
+  <h3 style="margin:0 0 4px">Comments</h3>
+  <div class="hint" style="margin-top:0;margin-bottom:8px">Saved with the time, your name, and the job, OK / NOK and scrap shown above at that moment. Reports (Power BI) can read them.</div>
+  <div id="comments"></div>
+</div>
+
 <div class="card">
   <div class="toolbar" style="margin-bottom:8px">
     <h3 style="margin:0">OK / NOK over time</h3>
@@ -47,6 +53,7 @@
 <script>
 const STATION_ID = {{ station_id }};
 const CAN_CONTROL = {{ 'true' if user.has_permission('control_connections') else 'false' }};
+const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
 let HOURS = 8;
 let lastState = null;
 
@@ -197,6 +204,7 @@ async function load() {
   renderChart(h);
 }
 
+document.getElementById('comments').append(commentsPanel(STATION_ID, { isAdmin: IS_ADMIN }));
 load();
 setInterval(load, 10000);
 window.addEventListener('resize', load);

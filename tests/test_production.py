@@ -192,7 +192,12 @@ def test_import_is_all_or_nothing(client):
 
 
 def test_migration_adds_missing_columns():
+    from app.reporting import VIEWS
+
     with engine.begin() as conn:
+        # an old database: no report views yet (SQLite won't drop a column a view uses)
+        for name in VIEWS:
+            conn.exec_driver_sql(f"DROP VIEW IF EXISTS {name}")
         conn.exec_driver_sql("ALTER TABLE stations DROP COLUMN ideal_cycle_s")
     assert "stations.ideal_cycle_s" in migrate_schema(engine)
     assert migrate_schema(engine) == []

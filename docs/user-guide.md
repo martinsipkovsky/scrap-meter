@@ -5,23 +5,32 @@ Scrap Meter has two building blocks:
 - **Devices** are the connections the app reads: a Cognex camera, a PLC, an
   OPC UA server, a counter or gateway. A device only delivers values (for most
   protocols its pass, fail, total and job; for OPC UA any value of the server).
-- **Stations** are what is counted, e.g. machine "M1". A station's OK, NOK,
-  total (optional) and job (optional) each come from one device and one of its
-  values, so a station can combine several devices: OK pieces from device 1,
-  NOK pieces from device 2. Parts can also be entered by hand. The dashboard,
-  statistics, alerts, chat commands and the OEE meter all work per station.
+- **Stations** are what is counted, e.g. machine "M1". A station has one or
+  more **sources**: a source is one device and which of its values give the
+  OK, NOK, total (optional) and job (optional). So a station can have two
+  cameras, each with its own counters and job, or take OK pieces from device
+  1 and NOK pieces from device 2. Parts can also be entered by hand. The
+  dashboard, statistics, alerts, chat commands and the OEE meter all work per
+  station.
 
 Up to version 1.4 every device was counted by itself. When 1.5 starts for the
 first time it gives each existing device its own station with the same name
-and the same history, so the dashboard looks as before.
+and the same history, so the dashboard looks as before. From 1.5 to 1.7 a
+station took each role (OK, NOK, total, job) from one device; 1.8 turns that
+into one source per device, see [Upgrading to 1.8](#upgrading-to-18).
 
 ## Dashboard
 
-One block per station with its connection state, current job, and the running
-OK/NOK totals and scrap rate for that job (since the last **Reset counters**,
-if one was pressed on the station view). Stations that are not in production
-(see below) are shown **grayed out**. Click a station to open its station
-view.
+One block per station with its connection state, its devices, current job,
+and the running OK/NOK totals and scrap rate of the jobs it runs now (since
+the last **Reset counters**, if one was pressed on the station view). When
+the sources run different jobs, the block shows them all (`A1 + PLC_JOB_1`)
+and adds up their counters.
+
+**Active** names the devices of the sources in production now. When none is,
+the block shows the device that was active last, grayed, with the time it
+stopped. Stations that are not in production (see below) are shown **grayed
+out**. Click a station to open its station view.
 
 Below the counters each block shows the station's latest comment (author,
 time, scrap at that moment). **+ Comment** / **Comments** opens the station's
@@ -42,7 +51,7 @@ Add a device with:
 | Host / Port | For polled protocols: the device's or PLC's address. For listener protocols: *Port* is the port the app listens on, and *Host* optionally restricts which IP may send (blank = anyone). OPC UA uses the endpoint URL instead. |
 | Config (JSON) | Protocol settings. The form lists the fields for the chosen protocol. OPC UA has its own form fields instead (see below). |
 | Poll interval | Seconds between reads, for polled protocols |
-| Also add a station | Makes a station with the same name that counts this device's pass and fail (and its total and job). Untick it when the device's values go into a station that combines devices. Not offered for OPC UA, whose stations pick nodes. |
+| Also add a station | Makes a station with the same name and one source: this device's pass and fail (and its total and job). Untick it when the device is a source of a station that combines devices. Not offered for OPC UA, whose stations pick nodes. |
 
 The list shows each device's latest values and the stations that use it.
 **Poll now** reads a polled device immediately (and updates its stations),
@@ -74,23 +83,45 @@ Add a station with:
 | Field | Meaning |
 |---|---|
 | Name | Unique display name, e.g. `M1` |
-| OK (pass) count | Device and value that count the good parts |
-| NOK (fail) count | Device and value that count the bad parts |
-| Total count (optional) | Device and value of a total counter; without it total = OK + NOK |
-| Job (optional) | Device and value holding the job or recipe; without it the station uses *Job name when no job value is set* (default `MAIN`) |
+| Sources | One or more devices, each with its own values (below). **+ Add source** adds one, **Remove** takes one away. |
 | Order | Lower numbers come first on the dashboard |
-| Production idle timeout | Minutes without an OK increase before the station counts as idle (default 30) |
+| Job name when no job value is set | The job of a station whose sources have no job value (default `MAIN`) |
+| Production idle timeout | Minutes without an OK increase on any source before the station leaves production (default 30) |
 | Statistics | **Include** (default) or **Exclude**, see [Stations excluded from the statistics](#stations-excluded-from-the-statistics) |
 
-Pick OK, NOK or both; a missing one counts as 0. A station with no device at
-all is fed only by [manual entries](#manual-entries). For most devices the
-value is chosen from a list (OK counter, NOK counter, total counter, job name,
-with the current value). For an OPC UA device, type a node id or press
+Each **source** has:
+
+| Field | Meaning |
+|---|---|
+| Device | The device it reads |
+| OK count | The value that counts the good parts (blank: none) |
+| NOK count | The value that counts the bad parts (blank: none) |
+| Total (optional) | A total counter; without it total = OK + NOK |
+| Job (optional) | The value holding the job or recipe. Without it the source counts under the job of the station's first source that has one, else under *Job name when no job value is set*. |
+| Starts production at | *N* OK pieces within *M* seconds (default 2 within 60). See [Production state](#production-state). |
+
+A source needs OK, NOK or both (a missing one counts as 0), or only a job, to
+give the job to the station's other sources. A station with no source at all
+is fed only by [manual entries](#manual-entries). For most devices each value
+is chosen from a list (OK counter, NOK counter, total counter, job name, with
+the current value). For an OPC UA device, type a node id or press
 **Browse…**: open folders and objects, then **Use** on the variable. Current
 values and data types are shown to help pick the right node.
 
+Examples:
+
+- *Two cameras on one station:* source 1 is camera 1 with its OK, NOK and job,
+  source 2 is camera 2 with its own. Each camera counts under its own job,
+  and the station shows their sum.
+- *OK and NOK from different devices:* source 1 is the PLC with its OK count
+  and job, source 2 is the reject counter with only its NOK count. The
+  rejects count under the PLC's job.
+
+Changing a source to read another device or other values starts its counting
+again from the next read (a new baseline), so no jump is counted.
+
 A station is **online** when every device it uses is online and has delivered
-its value; otherwise the list and the dashboard say what is missing (e.g. "no
+its values; otherwise the list and the dashboard say what is missing (e.g. "no
 value 'ns=2;s=M1.Bad' from device 'PLC' yet").
 
 ### Jobs and ideal cycle times
@@ -119,44 +150,76 @@ stay.
 
 ## How counting works
 
-Whenever a device is read (or pushes a record), every station that uses it
-takes the latest values of its devices: the raw OK, NOK and total counters and
-the current job. The app adds the **increase** since the station's previous
-reading to a running total for that station and job.
+Whenever a device is read (or pushes a record), each station source that
+reads it works out its **increase** since its previous read: the change of its
+raw OK, NOK and total counters. While the station is in production, the
+increase is added to the station's running total for the source's job. While
+it is not, nothing is added (see [Production state](#production-state)).
 
 - **Counter reset on a device:** the app sees a counter drop, treats the new
-  value as counted from zero, and keeps adding. When all of a station's
-  counters come from one device, a drop in one of them means all were reset
-  together. When they come from different devices, each counter is checked on
-  its own, so resetting the reject counter does not touch the OK count.
-  Banked totals are never lost, but parts counted between the last reading and
-  the reset can't be seen, so poll often enough for your line speed.
-- **Job change:** the old job's totals are frozen and a new running total
-  starts. If an earlier job comes back, its totals continue where they stopped.
-- **First reading:** the counters a device already shows when a station first
-  sees them are the starting totals, not parts made since.
+  value as counted from zero, and keeps adding. A drop in one of a source's
+  counters means the device reset all of them. Each source is checked on its
+  own, so resetting the reject counter of one device does not touch the OK
+  count of another. Banked totals are never lost, but parts counted between
+  the last read and the reset can't be seen, so poll often enough for your
+  line speed.
+- **Job change:** the jobs the sources run now are the station's current jobs;
+  the other jobs' totals are frozen. If an earlier job comes back, its totals
+  continue where they stopped.
+- **First read:** a source's first read is its baseline: the counters a device
+  already shows are not counted. (Listeners in *event* mode count each part
+  themselves from zero, so their first part counts.)
+- **Raw data are kept:** every read is logged as a reading, also while nothing
+  is counted, with the pieces it counted (the Data log's *Counted* column).
 
 ## Production state
 
-A station is **running** while its OK counter keeps increasing. If it does not
-increase for the station's idle timeout, the station becomes **idle**: it is
-grayed out on the dashboard and scrap-rate and fail-count alerts are
-suppressed, because NOK counts on a stopped line are usually false signals.
-The next OK puts it back into production.
+A station **goes into production** when one of its sources makes its start
+count of OK pieces within its start time: 2 OK within 60 seconds by default,
+set per source. The pieces that started production count, also the pieces the
+station's other sources made within that time. The station stays **running**
+while any source's OK count keeps increasing. A source is **active** while the
+station is running and its OK count rose within the idle timeout (a source
+without an OK value is active whenever the station is running).
+
+If no source's OK count increases for the station's idle timeout, the
+station becomes **idle**: it is grayed out on the dashboard, its counters stop
+changing, and scrap-rate and fail-count alerts are suppressed, because NOK
+counts on a stopped line are usually false signals. It goes back into
+production when a source's start rule fires again.
+
+**Stop production** on the station view wins over everything: nothing is
+counted until **Start production** is pressed. Start counts from that moment
+and restarts the idle clock.
 
 Disconnect alerts are still sent for idle stations.
 
+### Upgrading to 1.8
+
+When 1.8 starts on an older database (or an older backup is imported), every
+station's roles become sources, one per device: a station with OK, NOK and
+job from one camera gets one source, a station with OK from device 1 and NOK
+from device 2 gets two. These sources start production on **1** OK piece, as
+stations did before, so nothing changes for them; raise the start rule on the
+Stations tab if a single piece should not count as production. Each source
+carries on from the raw counters the station read last, so no piece is lost
+at the upgrade. What changes for every station: counters no longer grow while
+the station is idle or stopped (before 1.8 they did, and only the statistics
+left those parts out). Export files from 1.5 to 1.7 import the same way.
+
 ## Station view
 
-Opening a station shows its devices, an OK/NOK chart over 1 hour, 8 hours,
-24 hours or 7 days, and these buttons:
+Opening a station shows its devices and which of them are active, a
+**Sources** list (each source's device, whether it is active, its job, its
+values and its start rule), an OK/NOK chart over 1 hour, 8 hours, 24 hours or
+7 days, and these buttons:
 
-- **Stop** puts the station out of production by hand. It stays stopped until
-  someone presses Start, even if parts are counted.
+- **Stop** puts the station out of production by hand. It stays stopped, and
+  counts nothing, until someone presses Start, even if devices keep counting.
 - **Start** clears a manual stop and restarts the idle clock. A station that
   still doesn't count goes idle again after its timeout.
 - **Reset counters** sets the OK / NOK counters shown on the dashboard and the
-  station view for the current job back to zero, after a confirmation (needs
+  station view for the jobs it runs now back to zero, after a confirmation (needs
   the *control_connections* permission). The card then says "Since reset" with
   the time. Nothing is sent to the devices, and the job totals in the Data log,
   the chart, the readings history and the scrap statistics stay as they were.
@@ -304,7 +367,7 @@ Changing the setting applies to all readings of the station, old and new.
 ## Export and import
 
 **Export** on the Devices tab downloads every device and station as one JSON
-file (devices without passwords; stations name their devices), with the jobs
+file (devices without passwords; stations list their sources by device name), with the jobs
 and their ideal cycle times. **Import** reads such a file: devices and
 stations with a new name are added, existing ones (same name) are updated, a
 missing password keeps the saved one, and jobs in the file with a cycle time

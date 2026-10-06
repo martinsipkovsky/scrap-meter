@@ -1,8 +1,8 @@
 """Station comments.
 
 A comment keeps a snapshot of its station when it was written: the station's
-name, current job and the OK / NOK / scrap of that job as the dashboard shows
-it. The snapshot is never updated afterwards.
+name, current job (the jobs its sources run, joined with " + ") and the OK /
+NOK / scrap as the dashboard shows it. The snapshot is never updated afterwards.
 
 Reports read them through the powerbi_station_comments view (app.reporting).
 """
@@ -11,15 +11,12 @@ from __future__ import annotations
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .models import CounterState, Station, StationComment
+from . import stations
+from .models import Station, StationComment
 
 
 def add(db: Session, station: Station, body: str, author: str | None) -> StationComment:
-    active = (
-        db.query(CounterState)
-        .filter(CounterState.station_id == station.id, CounterState.is_active.is_(True))
-        .first()
-    )
+    active = stations.shown(db, station)
     comment = StationComment(
         station_id=station.id,
         station_name=station.name,

@@ -27,7 +27,6 @@ from sqlalchemy.orm import Session
 
 from . import notifiers, production
 from .models import (
-    CounterState,
     NotificationLog,
     NotificationProvider,
     NotificationRule,
@@ -78,7 +77,7 @@ def threshold_for(rule: NotificationRule, station: Station) -> float:
     return rule.threshold
 
 
-def _condition_met(rule: NotificationRule, station: Station, state: CounterState | None,
+def _condition_met(rule: NotificationRule, station: Station, state,
                    online: dict) -> tuple[bool, str]:
     if rule.condition == "disconnected":
         if not online["connected"]:
@@ -183,11 +182,7 @@ def evaluate_station(db: Session, station: Station) -> None:
 
     now = utcnow()
     check_production(db, station)
-    active_state = (
-        db.query(CounterState)
-        .filter(CounterState.station_id == station.id, CounterState.is_active.is_(True))
-        .first()
-    )
+    active_state = stations.shown(db, station)
     online = stations.status(station, stations.devices_of(db, [station]))
     for rule in _rules(db, ["scrap_rate", "fail_count", "disconnected"], station):
         met, message = _condition_met(rule, station, active_state, online)

@@ -2,7 +2,7 @@
 {% block title %}Stations · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <div><h1>Stations</h1><p class="lead">A station is what the dashboard, statistics and alerts count, e.g. machine "M1": its OK, NOK, total and job can each come from a different <a href="/devices">device</a>.</p></div>
+  <div><h1>Stations</h1><p class="lead">A station is what the dashboard, statistics and alerts count, e.g. machine "M1". It counts one or more sources: each source is a <a href="/devices">device</a> with its own OK, NOK, total and job values, so a station can have two cameras, or OK from one device and NOK from another.</p></div>
   <div class="actions">
     {% if user.has_permission('manage_devices') %}
     <button class="btn" onclick="openForm()">+ Add station</button>
@@ -11,7 +11,7 @@
 </div>
 
 <table>
-  <thead><tr><th>Status</th><th>Station</th><th>OK from</th><th>NOK from</th><th>Total / job</th><th>Production</th><th></th></tr></thead>
+  <thead><tr><th>Status</th><th>Station</th><th>Sources</th><th>Production</th><th></th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
 <div id="empty" class="empty" style="display:none">No stations yet. Add one, or add a device with "Also add a station".</div>
@@ -26,7 +26,7 @@
 <div id="jobsEmpty" class="empty" style="display:none">No jobs yet: a job appears when a station first counts it (from a device or a manual entry).</div>
 
 <div class="modal-back" id="modal">
-  <div class="modal" style="width:620px">
+  <div class="modal" style="width:760px">
     <h2 id="modalTitle">Add station</h2>
     <div id="formError" class="error" style="display:none"></div>
     <input type="hidden" id="f_id" />
@@ -34,13 +34,15 @@
       <div><label>Name</label><input id="f_name" placeholder="M1" /></div>
       <div style="flex:.4"><label>Order</label><input id="f_order" type="number" value="0" title="Lower numbers come first on the dashboard" /></div>
     </div>
+    <label style="margin-top:16px">Sources</label>
     <div id="sources"></div>
-    <div class="hint">Pick OK, NOK or both (a missing one counts as 0). Without a total, total = OK + NOK. Without a job, the job name below is used. A station without any device is fed by manual entries on its station view.</div>
+    <div class="hint">Each source is one device with its own values: pick OK, NOK or both (a missing one counts as 0). Without a total, total = OK + NOK. A source without a job counts under the job of the first source that has one, else the job name below. A station without any source is fed by manual entries on its station view.<br>
+      The station goes into production when one of its sources makes the set number of OK pieces within the set time, and those pieces count. Its counters only change while it is in production; changes outside production are logged but not counted.</div>
     <div class="row">
       <div><label>Job name when no job value is set</label><input id="f_job" value="MAIN" /></div>
       <div><label>Production idle timeout (minutes)</label><input id="f_idle" type="number" value="30" min="1" max="10080" /></div>
     </div>
-    <div class="hint">If OK does not increase for this long, the station counts as not in production: grayed on the dashboard, no scrap alerts.</div>
+    <div class="hint">If no source's OK increases for this long, the station leaves production: grayed on the dashboard, no counting, no scrap alerts.</div>
     <div class="row">
       <div><label>Statistics</label>
         <select id="f_stats">
@@ -76,17 +78,29 @@
 {% block scripts %}
 <script>
 const CAN_MANAGE = {{ 'true' if user.has_permission('manage_devices') else 'false' }};
-const ROLES = [['ok', 'OK (pass) count', true], ['nok', 'NOK (fail) count', true],
-               ['count', 'Total count (optional)', false], ['job', 'Job (optional)', false]];
+const ROLES = [['ok', 'OK count'], ['nok', 'NOK count'], ['count', 'Total (optional)'], ['job', 'Job (optional)']];
+const DEFAULT_KEYS = { ok: 'pass', nok: 'fail', count: '', job: 'job' };
 let DEVICES = [];  // from /api/devices/values
+let SRC = [];      // the sources being edited
 
 function devName(id) { const d = DEVICES.find(x => x.id === id); return d ? d.name : '#' + id; }
-function srcText(src) {
-  if (!src) return el('span', { class: 'muted' }, '—');
-  const d = DEVICES.find(x => x.id === src.device_id);
-  const v = d && d.values.find(x => x.key === src.key);
-  return el('div', {}, el('div', {}, devName(src.device_id)),
-    el('div', { class: 'muted' }, (v && !d.any_value ? v.label : src.key) + (v && v.value !== undefined && v.value !== null ? ' = ' + v.value : '')));
+function valText(d, key) {
+  // "= 22" for a device's own counters, "ns=2;s=M1.Good = 22" for an OPC UA node
+  const v = d && d.values.find(x => x.key === key);
+  const val = v && v.value !== undefined && v.value !== null ? ' = ' + v.value : '';
+  return v && !d.any_value ? (val || ' (no value yet)') : ' ' + key + val;
+}
+function srcCell(s) {
+  if (!s.sources.length) return el('span', { class: 'muted' }, 'manual entries only');
+  return el('div', {}, ...s.sources.map(src => {
+    const d = DEVICES.find(x => x.id === src.device_id);
+    const parts = ROLES.filter(([r]) => src[r]).map(([r, label]) => label.replace(/ (count|\(optional\))$/, '') + valText(d, src[r]));
+    return el('div', { class: 'source-line' },
+      el('div', {}, el('span', { class: 'dot ' + (src.active ? 'ok' : 'off'), title: src.active ? 'Active: in production' : 'Not active' }), ' ',
+        el('strong', {}, devName(src.device_id)), src.current_job ? el('span', { class: 'muted' }, ' · job ' + src.current_job) : null),
+      el('div', { class: 'muted' }, parts.join(' · ')),
+      src.ok ? el('div', { class: 'muted' }, 'starts at ' + src.start_count + ' OK within ' + src.start_window_s + ' s') : null);
+  }));
 }
 
 async function load() {
@@ -109,67 +123,75 @@ async function load() {
         s.stats_default === 'exclude' ? el('span', { class: 'badge off', style: 'margin-left:8px' }, 'not in totals') : null,
         el('div', { class: 'muted' }, 'job ' + (s.current_job || '—')),
         s.problem ? el('div', { class: 'muted', style: 'color:var(--warn)' }, s.problem) : null),
-      el('td', {}, srcText(s.sources.ok)),
-      el('td', {}, srcText(s.sources.nok)),
-      el('td', {}, s.sources.count ? srcText(s.sources.count) : el('span', { class: 'muted' }, 'OK + NOK'),
-        el('div', { class: 'muted' }, s.sources.job ? 'job: ' + devName(s.sources.job.device_id) + ' · ' + s.sources.job.key : 'job: ' + s.default_job)),
-      el('td', {}, el('span', { class: 'muted' }, 'idle after ' + s.idle_timeout_min + ' min')),
+      el('td', {}, srcCell(s)),
+      el('td', {}, activeLine(s), el('div', { class: 'muted' }, 'idle after ' + s.idle_timeout_min + ' min')),
       el('td', {}, actions),
     ));
   }
 }
 
-// ---- source pickers ---------------------------------------------------------
-function buildSources() {
+// ---- sources -----------------------------------------------------------------
+function newSource() {
+  return { id: null, device_id: null, ok: null, nok: null, count: null, job: null, start_count: 2, start_window_s: 60 };
+}
+function renderSources() {
   const box = document.getElementById('sources');
   box.innerHTML = '';
+  SRC.forEach((s, i) => box.append(sourceCard(s, i)));
+  box.append(el('button', { class: 'btn secondary small', type: 'button', onclick: () => { SRC.push(newSource()); renderSources(); } },
+    '+ Add source'));
+}
+function sourceCard(s, i) {
+  const d = DEVICES.find(x => x.id === s.device_id);
+  const dev = el('select', { 'aria-label': 'Device of source ' + (i + 1), onchange: () => {
+    s.device_id = +dev.value || null;
+    const nd = DEVICES.find(x => x.id === s.device_id);
+    for (const [r] of ROLES) s[r] = nd && !nd.any_value ? (DEFAULT_KEYS[r] || null) : null;
+    renderSources();
+  } }, el('option', { value: '' }, '— pick a device —'),
+    ...DEVICES.map(x => el('option', { value: x.id }, x.name + (x.connected ? '' : ' (offline)'))));
+  dev.value = s.device_id || '';
+  const card = el('div', { class: 'source-card' },
+    el('div', { class: 'source-head' }, el('strong', {}, 'Source ' + (i + 1)), el('div', { style: 'flex:1' }, dev),
+      el('button', { class: 'btn danger small', type: 'button', title: 'Remove this source', onclick: () => { SRC.splice(i, 1); renderSources(); } }, 'Remove')));
+  if (!d) return card;
+  const grid = el('div', { class: 'source-values' });
   for (const [role, label] of ROLES) {
-    const dev = el('select', { id: 's_dev_' + role, onchange: () => onDevice(role) },
-      el('option', { value: '' }, '— none —'), ...DEVICES.map(d => el('option', { value: d.id }, d.name + (d.connected ? '' : ' (offline)'))));
-    box.append(el('label', {}, label),
-      el('div', { style: 'display:flex;gap:8px;align-items:center' },
-        el('div', { style: 'flex:1' }, dev),
-        el('div', { style: 'flex:1.4;display:flex;gap:6px', id: 's_val_' + role })));
+    let field;
+    if (d.any_value) {
+      // OPC UA: any node of the server
+      const list = 'dl_' + i + '_' + role;
+      const inp = el('input', { placeholder: 'node id (blank: none)', list, spellcheck: 'false', value: s[role] || '',
+        'aria-label': label + ' of source ' + (i + 1), oninput: () => { s[role] = inp.value.trim() || null; } });
+      field = el('div', { style: 'display:flex;gap:6px' }, inp,
+        el('datalist', { id: list }, ...d.values.map(v => el('option', { value: v.key }, String(v.value)))),
+        el('button', { class: 'btn secondary small', type: 'button', onclick: () => openBrowse(s, role, d) }, 'Browse…'));
+    } else {
+      const sel = el('select', { 'aria-label': label + ' of source ' + (i + 1), onchange: () => { s[role] = sel.value || null; } },
+        el('option', { value: '' }, role === 'count' ? '— none (OK + NOK) —' : '— none —'),
+        ...d.values.map(v => el('option', { value: v.key }, v.label + (v.value !== null && v.value !== undefined ? ' = ' + v.value : ''))));
+      sel.value = s[role] || '';
+      field = sel;
+    }
+    grid.append(el('div', {}, el('label', {}, label), field));
   }
-}
-function onDevice(role, key) {
-  const box = document.getElementById('s_val_' + role);
-  box.innerHTML = '';
-  const id = +document.getElementById('s_dev_' + role).value;
-  const d = DEVICES.find(x => x.id === id);
-  if (!d) return;
-  if (d.any_value) {
-    // OPC UA: any node of the server
-    const list = 'dl_' + role;
-    box.append(el('input', { id: 's_key_' + role, placeholder: 'node id, e.g. ns=2;s=M1.Good', list, spellcheck: 'false', value: key || '' }),
-      el('datalist', { id: list }, ...d.values.map(v => el('option', { value: v.key }, String(v.value)))),
-      el('button', { class: 'btn secondary small', type: 'button', onclick: () => openBrowse(role, d) }, 'Browse…'));
-  } else {
-    const sel = el('select', { id: 's_key_' + role },
-      ...d.values.map(v => el('option', { value: v.key }, v.label + (v.value !== null && v.value !== undefined ? ' = ' + v.value : ''))));
-    const dflt = { ok: 'pass', nok: 'fail', count: 'count', job: 'job' }[role];
-    sel.value = key || dflt;
-    box.append(sel);
-  }
-}
-function setSource(role, src) {
-  document.getElementById('s_dev_' + role).value = src ? src.device_id : '';
-  onDevice(role, src ? src.key : null);
+  card.append(grid);
+  const n = el('input', { type: 'number', min: '1', max: '100000', value: s.start_count, style: 'width:80px', 'aria-label': 'Start: OK pieces',
+    oninput: () => { s.start_count = parseInt(n.value, 10) || 1; } });
+  const m = el('input', { type: 'number', min: '1', max: '86400', value: s.start_window_s, style: 'width:90px', 'aria-label': 'Start: within seconds',
+    oninput: () => { s.start_window_s = parseInt(m.value, 10) || 60; } });
+  card.append(el('div', { class: 'source-rule' }, 'Starts production at ', n, ' OK pieces within ', m, ' seconds',
+    el('span', { class: 'muted' }, ' (needs an OK value; without one the source follows the station)')));
+  return card;
 }
 function readSources() {
-  const out = {};
-  for (const [role] of ROLES) {
-    const id = +document.getElementById('s_dev_' + role).value;
-    const k = document.getElementById('s_key_' + role);
-    out[role] = id && k && k.value.trim() ? { device_id: id, key: k.value.trim() } : null;
-  }
-  return out;
+  return SRC.filter(s => s.device_id).map(s => ({ ...s, id: s.id || undefined }));
 }
 
 // ---- OPC UA browse ------------------------------------------------------------
-let browseRole = null, browseDevice = null;
-function openBrowse(role, d) {
-  browseRole = role; browseDevice = d;
+let browseTarget = null, browseDevice = null;
+function openBrowse(s, role, d) {
+  browseTarget = { s, role }; browseDevice = d;
   document.getElementById('browseFor').textContent = 'Server: ' + d.name + '. Open folders and objects, then press Use on the value for ' +
     ROLES.find(r => r[0] === role)[1] + '.';
   openModal('browseModal');
@@ -205,7 +227,8 @@ async function browseTo(nodeId, trail) {
   }
 }
 function pickNode(c) {
-  document.getElementById('s_key_' + browseRole).value = c.node_id;
+  browseTarget.s[browseTarget.role] = c.node_id;
+  renderSources();
   closeModal('browseModal');
   toast('Picked ' + (c.name || c.node_id));
 }
@@ -222,8 +245,9 @@ async function openForm(s) {
   document.getElementById('f_job').value = s ? s.default_job : 'MAIN';
   document.getElementById('f_idle').value = s ? s.idle_timeout_min : 30;
   document.getElementById('f_stats').value = s ? s.stats_default : 'include';
-  buildSources();
-  for (const [role] of ROLES) setSource(role, s ? s.sources[role] : null);
+  SRC = s ? s.sources.map(src => ({ id: src.id, device_id: src.device_id, ok: src.ok, nok: src.nok, count: src.count, job: src.job,
+    start_count: src.start_count, start_window_s: src.start_window_s })) : [newSource()];
+  renderSources();
   openModal('modal');
 }
 

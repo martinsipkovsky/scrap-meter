@@ -1,12 +1,16 @@
 """Production state of a station: running, idle (auto-stopped) or stopped.
 
-* running  - the OK counter increased within the station's idle timeout.
-* idle     - no pass increase for idle_timeout_min minutes. The line is most
-             likely not producing, so NOK counts are treated as false signals
-             (dashboard grays the station, scrap alerts are suppressed). It goes
-             back to running by itself as soon as the pass counter increases.
-* stopped  - an operator pressed Stop. Stays stopped until Start is pressed,
-             even if counts keep arriving.
+* running  - a source's start rule fired (``start_count`` OK pieces within
+             ``start_window_s`` seconds, 2 within 60 by default), or Start was
+             pressed, and since then some source's OK counter has increased
+             within the station's idle timeout.
+* idle     - no OK increase for idle_timeout_min minutes. The line is most
+             likely not producing, so counter changes are false signals: they
+             are not counted (app.stations), the dashboard grays the station
+             and scrap alerts are suppressed. It goes back to running by
+             itself when a source's start rule fires again.
+* stopped  - an operator pressed Stop. Stays stopped, and counts nothing,
+             until Start is pressed, even if counts keep arriving.
 
 Start clears a manual stop and restarts the idle clock, so a station that
 still does not count will fall back to idle after its timeout.
@@ -22,6 +26,9 @@ IDLE = "idle"
 STOPPED = "stopped"
 
 DEFAULT_IDLE_TIMEOUT_MIN = 30
+# a source's start rule: this many OK pieces within this many seconds
+DEFAULT_START_COUNT = 2
+DEFAULT_START_WINDOW_S = 60
 
 
 def _aware(value: dt.datetime | None) -> dt.datetime | None:
@@ -59,7 +66,7 @@ def describe(station: Station, now: dt.datetime | None = None) -> dict:
 
 
 def note_pass_increase(station: Station, now: dt.datetime | None = None) -> None:
-    """Called by the poller whenever the pass counter went up."""
+    """A source's OK counter went up while counted, or its start rule fired."""
     station.last_pass_change_at = now or utcnow()
 
 

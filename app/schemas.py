@@ -94,6 +94,8 @@ class DeviceExportItem(BaseModel):
 
 # ---- Stations -------------------------------------------------------------
 class StationSource(BaseModel):
+    """1.5 - 1.7: one value of one device per role (StationSources)."""
+
     device_id: int
     key: str = Field(min_length=1, max_length=500)
 
@@ -105,9 +107,28 @@ class StationSources(BaseModel):
     job: Optional[StationSource] = None
 
 
+ValueKey = Optional[str]
+
+
+class SourceIn(BaseModel):
+    """One device of a station and which of its values give OK, NOK, total and
+    job (each may be blank), with its start rule (see app.stations)."""
+
+    id: Optional[str] = Field(default=None, max_length=16)  # kept when editing
+    device_id: int
+    ok: ValueKey = Field(default=None, max_length=500)
+    nok: ValueKey = Field(default=None, max_length=500)
+    count: ValueKey = Field(default=None, max_length=500)
+    job: ValueKey = Field(default=None, max_length=500)
+    # production starts at start_count OK pieces within start_window_s seconds
+    start_count: int = Field(default=2, ge=1, le=100_000)
+    start_window_s: int = Field(default=60, ge=1, le=86_400)
+
+
 class StationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    sources: StationSources
+    # a list of sources; the role dict of 1.5 - 1.7 is still accepted
+    sources: list[SourceIn] | StationSources = []
     default_job: str = Field(default="MAIN", min_length=1, max_length=255)
     # minutes without an OK increase before the station counts as not in production
     idle_timeout_min: int = Field(default=30, ge=1, le=10080)
@@ -118,7 +139,7 @@ class StationCreate(BaseModel):
 
 class StationUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    sources: Optional[StationSources] = None
+    sources: Optional[list[SourceIn] | StationSources] = None
     default_job: Optional[str] = Field(default=None, min_length=1, max_length=255)
     idle_timeout_min: Optional[int] = Field(default=None, ge=1, le=10080)
     stats_default: Optional[Literal["include", "exclude"]] = None
@@ -126,13 +147,28 @@ class StationUpdate(BaseModel):
 
 
 class StationExportSource(BaseModel):
+    """Files from 1.5 / 1.6 / 1.7: one value per role."""
+
     device: str  # device name
     key: str
 
 
+class SourceExportItem(BaseModel):
+    """Files from 1.8: one source, its device by name."""
+
+    device: str
+    ok: ValueKey = None
+    nok: ValueKey = None
+    count: ValueKey = None
+    job: ValueKey = None
+    start_count: int = Field(default=2, ge=1, le=100_000)
+    start_window_s: int = Field(default=60, ge=1, le=86_400)
+
+
 class StationExportItem(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    sources: dict[str, Optional[StationExportSource]] = {}
+    # a list from 1.8 (version 4 files), the role dict before
+    sources: list[SourceExportItem] | dict[str, Optional[StationExportSource]] = []
     default_job: str = "MAIN"
     idle_timeout_min: int = Field(default=30, ge=1, le=10080)
     stats_default: Literal["include", "exclude"] = "include"
@@ -150,7 +186,7 @@ class JobExportItem(BaseModel):
 class DeviceImport(BaseModel):
     """An export file. "cameras" holds the devices (the name of the list in
     every version); "stations" is there from version 2 (1.5), "jobs" from
-    version 3 (1.7)."""
+    version 3 (1.7); version 4 (1.8) lists the stations' sources."""
 
     version: int = 1
     cameras: list[DeviceExportItem]

@@ -60,8 +60,11 @@ async function load() {
     const body = [];
     body.push(el('h3', {}, el('span', { class: 'dot ' + dot }), d.name,
       el('span', { class: 'badge ' + PROD_BADGE[d.production_state][0], style: 'margin-left:auto' }, PROD_BADGE[d.production_state][1])));
-    body.push(el('div', { class: 'muted' }, (d.devices.join(' + ') || 'manual entries') + (d.current_job ? ' · job ' + d.current_job : '') +
+    const jobs = d.current_jobs.length ? d.current_jobs.join(' + ') : d.current_job;
+    body.push(el('div', { class: 'muted' }, (d.devices.join(' + ') || 'manual entries') + (jobs ? ' · job ' + jobs : '') +
       (d.stats_default === 'exclude' ? ' · not in statistics totals' : '')));
+    const act = activeLine(d);
+    if (act) body.push(act);
     if (job) {
       const total = job.total_count || (job.total_pass + job.total_fail);
       const kp = el('div', { class: 'kpis' },

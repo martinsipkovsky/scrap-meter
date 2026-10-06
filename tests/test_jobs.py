@@ -200,7 +200,7 @@ def test_export_import_carries_job_cycle_times(client):
     jid = client.get("/api/jobs").json()[0]["id"]
     client.patch(f"/api/jobs/{jid}", json={"ideal_cycle_s": 3})
     data = client.get("/api/devices/export").json()
-    assert data["version"] == 3 and data["jobs"] == [{"name": "R1", "ideal_cycle_s": 3}]
+    assert data["version"] == 4 and data["jobs"] == [{"name": "R1", "ideal_cycle_s": 3}]
     assert "ideal_cycle_s" not in data["stations"][0]
 
     client.patch(f"/api/jobs/{jid}", json={"ideal_cycle_s": None})

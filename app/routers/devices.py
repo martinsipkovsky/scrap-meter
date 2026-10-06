@@ -162,16 +162,15 @@ def export_devices(db: Session = Depends(get_db), _: User = Depends(require_perm
     ]
     out_stations = []
     for st in db.query(Station).order_by(Station.sort_order, Station.name).all():
-        sources = {}
-        for role in stations.ROLES:
-            src = st.source(role)
-            sources[role] = {"device": names.get(int(src["device_id"]), "?"), "key": src["key"]} if src else None
+        sources = [{"device": names.get(src["device_id"], "?"),
+                    **{k: src[k] for k in (*stations.ROLES, "start_count", "start_window_s")}}
+                   for src in st.source_list()]
         out_stations.append({**{f: getattr(st, f) for f in STATION_FIELDS}, "sources": sources})
     jobs.sync(db)
     out_jobs = [{"name": j.name, "ideal_cycle_s": j.ideal_cycle_s} for j in db.query(Job).order_by(Job.name)]
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M")
     return JSONResponse(
-        {"version": 3, "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        {"version": 4, "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
          "cameras": cameras, "stations": out_stations, "jobs": out_jobs},
         headers={"Content-Disposition": f'attachment; filename="scrap-meter-devices-{stamp}.json"'},
     )
@@ -192,6 +191,9 @@ def import_devices(
 
     All or nothing: if anything in the file is invalid, nothing is changed and
     every problem is reported. A masked password keeps the stored one.
+    Stations in a file from 1.5 to 1.7 name a device per role; they get a
+    source per device that starts production on any OK piece, as they counted
+    before.
     """
     names = [c.name for c in payload.cameras]
     dupes = sorted({n for n in names if names.count(n) > 1})
@@ -231,7 +233,7 @@ def import_devices(
         # a file from 1.4 or older: the devices were the counted units
         taken = {n for (n,) in db.query(Station.name)}
         for device, fields in new_devices:
-            st = stations.station_for_device(device, **fields)
+            st = stations.station_for_device(device, start_count=1, **fields)
             if st is not None and st.name not in taken:
                 db.add(st)
                 st_created.append(st.name)
@@ -241,15 +243,26 @@ def import_devices(
         for n in sorted({n for n in st_names if st_names.count(n) > 1}):
             errors.append(f"station {n} is listed more than once")
         for item in payload.stations:
-            sources = {}
-            for role, src in item.sources.items():
-                if role not in stations.ROLES or src is None:
-                    continue
-                dev = by_name.get(src.device)
+            missing = set()
+
+            def device_id(name: str) -> int | None:
+                dev = by_name.get(name)
                 if dev is None:
-                    errors.append(f"station {item.name}: device '{src.device}' is not in the file or the app")
-                    continue
-                sources[role] = {"device_id": dev.id, "key": src.key}
+                    missing.add(name)
+                return dev.id if dev else None
+
+            if isinstance(item.sources, dict):  # 1.5 - 1.7: a device per role
+                sources = stations.normalize_sources(
+                    {role: {"device_id": device_id(src.device), "key": src.key}
+                     for role, src in item.sources.items() if role in stations.ROLES and src is not None},
+                    start_count=1)
+            else:
+                sources = [{**src.model_dump(exclude={"device"}), "id": f"s{i}", "device_id": device_id(src.device)}
+                           for i, src in enumerate(item.sources, 1)]
+            for name in sorted(missing):
+                errors.append(f"station {item.name}: device '{name}' is not in the file or the app")
+            if missing:
+                continue
             try:
                 sources = stations.check_sources(db, sources)
             except ValueError as exc:

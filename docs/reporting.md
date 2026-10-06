@@ -32,10 +32,14 @@ afterwards. Comments stay when their station is deleted.
 **`powerbi_readings`**: `reading_id`, `read_at_utc`, `station_id`,
 `station_name`, `job`, `manual_entry`, `raw_ok`, `raw_nok`, `raw_count`,
 `total_ok`, `total_nok`, `in_production`, `excluded`, `included`, `note`,
-`entered_by`. A device reading holds the device's own counters (`raw_*`) and
-the running totals of its job (`total_*`); the parts made between two readings
-are the difference of the totals (see the hourly query below). A manual entry
-holds the parts entered in `raw_ok` / `raw_nok`.
+`entered_by`, `device_id`, `source_id`, `ok_added`, `nok_added`. A device
+reading holds the counters of the device that was read (`raw_*`, its
+`device_id`, and the station source `source_id`), the running totals of its
+job (`total_*`), and since 1.8 the pieces it counted (`ok_added` /
+`nok_added`, 0 while the station was not in production). For older readings
+`ok_added` is empty and the parts made between two readings are the
+difference of the totals (see the hourly query below). A manual entry holds
+the parts entered in `raw_ok` / `raw_nok`.
 
 **`powerbi_job_totals`**: `station_id`, `station_name`, `job`, `ok_count`,
 `nok_count`, `manual_ok`, `manual_nok`, `is_current_job`, `started_at_utc`,
@@ -182,8 +186,10 @@ SELECT station_name, date_trunc('hour', read_at_utc) AS hour_utc,
        SUM(ok) AS ok, SUM(nok) AS nok
 FROM (
   SELECT station_name, read_at_utc,
-         CASE WHEN manual_entry THEN raw_ok ELSE total_ok - LAG(total_ok, 1, total_ok) OVER w END AS ok,
-         CASE WHEN manual_entry THEN raw_nok ELSE total_nok - LAG(total_nok, 1, total_nok) OVER w END AS nok
+         CASE WHEN manual_entry THEN raw_ok
+              ELSE COALESCE(ok_added, total_ok - LAG(total_ok, 1, total_ok) OVER w) END AS ok,
+         CASE WHEN manual_entry THEN raw_nok
+              ELSE COALESCE(nok_added, total_nok - LAG(total_nok, 1, total_nok) OVER w) END AS nok
   FROM powerbi_readings
   WINDOW w AS (PARTITION BY station_id, job, manual_entry ORDER BY read_at_utc, reading_id)
 ) parts
@@ -191,8 +197,9 @@ GROUP BY station_name, hour_utc
 ORDER BY hour_utc DESC, station_name;
 ```
 
-This counts all parts; the Scrap statistics tab also leaves out time out of
-production and excluded readings.
+This counts all parts (`ok_added` since 1.8, the difference of the totals
+before); the Scrap statistics tab also leaves out excluded readings and, for
+readings from before 1.8, time out of production.
 
 Manual entries:
 

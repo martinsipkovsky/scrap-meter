@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .. import comments, jobs, oee, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
-from ..models import CounterState, Reading, Station, User, utcnow
+from ..models import Device, Reading, Station, User, utcnow
 from .stations import ManualEntry, check_entry
 
 router = APIRouter(prefix="/api/data", tags=["data"])
@@ -30,19 +30,22 @@ def _aware(t: dt.datetime) -> dt.datetime:
 def _station_summary(db: Session, st: Station, devices: dict, cycles: dict | None = None) -> dict:
     if cycles is None:
         cycles = jobs.cycle_times(db)
-    active = (
-        db.query(CounterState)
-        .filter(CounterState.station_id == st.id, CounterState.is_active.is_(True))
-        .first()
-    )
+    active = stations.shown(db, st)
     online = stations.status(st, devices)
+    view = stations.sources_view(db, st, devices)
     return {
         "id": st.id,
         "name": st.name,
-        "devices": sorted(devices[i].name for i in st.device_ids() if i in devices),
+        "devices": list(dict.fromkeys(r["device"] for r in view["sources"] if r["device"])),
+        # the devices of the sources in production now; when none is, the one
+        # that was last ({"device", "at"})
+        "active_devices": view["active_devices"],
+        "last_active": view["last_active"],
+        "sources": view["sources"],
         "connected": online["connected"],
         "last_error": online["problem"],
         "current_job": st.current_job,
+        "current_jobs": active.jobs if active else ([st.current_job] if st.current_job else []),
         "last_poll_at": st.last_reading_at,
         "stats_default": st.stats_default,
         # the current job's ideal cycle time (OEE), None when not set
@@ -52,12 +55,13 @@ def _station_summary(db: Session, st: Station, devices: dict, cycles: dict | Non
         if active is None
         else {
             "job_name": active.job_name,
-            # since the last reset from the dashboard (see CounterState)
+            # the jobs run now, since the last reset from the dashboard (see
+            # CounterState); job_name joins several with " + "
             "total_pass": active.shown_pass,
             "total_fail": active.shown_fail,
             "total_count": active.shown_count,
             "scrap_rate": round(active.shown_scrap_rate, 4),
-            "reset_at": _aware(active.reset_at) if active.reset_at else None,
+            "reset_at": active.reset_at,
         },
     }
 
@@ -88,32 +92,25 @@ def oee_last_24h(
 
 
 def ok_nok_buckets(readings: list[Reading], start: dt.datetime, end: dt.datetime, bucket_s: int) -> list[dict]:
-    """OK/NOK parts produced per time bucket.
+    """OK/NOK parts produced per time bucket (app.scrap_stats.parts).
 
-    Each reading carries the running totals of its job at that moment, so the
-    parts made between two consecutive readings of the same job are the
-    difference of their totals. A job change starts a new baseline (0 parts).
-    ``readings`` must be oldest first; the first one only serves as baseline.
+    ``readings`` must be oldest first; one from before ``start`` only serves
+    as baseline.
     """
     n = max(1, int((end - start).total_seconds() // bucket_s) + 1)
     first = int(start.timestamp()) // bucket_s * bucket_s
     bars = [{"t": dt.datetime.fromtimestamp(first + i * bucket_s, dt.timezone.utc), "ok": 0, "nok": 0} for i in range(n)]
     prev = None
     for r in readings:
-        if r.manual:  # entered by hand: its own parts
-            idx = (int(_aware(r.created_at).timestamp()) - first) // bucket_s
-            if 0 <= idx < n:
-                bars[idx]["ok"] += r.raw_pass
-                bars[idx]["nok"] += r.raw_fail
-            continue
-        if prev is not None and prev.job_name == r.job_name:
-            d_ok = r.total_pass - prev.total_pass
-            d_nok = r.total_fail - prev.total_fail
-            idx = (int(_aware(r.created_at).timestamp()) - first) // bucket_s
-            if 0 <= idx < n:
-                bars[idx]["ok"] += max(d_ok, 0)
-                bars[idx]["nok"] += max(d_nok, 0)
-        prev = r
+        d_ok, d_nok = scrap_stats.parts(r, prev)
+        if not r.manual:
+            prev = r
+        if _aware(r.created_at) < start:
+            continue  # the baseline before the window
+        idx = (int(_aware(r.created_at).timestamp()) - first) // bucket_s
+        if 0 <= idx < n:
+            bars[idx]["ok"] += d_ok
+            bars[idx]["nok"] += d_nok
     return bars
 
 
@@ -169,6 +166,7 @@ def readings(
         q = q.filter(is_out if excluded else ~is_out)
     rows = q.order_by(Reading.created_at.desc()).limit(min(limit, 1000)).all()
     out_ids = set(_excluded_station_ids(db))
+    names = dict(db.query(Device.id, Device.name).filter(Device.id.in_({r.device_id for r in rows if r.device_id})))
     return [
         {
             "id": r.id,
@@ -178,6 +176,10 @@ def readings(
             "raw_fail": r.raw_fail,
             "total_pass": r.total_pass,
             "total_fail": r.total_fail,
+            # the device read and the pieces the reading counted (None before 1.8)
+            "device": names.get(r.device_id),
+            "ok_added": r.ok_added,
+            "nok_added": r.nok_added,
             "excluded": bool(r.excluded),
             "manual": bool(r.manual),
             "note": r.note,

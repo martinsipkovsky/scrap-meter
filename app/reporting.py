@@ -91,7 +91,8 @@ LEFT JOIN jobs j ON j.name = n.job
 """,
     ),
     "powerbi_readings": (
-        "Every reading and manual entry (the history behind the chart and the statistics)",
+        "Every reading and manual entry (the history behind the chart and the statistics); "
+        "ok_added / nok_added: the pieces a reading counted (empty before 1.8)",
         """
 SELECT
     r.id AS reading_id,
@@ -109,7 +110,11 @@ SELECT
     r.excluded AS excluded,
     r.included AS included,
     r.note AS note,
-    r.entered_by AS entered_by
+    r.entered_by AS entered_by,
+    r.device_id AS device_id,
+    r.source_id AS source_id,
+    r.ok_added AS ok_added,
+    r.nok_added AS nok_added
 FROM readings r
 LEFT JOIN stations s ON s.id = r.station_id
 """,

@@ -97,14 +97,15 @@ def test_device_poll_survives_counter_reset(client, sim):
     dev = r.json()
     assert (dev["host"], dev["port"]) == ("127.0.0.1", sim.port)  # taken from the endpoint
     assert dev["protocol_config"]["password"] == "********"        # never sent back
-    for p, f in ((100, 10), (130, 12), (5, 1), (25, 2)):           # reset to zero after 130/12
+    # the baseline, +30 OK (starts production), a reset to zero, then +20
+    for p, f in ((100, 10), (130, 12), (5, 1), (25, 2)):
         sim.set(Pass=p, Fail=f, Total=p + f)
         assert client.post(f"/api/devices/{dev['id']}/poll").status_code == 200
     db = SessionLocal()
     try:
         sid = client.get("/api/stations").json()[0]["id"]
         st = db.query(CounterState).filter_by(station_id=sid, is_active=True).one()
-        assert (st.total_pass, st.total_fail) == (155, 14)
+        assert (st.total_pass, st.total_fail) == (30 + 5 + 20, 2 + 1 + 1)
         # saving the form with the masked password keeps the real one
         cfg = {**dev["protocol_config"], "password": "********"}
         assert client.patch(f"/api/devices/{dev['id']}", json={"protocol_config": cfg}).status_code == 200

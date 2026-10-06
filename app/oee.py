@@ -29,7 +29,7 @@ import datetime as dt
 
 from sqlalchemy.orm import Session
 
-from . import jobs, production
+from . import jobs, production, stations
 from .models import Station, utcnow
 from .scrap_stats import station_parts
 
@@ -78,7 +78,7 @@ def station_figures(db: Session, st: Station, start: dt.datetime, end: dt.dateti
         "ok": ok, "nok": nok, "production_s": round(prod_s),
         "timed_production_s": round(timed_s), "ideal_s": round(ideal, 1),
         # in the overall OEE: parts of a job with a cycle time, or idle on one
-        "covered": bool(ideal) or bool(cycles.get(st.current_job or st.default_job)),
+        "covered": bool(ideal) or any(cycles.get(j) for j in stations.current_jobs(db, st) or [st.default_job]),
         "jobs_without_cycle_time": sorted(missing),
         "availability": availability, "performance": performance, "quality": quality, "oee": oee,
     }

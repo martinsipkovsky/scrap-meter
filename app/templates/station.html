@@ -32,6 +32,12 @@
 </div>
 {% endif %}
 
+<div class="card" style="margin-bottom:16px" id="sourcesCard">
+  <h3 style="margin:0 0 4px">Sources</h3>
+  <div class="hint" style="margin-top:0;margin-bottom:8px">Each device counts on its own. A source is active while the station is in production and its OK count rose within the idle timeout.</div>
+  <table><thead><tr><th>Device</th><th>State</th><th>Job</th><th>Values</th><th>Starts production at</th></tr></thead><tbody id="srcRows"></tbody></table>
+</div>
+
 <div class="card" style="margin-bottom:16px" id="commentsCard">
   <h3 style="margin:0 0 4px">Comments</h3>
   <div class="hint" style="margin-top:0;margin-bottom:8px">Saved with the time, your name, and the job, OK / NOK and scrap shown above at that moment. Reports (Power BI) can read them.</div>
@@ -164,6 +170,24 @@ function renderChart(h) {
   svg.onmouseleave = () => { tip.style.display = 'none'; };
 }
 
+function renderSources(d) {
+  document.getElementById('sourcesCard').style.display = d.sources.length ? '' : 'none';
+  const tb = document.getElementById('srcRows');
+  tb.innerHTML = '';
+  const LABELS = { ok: 'OK', nok: 'NOK', count: 'Total', job: 'Job' };
+  for (const s of d.sources) {
+    const state = s.active ? el('span', { class: 'badge ok' }, 'Active')
+      : el('span', {}, el('span', { class: 'badge off' }, s.connected ? 'Not active' : 'Offline'),
+        s.last_ok_at ? el('div', { class: 'muted' }, 'last OK ' + fmtAgo(s.last_ok_at)) : null);
+    tb.append(el('tr', { class: s.active ? '' : 'source-idle' },
+      el('td', {}, el('strong', {}, s.device || 'deleted device')),
+      el('td', {}, state),
+      el('td', {}, s.current_job || '—'),
+      el('td', { class: 'muted' }, Object.keys(LABELS).filter(r => s[r]).map(r => LABELS[r] + ': ' + s[r]).join(' · ')),
+      el('td', { class: 'muted' }, s.ok ? s.start_count + ' OK within ' + s.start_window_s + ' s' : 'follows the station')));
+  }
+}
+
 function niceStep(max) {
   const raw = max / 5, mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const n = raw / mag;
@@ -176,17 +200,22 @@ async function load() {
   catch (e) { document.getElementById('sub').textContent = e.message; return; }
   document.title = d.name + ' · Scrap Meter';
   document.getElementById('title').textContent = d.name;
-  document.getElementById('sub').textContent = (d.devices.length ? 'Devices: ' + d.devices.join(', ') : 'Manual entries only') +
+  const sub = document.getElementById('sub');
+  sub.innerHTML = '';
+  sub.append((d.devices.length ? 'Devices: ' + d.devices.join(', ') : 'Manual entries only') +
     (d.stats_default === 'exclude' ? ' · not in statistics totals' : '') +
-    (d.job_cycle_s ? ' · ideal cycle ' + d.job_cycle_s + ' s / piece for job ' + d.current_job : '');
+    (d.job_cycle_s ? ' · ideal cycle ' + d.job_cycle_s + ' s / piece for job ' + d.current_job : ''));
+  const act = activeLine(d);
+  if (act) sub.append(act);
+  renderSources(d);
   const [cls, label] = PROD_BADGE[d.production_state];
   const ps = document.getElementById('prodState');
   ps.innerHTML = ''; ps.append(el('span', { class: 'badge ' + cls, style: 'font-size:14px' }, label));
   document.getElementById('prodNote').textContent =
     d.production_state === 'stopped' ? 'Stopped by an operator; no scrap alerts until Start.'
-    : d.production_state === 'idle' ? idleText(d) + '. Resumes on the next pass.'
-    : 'Last pass ' + fmtAgo(d.last_pass_change_at) + '; stops after ' + d.idle_timeout_min + ' min without passes.';
-  document.getElementById('job').textContent = d.current_job || '—';
+    : d.production_state === 'idle' ? idleText(d) + '. Starts again when a source makes its start count of OK pieces; nothing is counted until then.'
+    : 'Last OK ' + fmtAgo(d.last_pass_change_at) + '; leaves production after ' + d.idle_timeout_min + ' min without OK pieces.';
+  document.getElementById('job').textContent = (d.current_jobs.length ? d.current_jobs.join(' + ') : d.current_job) || '—';
   document.getElementById('conn').textContent = (d.connected ? 'Online' : 'Offline' + (d.last_error ? ': ' + d.last_error : '')) + ' · last data ' + fmtAgo(d.last_poll_at);
   const j = d.active_job || { total_pass: 0, total_fail: 0, scrap_rate: 0 };
   document.getElementById('tPass').textContent = j.total_pass;

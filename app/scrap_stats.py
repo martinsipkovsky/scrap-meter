@@ -1,9 +1,10 @@
 """Scrap statistics over a date range (the Scrap statistics page).
 
 Parts are counted per station the same way as the station view's OK/NOK
-chart: each reading carries the running totals of its job, so the parts made
-between two consecutive readings of the same job are the difference of their
-totals, and a job change starts a new baseline. Scrap is fail / (pass + fail).
+chart (``parts``): a reading since 1.8 says which pieces it added to the
+station's counters (ok_added / nok_added); on older readings they are the
+difference of the running totals of two consecutive readings of the same job,
+and a job change starts a new baseline. Scrap is fail / (pass + fail).
 
 Parts are left out (and reported separately) when their reading
 * was excluded by a user, or
@@ -63,6 +64,23 @@ def day_bounds(first_day: dt.date, last_day: dt.date, tz: dt.tzinfo) -> tuple[dt
     return start, end
 
 
+def parts(r, prev) -> tuple[int, int]:
+    """(OK, NOK) a reading counted; ``prev`` is the station's previous device
+    reading (only used for readings from before 1.8)."""
+    if r.manual:  # entered by hand: its own parts, outside the devices' totals
+        return r.raw_pass, r.raw_fail
+    if r.ok_added is not None:
+        return r.ok_added, r.nok_added or 0
+    if prev is not None and prev.job_name == r.job_name:
+        return max(r.total_pass - prev.total_pass, 0), max(r.total_fail - prev.total_fail, 0)
+    return 0, 0
+
+
+# the Reading columns ``parts`` needs
+PART_COLUMNS = (Reading.job_name, Reading.total_pass, Reading.total_fail, Reading.manual,
+                Reading.raw_pass, Reading.raw_fail, Reading.ok_added, Reading.nok_added)
+
+
 def station_parts(db: Session, station: Station, start: dt.datetime, end: dt.datetime):
     """The station's readings in [start, end) with the parts each one counted.
 
@@ -70,9 +88,7 @@ def station_parts(db: Session, station: Station, start: dt.datetime, end: dt.dat
     ok, nok (parts since the previous reading of the same job), excluded,
     included (by a user), in_production (recorded, or by the idle rule).
     """
-    cols = (Reading.job_name, Reading.total_pass, Reading.total_fail, Reading.created_at,
-            Reading.excluded, Reading.in_production, Reading.included, Reading.manual,
-            Reading.raw_pass, Reading.raw_fail)
+    cols = (*PART_COLUMNS, Reading.created_at, Reading.excluded, Reading.in_production, Reading.included)
     timeout = dt.timedelta(minutes=max(1, station.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN))
     # start one idle timeout early so the idle rule knows the last pass
     # increase before the range
@@ -96,9 +112,7 @@ def station_parts(db: Session, station: Station, start: dt.datetime, end: dt.dat
                        "excluded": bool(r.excluded), "included": bool(r.included), "in_production": True,
                        "manual": True}
             continue
-        same_job = prev is not None and prev.job_name == r.job_name
-        d_ok = max(r.total_pass - prev.total_pass, 0) if same_job else 0
-        d_nok = max(r.total_fail - prev.total_fail, 0) if same_job else 0
+        d_ok, d_nok = parts(r, prev)
         prev_t = _aware(prev.created_at) if prev is not None else None
         prev = r
         if d_ok:

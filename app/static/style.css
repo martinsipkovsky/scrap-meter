@@ -117,6 +117,20 @@ textarea { min-height: 90px; resize: vertical; font-family: ui-monospace, SFMono
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+
+/* ---- Station sources ---- */
+.source-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--bg-3); }
+.source-head { display: flex; gap: 10px; align-items: center; }
+.source-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.source-values label { margin-top: 8px; }
+.source-rule { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.source-rule input { padding: 5px 8px; }
+.source-line + .source-line { margin-top: 6px; }
+.active-line { font-size: 12px; margin-top: 2px; }
+.active-line.on { color: var(--ok); }
+.active-line.off { color: var(--text-dim); }
+tr.source-idle td { opacity: .7; }
+@media (max-width: 640px) { .source-values { grid-template-columns: 1fr; } }
 .row > * { flex: 1; min-width: 140px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 

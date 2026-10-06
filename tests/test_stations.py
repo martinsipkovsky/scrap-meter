@@ -60,10 +60,10 @@ def test_ok_from_opcua_nok_from_tcp_listener(client, sim):
                                             "protocol_config": {"job_field": 0, "pass_field": 1,
                                                                 "fail_field": 2}}).json()
     assert client.get("/api/stations").json() == []  # no station unless asked for
-    st = _station(client, "M1", {"ok": {"device_id": opc["id"], "key": "ns=2;s=Line1.Pass"},
-                                 "nok": {"device_id": tcp["id"], "key": "fail"},
-                                 "job": {"device_id": opc["id"], "key": "ns=2;s=Line1.Job"}})
+    st = _station(client, "M1", [{"device_id": opc["id"], "ok": "ns=2;s=Line1.Pass", "job": "ns=2;s=Line1.Job"},
+                                 {"device_id": tcp["id"], "nok": "fail"}])
     sid = st["id"]
+    assert [s["id"] for s in st["sources"]] == ["s1", "s2"] and st["sources"][0]["start_count"] == 2
     assert not st["connected"] and "PLC" in st["problem"]
 
     def counters():
@@ -73,28 +73,32 @@ def test_ok_from_opcua_nok_from_tcp_listener(client, sim):
     listener_manager.sync(_listen_devices())
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=3) as dev:
-            dev.sendall(b"X,0,4\r\n")  # NOK 4 before the OK side has a value: nothing recorded yet
+            # NOK 4 before the job is known (it comes from the PLC): waits
+            dev.sendall(b"X,0,4\r\n")
             assert _wait(lambda: client.get("/api/devices").json()[1]["connected"])
             sim.set(Pass=100, Job="JOB_A")
             assert client.post(f"/api/devices/{opc['id']}/poll").status_code == 200
-            assert counters() == ("JOB_A", 100, 4)  # first sample: the baseline
-            sim.set(Pass=130)
+            assert counters() == ("JOB_A", 0, 0)  # first read: the baseline
+            sim.set(Pass=130)  # 30 OK pieces: production starts, and they count
             client.post(f"/api/devices/{opc['id']}/poll")
-            dev.sendall(b"X,0,6\r\n")
-            assert _wait(lambda: counters() == ("JOB_A", 130, 6)), counters()
+            assert counters() == ("JOB_A", 30, 0)
+            dev.sendall(b"X,0,6\r\n")  # the NOK side's baseline
+            dev.sendall(b"X,0,9\r\n")
+            assert _wait(lambda: counters() == ("JOB_A", 30, 3)), counters()
             # the OK counter is reset on the PLC; the NOK side keeps counting
             sim.set(Pass=7)
             client.post(f"/api/devices/{opc['id']}/poll")
-            dev.sendall(b"X,0,9\r\n")
-            assert _wait(lambda: counters() == ("JOB_A", 137, 9)), counters()
+            assert counters() == ("JOB_A", 37, 3)
             # and now the reject counter is reset
             dev.sendall(b"X,0,1\r\n")
-            assert _wait(lambda: counters() == ("JOB_A", 137, 10)), counters()
+            assert _wait(lambda: counters() == ("JOB_A", 37, 4)), counters()
             s = next(x for x in client.get("/api/stations").json() if x["id"] == sid)
             assert s["connected"] and s["problem"] is None
             summary = client.get("/api/data/summary").json()[0]
             assert summary["devices"] == ["PLC", "Reject counter"]
-            assert (summary["active_job"]["total_pass"], summary["active_job"]["total_fail"]) == (137, 10)
+            assert summary["active_devices"] == ["PLC", "Reject counter"]
+            assert [x["current_job"] for x in summary["sources"]] == ["JOB_A", "JOB_A"]
+            assert (summary["active_job"]["total_pass"], summary["active_job"]["total_fail"]) == (37, 4)
             # a device used by a station cannot be deleted
             assert client.delete(f"/api/devices/{tcp['id']}").status_code == 409
         assert _wait(lambda: not client.get(f"/api/stations").json()[0]["connected"])
@@ -121,6 +125,16 @@ def test_station_sources_are_checked(client):
     # a job without OK or NOK counts makes no sense (no devices at all is fine: manual entries)
     assert client.post("/api/stations", json={"name": "x", "sources": {
         "job": {"device_id": did, "key": "job"}}}).status_code == 400
+    bad = [[{"device_id": did}],                                   # no value at all
+           [{"device_id": did, "count": "count"}],                 # a total alone
+           [{"device_id": did, "ok": "pass", "start_count": 0}]]   # start rule out of range
+    for sources in bad:
+        assert client.post("/api/stations", json={"name": "x", "sources": sources}).status_code in (400, 422)
+    # a job-only source next to a counting one is fine
+    r = client.post("/api/stations", json={"name": "x", "sources": [
+        {"device_id": did, "job": "job"}, {"device_id": did, "ok": "pass"}]})
+    assert r.status_code == 201, r.text
+    client.delete(f"/api/stations/{r.json()['id']}")
     assert client.post("/api/stations", json={"name": "D", "sources": {
         "ok": {"device_id": did, "key": "pass"}}}).status_code == 409
     values = client.get("/api/devices/values").json()[0]
@@ -177,9 +191,10 @@ def test_upgrade_makes_a_station_per_device_with_the_same_id(client):
         st = db.get(Station, cam_id)
         assert (st.name, st.idle_timeout_min, st.stats_default, st.manual_stop, st.current_job) == (
             "Cam", 20, "exclude", True, "J")
-        assert st.source("ok") == {"device_id": cam_id, "key": "pass"}
-        o = db.get(Station, opc_id)
-        assert (o.source("ok")["key"], o.source("nok")["key"], o.source("job"), o.default_job) == (
+        assert st.source_list() == [stations.new_source(cam_id, ok="pass", nok="fail", count="count", job="job",
+                                                        start_count=1)]
+        (o,) = db.get(Station, opc_id).source_list()
+        assert (o["ok"], o["nok"], o["job"], db.get(Station, opc_id).default_job) == (
             "ns=2;s=P", "ns=2;s=F", None, "AUTO")
         assert db.get(Station, bare_id) is None  # nothing to count yet
         assert db.query(CounterState).one().station_id == cam_id
@@ -262,6 +277,7 @@ def test_manual_entries(client):
     client.post(f"/api/stations/{sid}/production/start")
     for _ in range(3):  # baseline, then +10, +10 from the device
         client.post(f"/api/devices/{did}/poll")
+    # (the dashboard counts from the baseline, like the statistics)
     r = client.post(f"/api/stations/{sid}/entries", json={"ok": 5, "nok": 2, "note": "hand check"})
     assert r.status_code == 201, r.text
     entry_id = r.json()["id"]
@@ -270,7 +286,7 @@ def test_manual_entries(client):
     client.post(f"/api/devices/{did}/poll")  # the device keeps counting on top: +10
 
     job = client.get("/api/data/summary").json()[0]["active_job"]
-    assert (job["total_pass"], job["total_fail"]) == (40 + 5, 0 + 5)
+    assert (job["total_pass"], job["total_fail"]) == (30 + 5, 0 + 5)
     today = dt.date.today().isoformat()
     s = client.get("/api/data/scrap", params={"from": today, "to": today, "tz": "UTC"}).json()
     if (dt.datetime.now(UTC) - dt.timedelta(hours=2)).date() == dt.datetime.now(UTC).date():
@@ -285,11 +301,11 @@ def test_manual_entries(client):
     assert entry["manual"] and entry["entered_by"] == "Admin" and entry["note"] == "hand check"
     # edit, exclude, delete
     assert client.put(f"/api/data/readings/{entry_id}/entry", json={"ok": 7, "nok": 0, "note": "x"}).status_code == 200
-    assert client.get("/api/data/summary").json()[0]["active_job"]["total_pass"] == 47
+    assert client.get("/api/data/summary").json()[0]["active_job"]["total_pass"] == 37
     client.patch(f"/api/data/readings/{entry_id}", json={"excluded": True})
     assert oee.compute(SessionLocal(), hours=24)["totals"]["ok"] == 30
     assert client.delete(f"/api/data/readings/{entry_id}").status_code == 204
-    assert client.get("/api/data/summary").json()[0]["active_job"]["total_pass"] == 40
+    assert client.get("/api/data/summary").json()[0]["active_job"]["total_pass"] == 30
     device_reading = next(x for x in rows if not x["manual"])
     assert client.delete(f"/api/data/readings/{device_reading['id']}").status_code == 404
 
@@ -317,5 +333,5 @@ def test_station_fed_only_by_manual_entries(client):
     assert sc["per_station"][0]["total"] == 100
     # it exports and imports like any station
     data = client.get("/api/devices/export").json()
-    assert data["stations"][0]["sources"] == {"ok": None, "nok": None, "count": None, "job": None}
+    assert data["stations"][0]["sources"] == []
     assert client.post("/api/devices/import", json=data).status_code == 200

@@ -50,11 +50,13 @@ app/
   settings_store.py  copy of the settings files in the database (survives updates)
   backup.py          backup file format, writing and restoring all data
   backup_ftp.py      FTP/FTPS upload and the automatic backup schedule
-  models.py          User, Device, Station, Job, CounterState, Reading, StationComment,
-                     Notification*, Meta
-  counters.py        reset-proof accumulation (pure, unit-tested)
-  stations.py        stations: values from devices to readings, manual entries,
-                     the upgrade of 1.4 data (devices became stations)
+  models.py          User, Device, Station, SourceState, Job, CounterState, Reading,
+                     StationComment, Notification*, Meta
+  counters.py        reset-proof counter deltas (pure, unit-tested)
+  stations.py        stations and their sources: start rule, counting while in
+                     production, readings, manual entries, active devices, the
+                     upgrades of 1.4 data (devices became stations) and of
+                     1.5-1.7 data (roles became sources)
   jobs.py            the jobs list, ideal cycle times per job, the upgrade of
                      1.6 data (station cycle times moved to the jobs)
   production.py      running / idle / stopped state per station

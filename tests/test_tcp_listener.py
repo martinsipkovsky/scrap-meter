@@ -113,7 +113,7 @@ def test_camera_push_feeds_counters_and_survives_reset(client):
                 c = client.get(f"/api/stations/{sid}/counters").json()
                 return (c[0]["total_pass"], c[0]["total_fail"]) if c else None
 
-            assert _wait(lambda: totals() == (118, 6)), totals()
+            assert _wait(lambda: totals() == (15 + 3, 1)), totals()  # counted from the baseline
 
             cam.sendall(b"JOB_B,1,1\r\n")
             assert _wait(lambda: client.get("/api/devices").json()[0]["current_job"] == "JOB_B")

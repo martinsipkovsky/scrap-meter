@@ -1,38 +1,35 @@
-"""Reset-proof counter accumulation.
+"""Reset-proof counter deltas.
 
 This module is deliberately pure/self-contained so it is easy to test and to
-troubleshoot: given the previous CounterState and a fresh raw sample from a
-station, it computes the new running totals.
+troubleshoot: given the raw counters a station source read last time and the
+ones it reads now, it computes how many pieces were made in between.
 
 Rules (see also models.py docstring):
 
 * delta = raw_now - raw_prev, normally.
 * A counter reset on a device is a *device-wide* event: pass, fail and total
-  all restart together. So reset detection is done at the sample level — if ANY of the
-  raw counters dropped below what we last saw, we treat the whole sample as a
-  reset and each counter's delta becomes its new raw value (everything counted
-  since the reset). This matters because after a reset an individual counter
-  can land on a value higher than its pre-reset value (e.g. fail 1 -> reset ->
-  2); detecting the reset per-counter would misread that as a +1 increment and
-  undercount. Any counts between the last poll and the reset are unavoidably
-  not observable, but we never subtract and never lose banked totals.
-* A station whose counters come from different devices (OK from one, NOK
-  from another) is not reset together, so there each counter is checked on
-  its own (``apply_sample(..., linked=False)``).
-* When the job name changes, the caller starts a new CounterState; the old
-  one is frozen with is_active = False.
+  all restart together. A source reads one device, so reset detection is
+  done across the source's counters: if ANY of them dropped below what we
+  last saw, the whole read is a reset and each counter's delta becomes its
+  new raw value (everything counted since the reset). This matters because
+  after a reset an individual counter can land on a value higher than its
+  pre-reset value (e.g. fail 1 -> reset -> 2); detecting the reset
+  per-counter would misread that as a +1 increment and undercount. Any counts
+  between the last read and the reset are unavoidably not observable, but we
+  never subtract and never lose banked totals.
+* A station whose OK and NOK come from different devices has a source per
+  device, so a reset of one device is not a reset of the other.
+* Whether a delta is added to the station's counters (only while it is in
+  production) is decided by app.stations.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import CounterState, Station
-
 
 @dataclass
 class Sample:
-    """Normalised reading: returned by a protocol driver, and built for a
-    station from its devices' values (app.stations)."""
+    """Normalised reading returned by a protocol driver."""
 
     job_name: str
     raw_pass: int = 0
@@ -54,16 +51,20 @@ SAMPLE_KEYS = {"pass": "OK counter (pass)", "fail": "NOK counter (fail)",
 
 
 def sample_values(sample: Sample) -> dict:
-    """A device's values as stations see them (see Station.sources)."""
-    return {"pass": sample.raw_pass, "fail": sample.raw_fail, "count": sample.raw_count, "job": sample.job_name}
+    """A device's values as stations see them (see Station.sources). An
+    event-mode listener counts its own tally from zero ("_from_zero"), so a
+    station's first read of it is all new pieces, not a baseline."""
+    values = {"pass": sample.raw_pass, "fail": sample.raw_fail, "count": sample.raw_count, "job": sample.job_name}
+    if (sample.extra or {}).get("mode") == "event":
+        values["_from_zero"] = True
+    return values
 
 
 def compute_delta(raw_now: int, raw_prev: int) -> int:
     """Non-negative increment for a single counter, treating a drop as a reset.
 
-    Used directly only when a counter is tracked on its own. For a device's
-    pass/fail/count triple prefer ``apply_sample``, which detects the reset
-    across the whole sample (see module docstring).
+    For a source's pass/fail/count triple use ``deltas``, which detects the
+    reset across all of them (see module docstring).
     """
     if raw_now >= raw_prev:
         return raw_now - raw_prev
@@ -71,64 +72,13 @@ def compute_delta(raw_now: int, raw_prev: int) -> int:
     return max(raw_now, 0)
 
 
-def is_reset(sample: Sample, state: CounterState) -> bool:
-    """A device-wide reset: any monotonic counter dropped since last poll."""
-    return (
-        sample.raw_pass < state.last_raw_pass
-        or sample.raw_fail < state.last_raw_fail
-        or sample.raw_count < state.last_raw_count
-    )
+def deltas(prev: tuple[int, int, int], now: tuple[int, int, int]) -> tuple[int, int, int]:
+    """(pass, fail, count) made between two reads of one device's counters.
 
-
-def apply_sample(state: CounterState, sample: Sample, linked: bool = True,
-                 own_count: bool = True) -> CounterState:
-    """Fold one raw sample into a running CounterState (in place).
-
-    ``linked``: the counters come from one device, so a drop in any of them
-    means all were reset. False checks each counter on its own; then
-    ``own_count`` False (no total counter, raw_count is pass + fail) makes the
-    total grow by exactly the pass and fail increases.
+    A drop in any of them means the device reset all of them, so each new
+    raw value is all new pieces. A counter the source doesn't read is 0 in
+    both and adds nothing.
     """
-    if not linked:
-        d_pass = compute_delta(sample.raw_pass, state.last_raw_pass)
-        d_fail = compute_delta(sample.raw_fail, state.last_raw_fail)
-        d_count = (compute_delta(sample.raw_count, state.last_raw_count) if own_count
-                   else d_pass + d_fail)
-    elif is_reset(sample, state):
-        # every counter restarted; its new raw value is all-new counts
-        d_pass = max(sample.raw_pass, 0)
-        d_fail = max(sample.raw_fail, 0)
-        d_count = max(sample.raw_count, 0)
-    else:
-        d_pass = sample.raw_pass - state.last_raw_pass
-        d_fail = sample.raw_fail - state.last_raw_fail
-        d_count = sample.raw_count - state.last_raw_count
-
-    state.total_pass += d_pass
-    state.total_fail += d_fail
-    state.total_count += d_count
-
-    state.last_raw_pass = sample.raw_pass
-    state.last_raw_fail = sample.raw_fail
-    state.last_raw_count = sample.raw_count
-    return state
-
-
-def new_state_for(station: Station, sample: Sample) -> CounterState:
-    """Create a fresh CounterState seeded from the first sample of a job.
-
-    The first sample establishes the baseline: its raw values become the
-    starting totals so that a device that has already counted N parts for a
-    job does not double-count on the first poll after the app starts watching.
-    """
-    return CounterState(
-        station_id=station.id,
-        job_name=sample.job_name,
-        total_pass=sample.raw_pass,
-        total_fail=sample.raw_fail,
-        total_count=sample.raw_count,
-        last_raw_pass=sample.raw_pass,
-        last_raw_fail=sample.raw_fail,
-        last_raw_count=sample.raw_count,
-        is_active=True,
-    )
+    if any(n < p for n, p in zip(now, prev)):
+        return tuple(max(n, 0) for n in now)  # type: ignore[return-value]
+    return tuple(n - p for n, p in zip(now, prev))  # type: ignore[return-value]

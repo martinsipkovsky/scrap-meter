@@ -26,7 +26,8 @@ import time
 from sqlalchemy.orm import Session
 
 from . import production, scrap_stats, settings_store, stations
-from .models import ChatCommand, CommandLog, CounterState, Reading, Station, utcnow
+from .scrap_stats import PART_COLUMNS, parts
+from .models import ChatCommand, CommandLog, Reading, Station, utcnow
 
 log = logging.getLogger("cognex.commands")
 
@@ -118,21 +119,17 @@ def _pct(fail: int, total: int) -> str:
 
 
 def _window_counts(db: Session, station: Station, start: dt.datetime) -> tuple[int, int]:
-    """OK / NOK made since ``start``: differences of consecutive readings of
-    the same job (like the station view's chart)."""
-    q = db.query(Reading.job_name, Reading.total_pass, Reading.total_fail, Reading.manual,
-                 Reading.raw_pass, Reading.raw_fail).filter(Reading.station_id == station.id)
+    """OK / NOK made since ``start``, like the station view's chart
+    (app.scrap_stats.parts)."""
+    q = db.query(*PART_COLUMNS).filter(Reading.station_id == station.id)
     prev = (q.filter(Reading.created_at < start, Reading.manual.isnot(True))
             .order_by(Reading.created_at.desc(), Reading.id.desc()).first())
     ok = nok = 0
     for r in q.filter(Reading.created_at >= start).order_by(Reading.created_at.asc(), Reading.id.asc()):
-        if r.manual:  # entered by hand: its own parts
-            ok, nok = ok + r.raw_pass, nok + r.raw_fail
-            continue
-        if prev is not None and prev.job_name == r.job_name:
-            ok += max(r.total_pass - prev.total_pass, 0)
-            nok += max(r.total_fail - prev.total_fail, 0)
-        prev = r
+        d_ok, d_nok = parts(r, prev)
+        ok, nok = ok + d_ok, nok + d_nok
+        if not r.manual:
+            prev = r
     return ok, nok
 
 
@@ -178,8 +175,7 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
             if cmd.period == "hours":
                 ok, nok = _window_counts(db, d, start)
             else:
-                state = (db.query(CounterState)
-                         .filter(CounterState.station_id == d.id, CounterState.is_active.is_(True)).first())
+                state = stations.shown(db, d)
                 ok, nok = (state.shown_pass, state.shown_fail) if state else (0, 0)
             in_ok, in_nok = (0, 0) if d.excluded_by_default else (ok, nok)
         tot_ok, tot_nok = tot_ok + in_ok, tot_nok + in_nok
@@ -189,7 +185,7 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
         values = {
             "station": d.name, "device": d.name, "camera": d.name, "state": _STATE_TEXT[prod],
             "online": "online" if online else "offline",
-            "job": d.current_job or "—", "pass": ok, "fail": nok, "total": ok + nok,
+            "job": " + ".join(stations.current_jobs(db, d)) or "—", "pass": ok, "fail": nok, "total": ok + nok,
             "scrap": _pct(nok, ok + nok), "last_data": _local(d.last_reading_at, tz),
         }
         line = _fill(cmd.line, values)

@@ -6,22 +6,25 @@ Devices and stations:
   reads (or that pushes to the app). Each read leaves the device's latest
   values in Device.last_values ({"pass": 120, "fail": 4, "job": "A"} for most
   protocols, node ids for OPC UA).
-* A Station is what is counted: its OK, NOK, optional total and optional job
-  each come from one device and one value of it (Station.sources), so one
-  station can combine several devices. Counters, readings, production state,
-  statistics, alerts and chat commands are all per station.
+* A Station is what is counted. It has one or more sources (Station.sources):
+  a source is one device plus which of its values give the OK, NOK, total and
+  job, each configured on its own, so a station can combine several devices
+  (two cameras, or OK from one device and NOK from another). Counters,
+  readings, production state, statistics, alerts and chat commands are all
+  per station; app.stations explains how the sources are counted.
 
 Design notes on the counter logic (the heart of this app):
 
-* Each Station has a live CounterState per job name. The devices expose their
-  own pass/fail counters which operators may reset at any time. We never want
-  to lose counts across a reset, so every reading we compute the *delta* since
-  the previous one and add it to a running global total.
+* Each Station has a CounterState per job name. The devices expose their own
+  pass/fail counters which operators may reset at any time. We never want to
+  lose counts across a reset, so on every read we compute each source's
+  *delta* since the previous read (SourceState) and add it to the running
+  total of the source's job, but only while the station is in production.
 * A reset is detected when a raw counter drops below the value we saw last
   time. In that case the delta is the new raw value itself (the counter
   restarted from zero), not raw_now - raw_prev (which would be negative).
-* When the job name changes, the running totals for the previous job are
-  frozen (kept in the DB) and a fresh CounterState starts for the new job.
+* The jobs the sources are running now have is_active set (several, when
+  sources run different jobs); the others are frozen (kept in the DB).
 * A user can reset the counters shown on the dashboard. That only moves a
   baseline (base_*): the totals keep counting, so the readings history and
   the scrap statistics, which are built from the totals, do not change.
@@ -148,29 +151,34 @@ class Device(Base):
 
 
 class Station(Base):
-    """A counted unit, e.g. machine "M1": OK from one device, NOK from another.
+    """A counted unit, e.g. machine "M1" with two cameras.
 
-    ``sources`` maps a role to a device value::
+    ``sources`` lists where its pieces come from, one entry per device::
 
-        {"ok":    {"device_id": 1, "key": "pass"},
-         "nok":   {"device_id": 2, "key": "ns=2;s=M1.Rejects"},
-         "count": null,                      # optional total; else OK + NOK
-         "job":   {"device_id": 1, "key": "job"}}   # optional; else default_job
+        [{"id": "s1", "device_id": 1, "ok": "pass", "nok": "fail",
+          "count": null,      # optional total; else OK + NOK
+          "job": "job",       # optional; else the station's job
+          "start_count": 2, "start_window_s": 60},   # the start rule
+         {"id": "s2", "device_id": 2, "ok": null, "nok": "ns=2;s=M1.Rejects", ...}]
+
+    Up to 1.7 it was a dict of roles ({"ok": {"device_id": 1, "key": "pass"},
+    ...}); ``source_list`` reads both (app.stations.normalize_sources).
     """
 
     __tablename__ = "stations"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
-    sources: Mapped[dict] = mapped_column(JSON, default=dict)
+    sources: Mapped[list] = mapped_column(JSON, default=list)
     default_job: Mapped[str] = mapped_column(String(255), default="MAIN")
     current_job: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # last time a reading was recorded for the station
     last_reading_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Production state (see app.production). A station is in production until
-    # its OK counter has not increased for idle_timeout_min minutes; an
-    # operator can also stop it by hand (manual_stop) until Start is pressed.
+    # Production state (see app.production). A station goes into production by
+    # a source's start rule and stays in it until no source's OK counter has
+    # increased for idle_timeout_min minutes; an operator can also stop it by
+    # hand (manual_stop) until Start is pressed.
     idle_timeout_min: Mapped[int] = mapped_column(Integer, default=30)
     manual_stop: Mapped[bool] = mapped_column(Boolean, default=False)
     last_pass_change_at: Mapped[Optional[dt.datetime]] = mapped_column(
@@ -199,6 +207,7 @@ class Station(Base):
     readings: Mapped[list["Reading"]] = relationship(
         back_populates="station", cascade="all, delete-orphan"
     )
+    source_states: Mapped[list["SourceState"]] = relationship(cascade="all, delete-orphan")
 
     @property
     def excluded_by_default(self) -> bool:
@@ -210,12 +219,40 @@ class Station(Base):
 
         return production.state(self)
 
-    def source(self, role: str) -> dict | None:
-        src = (self.sources or {}).get(role)
-        return src if src and src.get("device_id") and src.get("key") not in (None, "") else None
+    def source_list(self) -> list[dict]:
+        from .stations import normalize_sources  # local import: stations imports this module
+
+        return normalize_sources(self.sources)
 
     def device_ids(self) -> set[int]:
-        return {int(s["device_id"]) for r in ("ok", "nok", "count", "job") if (s := self.source(r))}
+        return {s["device_id"] for s in self.source_list()}
+
+
+class SourceState(Base):
+    """What the app knows about one source of a station between reads: the
+    raw counters it read last (to compute the next delta), its job, when its
+    OK last rose while counted, and the pieces it made while the station was
+    not in production (``pending``, for the start rule). See app.stations."""
+
+    __tablename__ = "source_states"
+    __table_args__ = (UniqueConstraint("station_id", "source_id", name="uq_station_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), index=True)
+    source_id: Mapped[str] = mapped_column(String(16))
+    # the device and values the raw counters were read from; when the source is
+    # edited to read something else, the next read starts a new baseline
+    signature: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    baselined: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_pass: Mapped[int] = mapped_column(Integer, default=0)
+    last_fail: Mapped[int] = mapped_column(Integer, default=0)
+    last_count: Mapped[int] = mapped_column(Integer, default=0)
+    job: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # last time its OK rose while the station counted (the source was active)
+    last_ok_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # pieces seen while not in production: [[unix time, ok, nok, total], ...]
+    pending: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class Job(Base):
@@ -330,7 +367,7 @@ class Reading(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     station_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stations.id"), index=True, nullable=True)
-    # the device that supplied the OK value (up to 1.4: the counted device)
+    # the device that was read (up to 1.4: the counted device)
     device_id: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)
     job_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
@@ -338,7 +375,7 @@ class Reading(Base):
     raw_fail: Mapped[int] = mapped_column(Integer, default=0)
     raw_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    # the running totals at the moment of this reading
+    # the running totals of its job at the moment of this reading
     total_pass: Mapped[int] = mapped_column(Integer, default=0)
     total_fail: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -354,6 +391,14 @@ class Reading(Base):
     # by default (Station.stats_default); ignored for "include" stations
     included: Mapped[bool] = mapped_column(Boolean, default=False)
     in_production: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+
+    # Since 1.8: the source (Station.sources id) that was read, and the pieces
+    # this read added to the station's counters (0 while not in production).
+    # None on older readings: their pieces are the difference of the totals
+    # of consecutive readings of the same job (app.scrap_stats.parts).
+    source_id: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    ok_added: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    nok_added: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # entered by hand on the station view (see the docstring)
     manual: Mapped[bool] = mapped_column(Boolean, default=False)

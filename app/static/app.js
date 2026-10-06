@@ -75,7 +75,18 @@ function fmtDateTime(iso) {
   return d.toDateString() === new Date().toDateString() ? t : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + t;
 }
 function idleText(d) {
-  return 'No pass increase for ' + d.idle_timeout_min + ' min (last ' + fmtAgo(d.last_pass_change_at) + ')';
+  return 'No OK increase for ' + d.idle_timeout_min + ' min (last ' + fmtAgo(d.last_pass_change_at) + ')';
+}
+// the devices of a station's sources in production now, else the one active last
+function activeLine(d) {
+  if (d.active_devices && d.active_devices.length) {
+    return el('div', { class: 'active-line on' }, '▶ Active: ' + d.active_devices.join(', '));
+  }
+  if (d.last_active) {
+    return el('div', { class: 'active-line off', title: new Date(d.last_active.at).toLocaleString() },
+      'Last active: ' + d.last_active.device + ' · ' + fmtDateTime(d.last_active.at));
+  }
+  return null;
 }
 function downloadJSON(filename, data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

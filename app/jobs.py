@@ -53,10 +53,12 @@ def listing(db: Session) -> list[dict]:
     it was last counted; the jobs being run now first."""
     sync(db)
     station_names = {i: n for i, n in db.query(Station.id, Station.name)}
+    from . import stations
+
     current: dict[str, list[str]] = {}
-    for name, job in db.query(Station.name, Station.current_job).order_by(Station.sort_order, Station.name):
-        if job:
-            current.setdefault(job, []).append(name)
+    for st in db.query(Station).order_by(Station.sort_order, Station.name):
+        for job in stations.current_jobs(db, st):
+            current.setdefault(job, []).append(st.name)
     ran: dict[str, list[str]] = {}
     last: dict[str, dt.datetime] = {}
     for sid, job, updated in db.query(CounterState.station_id, CounterState.job_name, CounterState.updated_at):

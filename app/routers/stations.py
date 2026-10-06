@@ -1,8 +1,8 @@
 """Station CRUD, production start/stop, the dashboard counter reset and
 manual entries.
 
-A station counts OK / NOK (and optionally a total and the job) taken from
-the values of one or more devices; see app.stations.
+A station counts OK / NOK (and optionally a total and the job) from one or
+more sources, each a device and some of its values; see app.stations.
 """
 from __future__ import annotations
 
@@ -15,17 +15,20 @@ from sqlalchemy.orm import Session
 from .. import production, stations
 from ..database import get_db
 from ..dependencies import require_permission
-from ..models import CounterState, NotificationRule, Station, User
+from ..models import CounterState, NotificationRule, Station, User, utcnow
 from ..schemas import StationCreate, StationUpdate
 
 router = APIRouter(prefix="/api/stations", tags=["stations"])
 
 
-def station_out(st: Station, devices: dict) -> dict:
+def station_out(db: Session, st: Station, devices: dict) -> dict:
+    view = stations.sources_view(db, st, devices)
     return {
         "id": st.id,
         "name": st.name,
-        "sources": {r: st.source(r) for r in stations.ROLES},
+        "sources": view["sources"],
+        "active_devices": view["active_devices"],
+        "last_active": view["last_active"],
         "default_job": st.default_job,
         "current_job": st.current_job,
         "idle_timeout_min": st.idle_timeout_min,
@@ -44,9 +47,10 @@ def _get(db: Session, station_id: int) -> Station:
     return st
 
 
-def _sources(db: Session, payload_sources) -> dict:
+def _sources(db: Session, payload_sources) -> list[dict]:
+    raw = ([s.model_dump() for s in payload_sources] if isinstance(payload_sources, list) else payload_sources.model_dump())
     try:
-        return stations.check_sources(db, payload_sources.model_dump())
+        return stations.check_sources(db, raw)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -55,7 +59,7 @@ def _sources(db: Session, payload_sources) -> dict:
 def list_stations(db: Session = Depends(get_db), _: User = Depends(require_permission("view_dashboard"))):
     rows = db.query(Station).order_by(Station.sort_order, Station.name).all()
     devices = stations.devices_of(db, rows)
-    return [station_out(st, devices) for st in rows]
+    return [station_out(db, st, devices) for st in rows]
 
 
 @router.post("", status_code=201)
@@ -70,7 +74,7 @@ def create_station(
     db.add(st)
     db.commit()
     db.refresh(st)
-    return station_out(st, stations.devices_of(db, [st]))
+    return station_out(db, st, stations.devices_of(db, [st]))
 
 
 @router.patch("/{station_id}")
@@ -90,7 +94,7 @@ def update_station(
         setattr(st, key, value)
     db.commit()
     db.refresh(st)
-    return station_out(st, stations.devices_of(db, [st]))
+    return station_out(db, st, stations.devices_of(db, [st]))
 
 
 @router.delete("/{station_id}", status_code=204)
@@ -142,22 +146,21 @@ def reset_counters(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("control_connections")),
 ):
-    """Start the counters shown on the dashboard from zero for the current job.
+    """Start the counters shown on the dashboard from zero for the jobs the
+    station runs now.
 
     Nothing is sent to the devices, and the job totals in the readings history
     and the scrap statistics stay as they are (see CounterState.reset_shown).
     """
-    _get(db, station_id)
-    state = (
-        db.query(CounterState)
-        .filter(CounterState.station_id == station_id, CounterState.is_active.is_(True))
-        .first()
-    )
-    if state is None:
+    st = _get(db, station_id)
+    states = stations.active_states(db, st)
+    if not states:
         raise HTTPException(400, "This station has no counters yet")
-    state.reset_shown()
+    now = utcnow()
+    for state in states:
+        state.reset_shown(now)
     db.commit()
-    return {"job_name": state.job_name, "reset_at": state.reset_at}
+    return {"job_name": " + ".join(s.job_name for s in states), "reset_at": now}
 
 
 @router.get("/{station_id}/counters")

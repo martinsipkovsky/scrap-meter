@@ -126,7 +126,7 @@ const isPush = (key) => !!(PROTOCOLS.find(p => p.key === key) || {}).push;
 const protoLabel = (key) => (PROTOCOLS.find(p => p.key === key) || {}).label || key;
 
 function fmtValues(d) {
-  const v = Object.entries(d.last_values || {}).filter(([k]) => k !== '_errors');
+  const v = Object.entries(d.last_values || {}).filter(([k]) => !k.startsWith('_'));
   if (!v.length) return '—';
   return v.slice(0, 4).map(([k, x]) => (k.length > 18 ? '…' + k.slice(-16) : k) + ' ' + x).join(' · ') + (v.length > 4 ? ' …' : '');
 }
@@ -134,7 +134,7 @@ function fmtValues(d) {
 async function load() {
   const rows = document.getElementById('rows');
   const [devices, stations] = await Promise.all([getJSON('/api/devices'), getJSON('/api/stations')]);
-  const usedBy = (id) => stations.filter(s => Object.values(s.sources).some(x => x && x.device_id === id)).map(s => s.name);
+  const usedBy = (id) => stations.filter(s => s.sources.some(x => x.device_id === id)).map(s => s.name);
   rows.innerHTML = '';
   document.getElementById('empty').style.display = devices.length ? 'none' : 'block';
   for (const d of devices) {

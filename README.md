@@ -30,19 +30,22 @@ versions keep working.
   device pushes data to the app), Mitsubishi SLMP / MC protocol (as client or
   as a fake PLC the device writes to), PROFINET via a gateway, and a built-in
   simulator.
-- **Stations:** the dashboard's building blocks. Each takes its OK, NOK, total
-  and job from any device's values, e.g. OK from an OPC UA PLC and NOK from a
-  reject counter that pushes over TCP. Parts counted by hand are added as
-  manual entries on the station.
+- **Stations:** the dashboard's building blocks. A station counts one or more
+  sources, each a device with its own OK, NOK, total and job values: two
+  cameras each running their own job, or OK from an OPC UA PLC and NOK from a
+  reject counter that pushes over TCP. The dashboard shows which devices are
+  active. Parts counted by hand are added as manual entries on the station.
 - **OEE meter:** availability, performance and quality over the last 24 hours,
   with total OK and NOK, at the bottom of the dashboard. Ideal cycle times are
   set per job, so a station that changes job is weighed correctly.
 - **Reset-proof counters:** if an operator resets the counters on the device,
   the running totals keep going. A job change freezes the old job's totals and
   starts new ones.
-- **Production state:** a station that stops counting for its idle timeout is
-  shown grayed out and gets no scrap alerts, so idle lines don't cause false
-  alarms.
+- **Production state:** a station goes into production when a source makes,
+  say, 2 OK pieces within a minute (set per source), and leaves it when no
+  source counts OK for its idle timeout. Counters only change while in
+  production, so idle lines don't cause false scrap; idle stations are grayed
+  out and get no scrap alerts.
 - **Station view:** an OK/NOK chart over 1 h, 8 h, 24 h or 7 days, manual
   Start/Stop of production, and **Reset counters** for the dashboard counters
   (history and statistics are kept).

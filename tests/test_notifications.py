@@ -46,9 +46,11 @@ def _provider(client, name, url):
 
 
 def _camera(client, name="CamN", fail_ratio=0.5):
-    """A simulated device with its station, in production: (device id, station id)."""
+    """A simulated device with its station, read once (the baseline) and in
+    production: (device id, station id)."""
     did, sid = add_station_device(client, name, {"jobs": ["J"], "parts_per_poll": 10, "fail_ratio": fail_ratio,
                                                  "reset_every": 0, "job_change_every": 0})
+    client.post(f"/api/devices/{did}/poll")
     client.post(f"/api/stations/{sid}/production/start")
     return did, sid
 

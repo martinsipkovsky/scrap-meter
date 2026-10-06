@@ -111,6 +111,7 @@ def test_notification_rule_fires_to_webhook(client, monkeypatch):
         "name": "any scrap", "condition": "scrap_rate", "threshold": 0.0, "cooldown": 0,
     })
     did, sid = add_station_device(client, "Cam3", {"jobs": ["J"], "parts_per_poll": 10, "fail_ratio": 0.5})
+    poll(client, did)  # the baseline
     # scrap alerts only go out for stations in production
     client.post(f"/api/stations/{sid}/production/start")
     poll(client, did)

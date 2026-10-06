@@ -54,9 +54,10 @@ def test_status_reply_and_camera_filter(client):
         assert (outcome, kw) == ("answered", "status")
         assert reply.startswith("📊 Status ")
         assert "Line 1: ▶ in production, job J1" in reply and "Line 2:" in reply
-        # dashboard counters: 3 polls of 10 parts per camera (the simulator picks the fails)
+        # dashboard counters: the baseline, then 2 polls of 10 parts per camera
+        # (the simulator picks the fails)
         per_camera = [int(a) + int(b) for a, b in re.findall(r"OK (\d+) · NOK (\d+) · scrap", reply)]
-        assert per_camera == [30, 30, 60]  # two cameras, then the total line
+        assert per_camera == [20, 20, 40]  # two cameras, then the total line
 
         _, _, one = commands.answer(db, {"chat": GROUP, "text": "!status line 2"}, "!")
         assert "Line 2:" in one and "Line 1:" not in one

@@ -143,16 +143,18 @@ def test_export_import_roundtrip(client):
     exp = client.get("/api/devices/export")
     assert "attachment" in exp.headers["content-disposition"]
     data = exp.json()
-    assert data["version"] == 3
+    assert data["version"] == 4
     assert [c["name"] for c in data["cameras"]] == ["A", "B"]
     assert "id" not in data["cameras"][0]
-    assert data["stations"][0]["sources"]["ok"] == {"device": "A", "key": "pass"}
+    assert data["stations"][0]["sources"] == [{"device": "A", "ok": "pass", "nok": "fail", "count": "count",
+                                               "job": "job", "start_count": 2, "start_window_s": 60}]
     assert data["stations"][0]["idle_timeout_min"] == 30
 
     data["stations"][0]["idle_timeout_min"] = 15
+    data["stations"][1]["sources"][0]["start_count"] = 5
     data["cameras"].append({**data["cameras"][1], "name": "C"})
     data["stations"].append({**data["stations"][1], "name": "C",
-                             "sources": {"ok": {"device": "C", "key": "pass"}, "nok": {"device": "A", "key": "fail"}}})
+                             "sources": [{"device": "C", "ok": "pass"}, {"device": "A", "nok": "fail"}]})
     r = client.post("/api/devices/import", json=data)
     assert r.status_code == 200, r.text
     assert r.json() == {"created": ["C"], "updated": ["A", "B"], "stations_created": ["C"],
@@ -160,7 +162,18 @@ def test_export_import_roundtrip(client):
     devs = {d["name"]: d for d in client.get("/api/devices").json()}
     sts = {s["name"]: s for s in client.get("/api/stations").json()}
     assert set(devs) == {"A", "B", "C"} and sts["A"]["idle_timeout_min"] == 15
-    assert sts["C"]["sources"]["nok"] == {"device_id": devs["A"]["id"], "key": "fail"}
+    assert [(s["device_id"], s["ok"], s["nok"]) for s in sts["C"]["sources"]] == [
+        (devs["C"]["id"], "pass", None), (devs["A"]["id"], None, "fail")]
+    assert sts["B"]["sources"][0]["start_count"] == 5
+
+    # a file from 1.5 - 1.7 names a device per role: a source per device
+    data["stations"] = [{**data["stations"][2], "name": "D",
+                         "sources": {"ok": {"device": "C", "key": "pass"}, "nok": {"device": "A", "key": "fail"},
+                                     "job": {"device": "C", "key": "job"}}}]
+    assert client.post("/api/devices/import", json=data).status_code == 200
+    d = next(s for s in client.get("/api/stations").json() if s["name"] == "D")
+    assert [(s["device_id"], s["ok"], s["nok"], s["job"], s["start_count"]) for s in d["sources"]] == [
+        (devs["C"]["id"], "pass", None, "job", 1), (devs["A"]["id"], None, "fail", None, 1)]
 
 
 def test_import_of_a_1_4_file_makes_stations(client):

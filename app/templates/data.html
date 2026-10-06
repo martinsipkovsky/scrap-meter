@@ -21,7 +21,7 @@
     </select>
   </div>
   <p class="hint">Manual entries are marked <span class="badge warn">manual</span> with who entered them.{% if user.has_permission('manual_entry') %} Edit or Delete changes them; add them on a station's view.{% endif %} Readings marked <span class="badge off">excluded</span>, <span class="badge off">station not in totals</span> or <span class="badge warn">not in production</span> are left out of the overall <a href="/scrap">scrap statistics</a>.{% if user.has_permission('exclude_readings') %} Use Exclude to leave a reading's parts out; Include counts them, also for a station that is excluded from the statistics by default.{% endif %}</p>
-  <table><thead><tr><th>Time</th><th>Station</th><th>Job</th><th>Raw pass</th><th>Raw fail</th><th>Total pass</th><th>Total fail</th><th>Scrap statistics</th></tr></thead>
+  <table><thead><tr><th>Time</th><th>Station</th><th>Job</th><th>Raw pass</th><th>Raw fail</th><th>Counted</th><th>Total pass</th><th>Total fail</th><th>Scrap statistics</th></tr></thead>
   <tbody id="readingRows"></tbody></table>
   <div id="readingEmpty" class="empty" style="display:none">No readings yet.</div>
 </div>
@@ -93,9 +93,12 @@ async function load() {
     rRows.append(el('tr', { class: leftOut(r) ? 'excluded' : '' },
       el('td', { class: 'muted' }, new Date(r.created_at).toLocaleString()),
       el('td', {}, devName(r.station_id),
-        r.manual ? el('div', { class: 'muted' }, el('span', { class: 'badge warn' }, 'manual'), ' ' + (r.entered_by || '') + (r.note ? ' · ' + r.note : '')) : null),
+        r.manual ? el('div', { class: 'muted' }, el('span', { class: 'badge warn' }, 'manual'), ' ' + (r.entered_by || '') + (r.note ? ' · ' + r.note : ''))
+          : r.device ? el('div', { class: 'muted' }, r.device) : null),
       el('td', {}, r.job_name || '—'),
       el('td', {}, (r.manual ? '+' : '') + r.raw_pass), el('td', {}, (r.manual ? '+' : '') + r.raw_fail),
+      el('td', { class: 'muted', title: 'Pieces this reading added to the station counters (only while in production)' },
+        r.manual ? '+' + r.raw_pass + ' / +' + r.raw_fail : r.ok_added === null ? '—' : '+' + r.ok_added + ' / +' + r.nok_added),
       el('td', {}, r.manual ? '—' : String(r.total_pass)), el('td', {}, r.manual ? '—' : String(r.total_fail)),
       el('td', {}, readingState(r)),
     ));

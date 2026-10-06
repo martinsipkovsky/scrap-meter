@@ -56,7 +56,7 @@ from .base import NotifierError
 log = logging.getLogger("cognex.whatsapp")
 
 CLIENT_ID = "cognex-monitor"
-DEVICE_NAME = "Cognex Monitor"  # shown in the phone's list of linked devices
+DEVICE_NAME = "Scrap Meter"  # shown in the phone's list of linked devices
 PAIR_TIMEOUT = 170  # seconds WhatsApp keeps offering QR codes for one login
 REQUEST_TIMEOUT = 30
 MESSAGE_MAX_AGE = 120  # seconds; older messages (delivered after a reconnect) are ignored

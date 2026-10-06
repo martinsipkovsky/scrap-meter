@@ -18,19 +18,19 @@ bottom of the tab.
 |---|---|---|
 | Scrap rate ≥ threshold | state | The current job's scrap rate (as shown on the dashboard) reaches the threshold. Entered in %, e.g. `5` |
 | Fail (NOK) count ≥ threshold | state | The current job's NOK count (as shown on the dashboard) reaches the threshold |
-| Camera disconnected or read error | state | The camera can't be read or has gone offline |
-| Camera stopped, idle or back in production | event | A camera's [production state](user-guide.md#production-state) changes |
-| Camera changed job | event | A camera reports a new job name |
+| Device disconnected or read error | state | The device can't be read or has gone offline |
+| Device stopped, idle or back in production | event | A device's [production state](user-guide.md#production-state) changes |
+| Device changed job | event | A device reports a new job name |
 | FTP backup failed / FTP backup finished | event | An automatic or *Run now* FTP backup ends |
 | App started or updated | event | The app starts; after an image update the message says which version it was updated from. Sent about a minute after startup, so a linked WhatsApp has reconnected |
 
 For each rule you choose:
 
-- **Camera**: one camera or all cameras (camera conditions only).
+- **Device**: one device or all devices (device conditions only).
 - **Level**: ℹ️ INFO, ⚠️ WARNING or 🚨 ALERT. It is put in front of the
   message, e.g. `⚠️ WARNING · High scrap on 'Line 1' …`.
-- **Threshold** for scrap and fail-count rules. A rule for **all cameras**
-  can set a different threshold for individual cameras ("Per camera"); an
+- **Threshold** for scrap and fail-count rules. A rule for **all devices**
+  can set a different threshold for individual devices ("Per device"); an
   empty box uses the rule's threshold.
 - **Send to**: tick the providers that get the message. With none ticked it
   goes to every enabled provider (rules made before this option existed work
@@ -45,9 +45,12 @@ Typical setup: a *warning* rule at 3 % scrap to the shift group, an *alert*
 rule at 5 % to the shift group and the maintenance group, disconnects to
 maintenance only, and backup and app messages to an admin chat.
 
-Scrap-rate and fail-count rules are suppressed while a camera is idle or
+Scrap-rate and fail-count rules are suppressed while a device is idle or
 manually stopped. They use the counters shown on the dashboard, so
-**Reset counters** on the camera view also clears them.
+**Reset counters** on the device view also clears them.
+
+Messages say "Device 'Line 1' …" (earlier versions said "Camera"), and the
+startup message names the app Scrap Meter.
 
 ## WhatsApp
 
@@ -83,8 +86,10 @@ code (digits only) as `to`:
 The login is stored in the app's own PostgreSQL database (tables starting with
 `whatsmeow_`), so it survives restarts and image updates. The phone does not
 have to stay online, but WhatsApp logs out linked devices when the phone has
-not been used for about 14 days. **Log out** in the box, or removing *Cognex
-Monitor* from the phone's Linked devices, unlinks it. If the connection drops,
+not been used for about 14 days. **Log out** in the box, or removing *Scrap
+Meter* from the phone's Linked devices, unlinks it. (A phone linked before the
+rename keeps showing *Cognex Monitor* there until it is linked again; that is
+only the name.) If the connection drops,
 the app reconnects by itself and the box shows the error meanwhile.
 
 The client runs in a separate process in the app container. Its log lines are
@@ -93,8 +98,8 @@ in `docker compose logs web`, starting with `whatsapp`.
 ### Commands in WhatsApp groups
 
 With a phone linked, people in a WhatsApp group can ask the app for figures:
-send `!status` in the group and the linked phone answers with every camera's
-production state, OK / NOK and scrap. `!status line 1` answers for the cameras
+send `!status` in the group and the linked phone answers with every device's
+production state, OK / NOK and scrap. `!status line 1` answers for the devices
 whose name contains "line 1" only, and `!help` lists the commands allowed in
 that group.
 
@@ -109,10 +114,16 @@ tab. A `status` command is there from the start.
 - **Counts**: *dashboard counters* (current job, since the last reset, as on
   the dashboard), *today* (production time only, the same figures as Scrap
   statistics) or *the last N hours*.
-- **Header, one line per camera, footer**: the reply text. `{placeholders}`
-  are filled in; the dialog lists them (`{camera}`, `{state}`, `{job}`,
+- **Header, one line per device, footer**: the reply text. `{placeholders}`
+  are filled in; the dialog lists them (`{device}`, `{state}`, `{job}`,
   `{pass}`, `{fail}`, `{scrap}`, `{total_scrap}`, `{date}`, `{time}`, …).
+  `{camera}` and `{cameras}` from earlier versions still work.
   **Preview reply** shows what it would send now, without sending.
+- **Totals** (`{total_pass}`, `{total_fail}`, `{total}`, `{total_scrap}`)
+  leave out devices excluded from the statistics (see the
+  [User guide](user-guide.md#devices-excluded-from-the-statistics)). Their
+  line still appears, ending in "(not in totals)". With *today*, readings a
+  user included count, as on Scrap statistics.
 - **Answers in**: tick the groups where the command works. None ticked = every
   group the phone is in. In other groups the app stays silent, also for
   `!help` and unknown commands. Private chats are never answered.

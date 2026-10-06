@@ -46,9 +46,9 @@ log = logging.getLogger("cognex.udp_listener")
 
 class UdpListenerDriver(TcpListenerDriver):
     key = "udp_listen"
-    label = "UDP listener (camera pushes datagrams)"
+    label = "UDP listener (device pushes datagrams)"
     push = True
-    push_help = ("The app opens a UDP port and the camera sends its result to it "
+    push_help = ("The app opens a UDP port and the device sends its result to it "
                  "(In-Sight: UDP output pointing at this server's IP and the port below). "
                  "Each datagram is one record split by the delimiter; set which field holds "
                  "the job name and the counters below.")

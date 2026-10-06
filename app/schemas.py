@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,6 +43,8 @@ class DeviceCreate(BaseModel):
     enabled: bool = True
     # minutes without a pass increase before the camera counts as not in production
     idle_timeout_min: int = Field(default=30, ge=1, le=10080)
+    # whether the device's readings count in the overall statistics
+    stats_default: Literal["include", "exclude"] = "include"
 
 
 class DeviceUpdate(BaseModel):
@@ -54,6 +56,7 @@ class DeviceUpdate(BaseModel):
     poll_interval: Optional[int] = None
     enabled: Optional[bool] = None
     idle_timeout_min: Optional[int] = Field(default=None, ge=1, le=10080)
+    stats_default: Optional[Literal["include", "exclude"]] = None
 
 
 class DeviceOut(BaseModel):
@@ -71,6 +74,7 @@ class DeviceOut(BaseModel):
     idle_timeout_min: int
     manual_stop: bool
     production_state: str
+    stats_default: str
     last_pass_change_at: Optional[dt.datetime]
 
     model_config = ConfigDict(from_attributes=True)
@@ -87,6 +91,8 @@ class DeviceExportItem(BaseModel):
     poll_interval: int = 5
     enabled: bool = True
     idle_timeout_min: int = Field(default=30, ge=1, le=10080)
+    # files exported before this setting existed import as "include"
+    stats_default: Literal["include", "exclude"] = "include"
 
 
 class DeviceImport(BaseModel):

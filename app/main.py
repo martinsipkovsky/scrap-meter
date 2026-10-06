@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
     poller.stop()
 
 
-app = FastAPI(title="Cognex Monitor", lifespan=lifespan)
+app = FastAPI(title="Scrap Meter", lifespan=lifespan)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")

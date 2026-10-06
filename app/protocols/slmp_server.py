@@ -126,14 +126,14 @@ class PlcMemory:
 
 class SlmpServerDriver(ProtocolDriver):
     key = "slmp_listen"
-    label = "SLMP server (camera writes to the app as if it were a PLC)"
+    label = "SLMP server (device writes to the app as if it were a PLC)"
     push = True
     push_help = ("The app acts as a Mitsubishi PLC: it opens an SLMP server (3E binary, TCP) on "
-                 "this port. In the camera's SLMP settings enter this server's IP and the port "
+                 "this port. In the device's (e.g. In-Sight camera's) SLMP settings enter this server's IP and the port "
                  "below as the PLC, and set which registers it writes; the config below says "
                  "which register holds the job name and the counters.")
     config_fields = {
-        "mode": "'counter' (camera writes running totals) or 'event' (one result per part)",
+        "mode": "'counter' (device writes running totals) or 'event' (one result per part)",
         "pass_device": "Counter mode: register with the pass counter, e.g. D100",
         "fail_device": "Counter mode: register with the fail counter, e.g. D102",
         "count_device": "Counter mode: optional register with a total counter",
@@ -163,7 +163,7 @@ class SlmpServerDriver(ProtocolDriver):
 
     def read(self) -> Sample:
         raise ProtocolError(
-            "This camera writes its data to the app over SLMP; it is not polled. "
+            "This device writes its data to the app over SLMP; it is not polled. "
             "Point the camera's SLMP PLC address at this server's IP, port %s." % self.port
         )
 

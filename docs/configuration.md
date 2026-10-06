@@ -14,8 +14,8 @@ working directory.
 | `DEFAULT_ADMIN_USER` / `DEFAULT_ADMIN_PASSWORD` | `Admin` / `1234` | First admin account, created only when the database has no users |
 | `POLL_ENABLED` | `true` | Run the background poller. Set `false` for tests or a read-only instance. |
 | `WEB_PORT` | `8000` | Host port for the web UI (compose only) |
-| `LISTEN_PORTS` | `5100-5119` | Port range, TCP and UDP, for cameras that push data |
-| `DATA_DIR` | `./data` (`/srv/data` in Docker) | Where the Database tab saves its settings (database choice, FTP backup settings, backups taken before an import) |
+| `LISTEN_PORTS` | `5100-5119` | Port range, TCP and UDP, for devices that push data |
+| `DATA_DIR` | `./data` (`/srv/data` in Docker) | Where the Database tab saves its settings (database choice, FTP backup settings, backups taken before an import), and the OPC UA client certificate (`opcua/`) |
 | `WHATSAPP_ENABLED` | `true` | Reconnect a linked WhatsApp phone when the app starts (see [Notifications](notifications.md#linked-send-from-your-own-number-no-extra-service)) |
 
 Login sessions last 12 hours.
@@ -43,7 +43,7 @@ setting returns the app to `DATABASE_URL` after a restart.
 ## Backups (Database tab)
 
 **Download backup** saves one file, `cognex-backup-DATE-TIME.json.gz`, with all
-app data: cameras, readings, counters, users and notification settings. It is
+app data: devices, readings, counters, users and notification settings. It is
 written by the app itself (no `pg_dump`), so it can be imported into any
 database the app is configured to use. The tab shows when the last backup was
 made (downloaded or uploaded to FTP) and turns yellow when there is none or
@@ -51,11 +51,12 @@ the newest is older than 7 days.
 
 **Import backup** replaces all current data with the file:
 
-1. Choose the file. The app checks that it is a complete Cognex Monitor backup
+1. Choose the file. The app checks that it is a complete Scrap Meter backup (backups
+   from earlier versions, called Cognex Monitor, are accepted)
    and shows what it contains. Nothing is changed yet.
 2. Tick the confirmation and press **Replace all data with this backup**.
 3. The app first saves the current data as a backup in `DATA_DIR/backups`
-   (the last 5 are kept and listed on the tab for download), pauses camera
+   (the last 5 are kept and listed on the tab for download), pauses device
    polling, replaces everything in one transaction and resumes polling. If the
    import fails, the current data is left unchanged.
 4. Everyone signs in again with the accounts from the backup.

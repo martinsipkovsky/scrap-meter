@@ -1,11 +1,16 @@
-"""Device (camera) CRUD, protocol metadata, manual poll/test, production
-start/stop, and export/import of camera configurations."""
+"""Device CRUD, protocol metadata, manual poll/test, production start/stop,
+export/import of device configurations, and the OPC UA Browse helper.
+
+Passwords in a protocol config (e.g. an OPC UA login) never leave the server:
+the API and export files show SECRET_MASK instead, and saving SECRET_MASK
+keeps the stored password."""
 from __future__ import annotations
 
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import production, protocols
@@ -14,10 +19,54 @@ from ..database import get_db
 from ..dependencies import require_api_user, require_permission
 from ..models import CounterState, Device, User
 from ..poller import poll_device_once
+from ..protocols import opcua
+from ..protocols.base import ProtocolError
 from ..protocols.tcp_listener import parse_port_range
 from ..schemas import DeviceCreate, DeviceExportItem, DeviceImport, DeviceOut, DeviceUpdate
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
+
+SECRET_KEYS = ("password",)
+SECRET_MASK = "********"
+
+
+def masked_config(config: dict | None) -> dict:
+    cfg = dict(config or {})
+    for k in SECRET_KEYS:
+        if cfg.get(k):
+            cfg[k] = SECRET_MASK
+    return cfg
+
+
+def _keep_secrets(new: dict, old: dict | None) -> dict:
+    """A masked password in a saved config means: keep the stored one."""
+    new = dict(new or {})
+    for k in SECRET_KEYS:
+        if new.get(k) == SECRET_MASK:
+            if (old or {}).get(k):
+                new[k] = old[k]
+            else:
+                new.pop(k)
+    return new
+
+
+def _device_out(d: Device) -> DeviceOut:
+    out = DeviceOut.model_validate(d)
+    out.protocol_config = masked_config(d.protocol_config)
+    return out
+
+
+def _normalise(data: dict, protocol: str) -> None:
+    """OPC UA devices keep their address in the endpoint URL; host and port
+    are taken from it so the device list shows where the server is."""
+    if protocol != "opcua":
+        return
+    url = (data.get("protocol_config") or {}).get("endpoint")
+    if url:
+        try:
+            data["host"], data["port"] = opcua.split_endpoint(url)
+        except ProtocolError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
 
 @router.get("/protocols")
@@ -53,23 +102,59 @@ def _check_listen_port(db: Session, protocol: str, port: int, device_id: int | N
         .first()
     )
     if clash:
-        raise HTTPException(409, f"Port {port} is already used by camera '{clash.name}'")
+        raise HTTPException(409, f"Port {port} is already used by device '{clash.name}'")
 
 
 EXPORT_FIELDS = tuple(DeviceExportItem.model_fields)
 
 
+class OpcUaBrowse(BaseModel):
+    protocol_config: dict = {}
+    node_id: str | None = None
+    # the device being edited: its stored password is used for a masked one
+    device_id: int | None = None
+
+
+@router.post("/opcua/browse")
+def opcua_browse(
+    payload: OpcUaBrowse,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("manage_devices")),
+):
+    """List a node's children on an OPC UA server, to pick counter node ids."""
+    device = db.get(Device, payload.device_id) if payload.device_id else None
+    cfg = _keep_secrets(payload.protocol_config, device.protocol_config if device else None)
+    try:
+        url = opcua.endpoint_url("", 0, cfg)
+        opcua.split_endpoint(url)
+        return opcua.browse(url, cfg, payload.node_id)
+    except ProtocolError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@router.get("/opcua/certificate")
+def opcua_certificate(_: User = Depends(require_permission("manage_devices"))):
+    """The app's OPC UA client certificate, to trust on the server."""
+    return Response(
+        opcua.certificate_der(),
+        media_type="application/pkix-cert",
+        headers={"Content-Disposition": 'attachment; filename="scrap-meter-opcua-client.der"'},
+    )
+
+
 @router.get("/export")
 def export_devices(db: Session = Depends(get_db), _: User = Depends(require_permission("view_dashboard"))):
-    """All camera configurations as a downloadable JSON file (no counter history)."""
+    """All device configurations as a downloadable JSON file (no counter
+    history, no passwords). The list keeps its old key "cameras" so files
+    move between old and new versions."""
     cameras = [
-        {f: getattr(d, f) for f in EXPORT_FIELDS}
+        {**{f: getattr(d, f) for f in EXPORT_FIELDS}, "protocol_config": masked_config(d.protocol_config)}
         for d in db.query(Device).order_by(Device.name).all()
     ]
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M")
     return JSONResponse(
         {"version": 1, "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(), "cameras": cameras},
-        headers={"Content-Disposition": f'attachment; filename="cognex-cameras-{stamp}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="scrap-meter-devices-{stamp}.json"'},
     )
 
 
@@ -79,15 +164,15 @@ def import_devices(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("manage_devices")),
 ):
-    """Add cameras from an export file; a camera with the same name is updated.
+    """Add devices from an export file; a device with the same name is updated.
 
-    All or nothing: if any camera in the file is invalid, nothing is changed and
-    every problem is reported.
+    All or nothing: if any device in the file is invalid, nothing is changed and
+    every problem is reported. A masked password keeps the stored one.
     """
     names = [c.name for c in payload.cameras]
     dupes = sorted({n for n in names if names.count(n) > 1})
     if dupes:
-        raise HTTPException(400, "The file lists these cameras more than once: " + ", ".join(dupes))
+        raise HTTPException(400, "The file lists these devices more than once: " + ", ".join(dupes))
 
     created, updated, errors = [], [], []
     for item in payload.cameras:
@@ -96,8 +181,10 @@ def import_devices(
             errors.append(f"{item.name}: unknown protocol '{item.protocol}'")
             continue
         device = db.query(Device).filter(Device.name == item.name).first()
+        data["protocol_config"] = _keep_secrets(data["protocol_config"], device.protocol_config if device else None)
         try:
-            _check_listen_port(db, item.protocol, item.port, device.id if device else None)
+            _normalise(data, item.protocol)
+            _check_listen_port(db, item.protocol, data["port"], device.id if device else None)
         except HTTPException as exc:
             errors.append(f"{item.name}: {exc.detail}")
             continue
@@ -108,7 +195,7 @@ def import_devices(
             for key, value in data.items():
                 setattr(device, key, value)
             updated.append(item.name)
-        db.flush()  # so later cameras in the file see this one's port
+        db.flush()  # so later devices in the file see this one's port
 
     if errors:
         db.rollback()
@@ -119,7 +206,7 @@ def import_devices(
 
 @router.get("", response_model=list[DeviceOut])
 def list_devices(db: Session = Depends(get_db), _: User = Depends(require_permission("view_dashboard"))):
-    return db.query(Device).order_by(Device.name).all()
+    return [_device_out(d) for d in db.query(Device).order_by(Device.name).all()]
 
 
 @router.post("", response_model=DeviceOut, status_code=201)
@@ -132,12 +219,15 @@ def create_device(
         raise HTTPException(400, f"Unknown protocol: {payload.protocol}")
     if db.query(Device).filter(Device.name == payload.name).first():
         raise HTTPException(409, "A device with that name already exists")
-    _check_listen_port(db, payload.protocol, payload.port)
-    device = Device(**payload.model_dump())
+    data = payload.model_dump()
+    data["protocol_config"] = _keep_secrets(data["protocol_config"], None)
+    _normalise(data, payload.protocol)
+    _check_listen_port(db, payload.protocol, data["port"])
+    device = Device(**data)
     db.add(device)
     db.commit()
     db.refresh(device)
-    return device
+    return _device_out(device)
 
 
 @router.patch("/{device_id}", response_model=DeviceOut)
@@ -153,12 +243,15 @@ def update_device(
     data = payload.model_dump(exclude_unset=True)
     if "protocol" in data and data["protocol"] not in protocols.available():
         raise HTTPException(400, f"Unknown protocol: {data['protocol']}")
+    if "protocol_config" in data:
+        data["protocol_config"] = _keep_secrets(data["protocol_config"], device.protocol_config)
+        _normalise(data, data.get("protocol", device.protocol))
     _check_listen_port(db, data.get("protocol", device.protocol), data.get("port", device.port), device.id)
     for key, value in data.items():
         setattr(device, key, value)
     db.commit()
     db.refresh(device)
-    return device
+    return _device_out(device)
 
 
 @router.delete("/{device_id}", status_code=204)
@@ -180,14 +273,14 @@ def poll_now(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("control_connections")),
 ):
-    """Read the camera once, right now. Useful to test configuration."""
+    """Read the device once, right now. Useful to test configuration."""
     device = db.get(Device, device_id)
     if not device:
         raise HTTPException(404, "Device not found")
     if protocols.is_push(device.protocol):
         raise HTTPException(
             400,
-            f"This camera pushes its data to the app on port {device.port}; it cannot be polled. "
+            f"This device pushes its data to the app on port {device.port}; it cannot be polled. "
             + ("It is connected." if device.connected else (device.last_error or "")),
         )
     try:
@@ -226,7 +319,7 @@ def production_start(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("control_connections")),
 ):
-    """Put the camera back in production now (clears a manual stop)."""
+    """Put the device back in production now (clears a manual stop)."""
     return _set_production(db, device_id, True)
 
 
@@ -236,7 +329,7 @@ def production_stop(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("control_connections")),
 ):
-    """Mark the camera as not in production until Start is pressed."""
+    """Mark the device as not in production until Start is pressed."""
     return _set_production(db, device_id, False)
 
 
@@ -248,7 +341,7 @@ def reset_counters(
 ):
     """Start the counters shown on the dashboard from zero for the current job.
 
-    Nothing is sent to the camera, and the job totals in the readings history
+    Nothing is sent to the device, and the job totals in the readings history
     and the scrap statistics stay as they are (see CounterState.reset_shown).
     """
     device = db.get(Device, device_id)
@@ -260,7 +353,7 @@ def reset_counters(
         .first()
     )
     if state is None:
-        raise HTTPException(400, "This camera has no counters yet")
+        raise HTTPException(400, "This device has no counters yet")
     state.reset_shown()
     db.commit()
     return {"job_name": state.job_name, "reset_at": state.reset_at}

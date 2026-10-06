@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Camera · Cognex Monitor{% endblock %}
+{% block title %}Device · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
   <div>
     <div class="muted"><a href="/">&larr; Dashboard</a></div>
-    <h1 id="title">Camera</h1>
+    <h1 id="title">Device</h1>
     <p class="lead" id="sub"></p>
   </div>
   <div class="actions" id="controls"></div>
@@ -64,14 +64,14 @@ function renderControls(d) {
 }
 
 async function resetCounters() {
-  if (!confirm('Reset the OK / NOK counters shown on the dashboard for this camera to zero?\n\n' +
-    'Nothing is sent to the camera. The readings history, the chart and the scrap statistics stay as they are.')) return;
+  if (!confirm('Reset the OK / NOK counters shown on the dashboard for this device to zero?\n\n' +
+    'Nothing is sent to the device. The readings history, the chart and the scrap statistics stay as they are.')) return;
   try { await postJSON('/api/devices/' + DEVICE_ID + '/counters/reset'); toast('Counters reset'); load(); }
   catch (e) { toast(e.message, true); }
 }
 
 async function setProduction(action) {
-  if (action === 'stop' && !confirm('Stop production for this camera? It stays stopped (no scrap alerts) until you press Start.')) return;
+  if (action === 'stop' && !confirm('Stop production for this device? It stays stopped (no scrap alerts) until you press Start.')) return;
   try { await postJSON('/api/devices/' + DEVICE_ID + '/production/' + action); lastState = null; load(); }
   catch (e) { toast(e.message, true); }
 }
@@ -129,7 +129,7 @@ async function load() {
   let d;
   try { d = await getJSON('/api/data/devices/' + DEVICE_ID + '?hours=' + HOURS); }
   catch (e) { document.getElementById('sub').textContent = e.message; return; }
-  document.title = d.name + ' · Cognex Monitor';
+  document.title = d.name + ' · Scrap Meter';
   document.getElementById('title').textContent = d.name;
   document.getElementById('sub').textContent = d.protocol + ' · ' + (d.host || 'any') + ':' + d.port;
   const [cls, label] = PROD_BADGE[d.production_state];

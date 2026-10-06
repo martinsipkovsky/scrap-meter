@@ -145,7 +145,7 @@ def test_provider(
         raise HTTPException(404, "Provider not found")
     try:
         notifier = notifiers.get_notifier(provider.kind, provider.config)
-        notifier.send("Cognex Monitor test notification ✅")
+        notifier.send("Scrap Meter test notification ✅")
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"Send failed: {exc}") from exc
     return {"ok": True}

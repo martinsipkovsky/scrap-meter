@@ -10,6 +10,7 @@ pydantic==2.10.4
 pydantic-settings==2.7.1
 httpx==0.28.1
 pymodbus==3.8.3
+asyncua==2.0.1
 openpyxl==3.1.5
 tzdata==2025.2
 neonize==0.5.2

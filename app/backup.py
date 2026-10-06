@@ -170,12 +170,12 @@ def _lines(path: Path):
                 if raw.strip():
                     yield json.loads(raw)
     except (OSError, EOFError, ValueError) as exc:
-        raise BackupError(f"The file is not a readable Cognex Monitor backup ({exc}).") from exc
+        raise BackupError(f"The file is not a readable Scrap Meter backup ({exc}).") from exc
 
 
 def _header(first) -> dict:
     if not isinstance(first, dict) or first.get("format") != FORMAT:
-        raise BackupError("The file is not a Cognex Monitor backup.")
+        raise BackupError("The file is not a Scrap Meter backup.")
     if int(first.get("version", 0)) > VERSION:
         raise BackupError("The backup was made by a newer version of the app. Update the app first.")
     return first

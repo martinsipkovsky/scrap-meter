@@ -61,7 +61,7 @@ def test_status_reply_and_camera_filter(client):
         _, _, one = commands.answer(db, {"chat": GROUP, "text": "!status line 2"}, "!")
         assert "Line 2:" in one and "Line 1:" not in one
         _, _, none = commands.answer(db, {"chat": GROUP, "text": "!status nope"}, "!")
-        assert none == "No camera matches 'nope'."
+        assert none == "No device matches 'nope'."
     finally:
         db.close()
 
@@ -147,5 +147,16 @@ def test_api_prefix_crud_preview_and_seed(client):
         commands.seed_defaults(db)
         assert db.query(ChatCommand).count() == 0
         assert db.query(CommandLog).count() == 0
+    finally:
+        db.close()
+
+
+def test_old_camera_placeholders_still_work(client):
+    login(client)
+    _camera(client, "Line 1")
+    db = SessionLocal()
+    try:
+        cmd = _status(db, header="{cameras} cams", line="{camera}|{device}")
+        assert commands.render(db, cmd).splitlines()[:2] == ["1 cams", "Line 1|Line 1"]
     finally:
         db.close()

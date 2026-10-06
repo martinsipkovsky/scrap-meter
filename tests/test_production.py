@@ -128,7 +128,8 @@ def test_camera_view_endpoint(client):
     v = client.get(f"/api/data/devices/{d['id']}?hours=1").json()
     assert v["name"] == "Cam" and v["history"]["bucket_seconds"] == 60
     assert v["history"]["ok"] + v["history"]["nok"] == 20  # two polls after the baseline
-    assert client.get(f"/camera/{d['id']}").status_code == 200
+    assert client.get(f"/camera/{d['id']}").status_code == 200  # old link
+    assert client.get(f"/device/{d['id']}").status_code == 200
 
 
 def test_export_import_roundtrip(client):

@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Cameras · Cognex Monitor{% endblock %}
+{% block title %}Devices · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <div><h1>Cameras</h1><p class="lead">Configure each Cognex camera, its protocol and polling.</p></div>
+  <div><h1>Devices</h1><p class="lead">Configure each device (camera, PLC, OPC UA server, counter), its protocol and polling.</p></div>
   <div class="actions">
-    <button class="btn secondary" onclick="exportCameras()" title="Download all camera settings as a JSON file">Export</button>
+    <button class="btn secondary" onclick="exportDevices()" title="Download all device settings as a JSON file">Export</button>
     {% if user.has_permission('manage_devices') %}
-    <button class="btn secondary" onclick="document.getElementById('importFile').click()" title="Add or update cameras from an exported JSON file">Import</button>
-    <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importCameras(this)" />
-    <button class="btn" onclick="openForm()">+ Add camera</button>
+    <button class="btn secondary" onclick="document.getElementById('importFile').click()" title="Add or update devices from an exported JSON file">Import</button>
+    <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importDevices(this)" />
+    <button class="btn" onclick="openForm()">+ Add device</button>
     {% endif %}
   </div>
 </div>
@@ -17,35 +17,86 @@
   <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Protocol</th><th>Job</th><th>Interval</th><th>Production</th><th></th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
-<div id="empty" class="empty" style="display:none">No cameras yet.</div>
+<div id="empty" class="empty" style="display:none">No devices yet.</div>
 
 <div class="modal-back" id="modal">
   <div class="modal">
-    <h2 id="modalTitle">Add camera</h2>
+    <h2 id="modalTitle">Add device</h2>
     <div id="formError" class="error" style="display:none"></div>
     <input type="hidden" id="f_id" />
     <div class="row">
       <div><label>Name</label><input id="f_name" /></div>
       <div style="flex:.5" id="intervalBox"><label>Poll interval (s)</label><input id="f_interval" type="number" value="5" min="1" /></div>
     </div>
-    <div class="row">
-      <div><label id="l_host">Host / IP</label><input id="f_host" placeholder="10.0.0.42" /></div>
-      <div style="flex:.5"><label id="l_port">Port</label><input id="f_port" type="number" value="23" /></div>
-    </div>
-    <label>Production idle timeout (minutes)</label>
-    <input id="f_idle" type="number" value="30" min="1" max="10080" />
-    <div class="hint">If the pass counter does not increase for this long, the camera counts as not in production: it is grayed on the dashboard and gets no scrap alerts until passes resume.</div>
     <label>Protocol</label>
     <select id="f_protocol" onchange="onProtocol()"></select>
     <div id="protoHelp" class="hint"></div>
+    <div class="row" id="addrRow">
+      <div><label id="l_host">Host / IP</label><input id="f_host" placeholder="10.0.0.42" /></div>
+      <div style="flex:.5"><label id="l_port">Port</label><input id="f_port" type="number" value="23" /></div>
+    </div>
     <div id="listenHelp" class="hint" style="display:none"></div>
-    <label>Protocol config (JSON)</label>
-    <textarea id="f_config" spellcheck="false"></textarea>
-    <div class="hint" id="configFields"></div>
+
+    <div id="opcuaBox" style="display:none">
+      <label>Endpoint URL</label>
+      <input id="o_endpoint" placeholder="opc.tcp://10.0.0.5:4840" />
+      <div class="row">
+        <div><label>Security mode</label>
+          <select id="o_mode" onchange="onOpcMode()"><option>None</option><option>Sign</option><option>SignAndEncrypt</option></select></div>
+        <div><label>Security policy</label>
+          <select id="o_policy">
+            <option>Basic256Sha256</option><option>Aes128_Sha256_RsaOaep</option><option>Aes256_Sha256_RsaPss</option>
+            <option>Basic256</option><option>Basic128Rsa15</option>
+          </select></div>
+      </div>
+      <div class="hint" id="certHint" style="display:none">With Sign or SignAndEncrypt the app logs in with its own client certificate.
+        If the server rejects it, <a href="/api/devices/opcua/certificate">download the certificate</a> and add it to the server's trusted certificates.</div>
+      <div class="row">
+        <div><label>Login</label>
+          <select id="o_auth" onchange="onOpcAuth()"><option value="anon">Anonymous</option><option value="user">Username and password</option></select></div>
+        <div class="o_user"><label>Username</label><input id="o_username" autocomplete="off" /></div>
+        <div class="o_user"><label>Password</label><input id="o_password" type="password" autocomplete="new-password" /></div>
+      </div>
+      <div id="opcNodes"></div>
+      <div class="row">
+        <div><label>Job name when no job node is set</label><input id="o_default_job" placeholder="MAIN" /></div>
+        <div style="flex:.5"><label>Timeout (s)</label><input id="o_timeout" type="number" min="1" placeholder="5" /></div>
+      </div>
+    </div>
+
+    <label>Production idle timeout (minutes)</label>
+    <input id="f_idle" type="number" value="30" min="1" max="10080" />
+    <div class="hint">If the pass counter does not increase for this long, the device counts as not in production: it is grayed on the dashboard and gets no scrap alerts until passes resume.</div>
+    <label>Statistics</label>
+    <select id="f_stats">
+      <option value="include">Include: count its readings in the overall figures</option>
+      <option value="exclude">Exclude: leave its readings out of the overall figures by default</option>
+    </select>
+    <div class="hint">Overall figures are the totals on Scrap statistics, the Excel export and chat command totals. An excluded device still has its own rows there, marked; single readings or periods can be included again in the Data log and on Scrap statistics.</div>
+    <div id="configBox">
+      <label>Protocol config (JSON)</label>
+      <textarea id="f_config" spellcheck="false"></textarea>
+      <div class="hint" id="configFields"></div>
+    </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input type="checkbox" id="f_enabled" checked style="width:auto"/> Enabled (poll automatically)</label>
     <div class="actions" style="margin-top:20px;justify-content:flex-end">
       <button class="btn secondary" onclick="closeModal('modal')">Cancel</button>
       <button class="btn" id="saveBtn" onclick="save()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="browseModal" style="z-index:60">
+  <div class="modal" style="width:640px">
+    <h2>Browse OPC UA server</h2>
+    <div class="hint" id="browseFor"></div>
+    <div id="browseError" class="error" style="display:none;margin-top:10px"></div>
+    <div id="browsePath" class="muted" style="margin:10px 0"></div>
+    <div style="max-height:52vh;overflow-y:auto">
+      <table><thead><tr><th>Name</th><th>Value</th><th>Type</th><th></th></tr></thead><tbody id="browseRows"></tbody></table>
+    </div>
+    <div class="actions" style="margin-top:16px;justify-content:flex-end">
+      <button class="btn secondary" onclick="closeModal('browseModal')">Close</button>
     </div>
   </div>
 </div>
@@ -56,7 +107,7 @@ const CAN_MANAGE = {{ 'true' if user.has_permission('manage_devices') else 'fals
 const CAN_CONTROL = {{ 'true' if user.has_permission('control_connections') else 'false' }};
 let PROTOCOLS = [];
 let LISTEN = { first: 5100, last: 5119 };
-// starting config offered when a camera is switched to one of these protocols
+// starting config offered when a device is switched to one of these protocols
 const LISTEN_TEMPLATE = {
   mode: 'counter', delimiter: ',', terminator: '\r\n',
   job_field: 0, pass_field: 1, fail_field: 2, count_field: null, default_job: 'MAIN',
@@ -72,12 +123,19 @@ const TEMPLATES = {
   slmp_listen: { mode: 'counter', ...SLMP_TEMPLATE, trigger_device: null, status_device: null, pass_values: [1] },
 };
 const LISTEN_KIND = { udp_listen: 'UDP', slmp_listen: 'SLMP' };
+const OPC_NODES = [['pass_node', 'Pass (OK) counter node'], ['fail_node', 'Fail (NOK) counter node'],
+                   ['count_node', 'Total counter node (optional)'], ['job_node', 'Job / recipe node (optional)']];
+// config keys the OPC UA form edits; any other keys in the config are kept
+const OPC_KEYS = ['endpoint', 'security_mode', 'security_policy', 'username', 'password', 'default_job', 'timeout',
+                  ...OPC_NODES.map(n => n[0])];
+let opcExtra = {};
 
 async function loadProtocols() {
   PROTOCOLS = await getJSON('/api/devices/protocols');
   try { LISTEN = await getJSON('/api/devices/listen-ports'); } catch (e) { /* keep default */ }
 }
 const isPush = (key) => !!(PROTOCOLS.find(p => p.key === key) || {}).push;
+const protoLabel = (key) => (PROTOCOLS.find(p => p.key === key) || {}).label || key;
 
 async function load() {
   const rows = document.getElementById('rows');
@@ -94,11 +152,15 @@ async function load() {
       actions.append(el('button', { class: 'btn secondary small', onclick: () => openForm(d) }, 'Edit'));
       actions.append(el('button', { class: 'btn danger small', onclick: () => remove(d) }, 'Delete'));
     }
+    const address = push ? 'Listening on ' + (LISTEN_KIND[d.protocol] || 'TCP') + ' :' + d.port + (d.host ? ' (from ' + d.host + ')' : '')
+      : (d.protocol === 'opcua' && d.protocol_config.endpoint) ? d.protocol_config.endpoint : d.host + ':' + d.port;
     rows.append(el('tr', {},
       el('td', {}, status),
-      el('td', {}, el('strong', {}, d.name), d.last_error ? el('div', { class: 'muted' }, d.last_error) : null),
-      el('td', {}, push ? 'Listening on ' + (LISTEN_KIND[d.protocol] || 'TCP') + ' :' + d.port + (d.host ? ' (from ' + d.host + ')' : '') : d.host + ':' + d.port),
-      el('td', {}, d.protocol),
+      el('td', {}, el('strong', {}, d.name),
+        d.stats_default === 'exclude' ? el('span', { class: 'badge off', style: 'margin-left:8px', title: 'Readings are left out of the overall statistics by default' }, 'not in totals') : null,
+        d.last_error ? el('div', { class: 'muted' }, d.last_error) : null),
+      el('td', {}, address),
+      el('td', {}, protoLabel(d.protocol)),
       el('td', {}, d.current_job || '—'),
       el('td', {}, push ? 'push' : d.poll_interval + 's'),
       el('td', {}, el('span', { class: 'badge ' + PROD_BADGE[d.production_state][0] }, PROD_BADGE[d.production_state][1]),
@@ -108,13 +170,110 @@ async function load() {
   }
 }
 
+// ---- OPC UA form ---------------------------------------------------------
+function buildOpcNodes() {
+  const box = document.getElementById('opcNodes');
+  if (box.childElementCount) return;
+  for (const [key, label] of OPC_NODES) {
+    box.append(el('label', {}, label),
+      el('div', { style: 'display:flex;gap:8px' },
+        el('input', { id: 'o_' + key, placeholder: key === 'pass_node' ? 'ns=2;s=Line1.Pass' : '', spellcheck: 'false' }),
+        el('button', { class: 'btn secondary small', type: 'button', onclick: () => openBrowse(key, label) }, 'Browse…')));
+  }
+}
+function fillOpc(cfg) {
+  buildOpcNodes();
+  opcExtra = Object.fromEntries(Object.entries(cfg || {}).filter(([k]) => !OPC_KEYS.includes(k)));
+  const v = (k, dflt = '') => (cfg && cfg[k] != null) ? cfg[k] : dflt;
+  document.getElementById('o_endpoint').value = v('endpoint');
+  document.getElementById('o_mode').value = v('security_mode', 'None');
+  document.getElementById('o_policy').value = v('security_policy', 'Basic256Sha256');
+  document.getElementById('o_auth').value = v('username') ? 'user' : 'anon';
+  document.getElementById('o_username').value = v('username');
+  document.getElementById('o_password').value = v('password');
+  document.getElementById('o_default_job').value = v('default_job');
+  document.getElementById('o_timeout').value = v('timeout');
+  for (const [key] of OPC_NODES) document.getElementById('o_' + key).value = v(key);
+  onOpcMode(); onOpcAuth();
+}
+function opcConfig() {
+  const val = (id) => document.getElementById(id).value.trim();
+  const cfg = { ...opcExtra, endpoint: val('o_endpoint'), security_mode: val('o_mode') };
+  if (cfg.security_mode !== 'None') cfg.security_policy = val('o_policy');
+  if (val('o_auth') === 'user') { cfg.username = val('o_username'); cfg.password = document.getElementById('o_password').value; }
+  for (const [key] of OPC_NODES) cfg[key] = val('o_' + key) || null;
+  if (val('o_default_job')) cfg.default_job = val('o_default_job');
+  if (val('o_timeout')) cfg.timeout = parseFloat(val('o_timeout'));
+  return cfg;
+}
+function onOpcMode() {
+  const secure = document.getElementById('o_mode').value !== 'None';
+  document.getElementById('o_policy').disabled = !secure;
+  document.getElementById('certHint').style.display = secure ? 'block' : 'none';
+}
+function onOpcAuth() {
+  const user = document.getElementById('o_auth').value === 'user';
+  document.querySelectorAll('.o_user').forEach(e => e.style.visibility = user ? 'visible' : 'hidden');
+}
+
+let browseTarget = null;
+function openBrowse(key, label) {
+  browseTarget = key;
+  document.getElementById('browseFor').textContent = 'Pick the node for: ' + label + '. Open folders and objects, then choose a variable.';
+  openModal('browseModal');
+  browseTo(null, []);
+}
+async function browseTo(nodeId, trail) {
+  const err = document.getElementById('browseError'), rows = document.getElementById('browseRows');
+  err.style.display = 'none';
+  rows.innerHTML = '';
+  rows.append(el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'Connecting…')));
+  let r;
+  try {
+    r = await postJSON('/api/devices/opcua/browse', {
+      protocol_config: opcConfig(), node_id: nodeId,
+      device_id: document.getElementById('f_id').value ? +document.getElementById('f_id').value : null,
+    });
+  } catch (e) { rows.innerHTML = ''; err.textContent = e.message; err.style.display = 'block'; return; }
+  const path = [...trail, { id: r.node_id, name: r.name }];
+  const crumbs = document.getElementById('browsePath'); crumbs.innerHTML = '';
+  path.forEach((p, i) => {
+    if (i) crumbs.append(' › ');
+    crumbs.append(i === path.length - 1 ? el('strong', {}, p.name)
+      : el('a', { href: '#', onclick: (e) => { e.preventDefault(); browseTo(p.id, path.slice(0, i)); } }, p.name));
+  });
+  rows.innerHTML = '';
+  if (!r.children.length) rows.append(el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'This node has no children.')));
+  for (const c of r.children) {
+    const isVar = c.node_class === 'Variable';
+    const action = isVar ? el('button', { class: 'btn small', onclick: () => pickNode(c) }, 'Use')
+      : c.has_children ? el('button', { class: 'btn secondary small', onclick: () => browseTo(c.node_id, path) }, 'Open') : null;
+    rows.append(el('tr', {},
+      el('td', {}, el('div', {}, c.has_children ? el('a', { href: '#', onclick: (e) => { e.preventDefault(); browseTo(c.node_id, path); } }, c.name || c.node_id) : (c.name || c.node_id)),
+        el('div', { class: 'muted' }, c.node_id)),
+      el('td', {}, c.value === null || c.value === undefined ? '' : String(c.value)),
+      el('td', { class: 'muted' }, isVar ? (c.data_type || '') : c.node_class),
+      el('td', {}, action)));
+  }
+}
+function pickNode(c) {
+  document.getElementById('o_' + browseTarget).value = c.node_id;
+  closeModal('browseModal');
+  toast('Node set: ' + (c.name || c.node_id));
+}
+
+// ---- form ----------------------------------------------------------------
 function onProtocol() {
   const key = document.getElementById('f_protocol').value;
   const p = PROTOCOLS.find(x => x.key === key);
   const help = document.getElementById('configFields');
   const push = !!(p && p.push);
-  document.getElementById('l_host').textContent = push ? 'Accept data from camera IP (blank = any)' : 'Host / IP';
-  document.getElementById('f_host').placeholder = push ? 'blank = any camera' : '10.0.0.42';
+  const opc = key === 'opcua';
+  document.getElementById('opcuaBox').style.display = opc ? 'block' : 'none';
+  document.getElementById('addrRow').style.display = opc ? 'none' : 'flex';
+  document.getElementById('configBox').style.display = opc ? 'none' : 'block';
+  document.getElementById('l_host').textContent = push ? 'Accept data from device IP (blank = any)' : 'Host / IP';
+  document.getElementById('f_host').placeholder = push ? 'blank = any device' : '10.0.0.42';
   document.getElementById('l_port').textContent = push ? `Listen port (${LISTEN.first}-${LISTEN.last})` : 'Port';
   document.getElementById('intervalBox').style.visibility = push ? 'hidden' : 'visible';
   const lh = document.getElementById('listenHelp');
@@ -130,6 +289,12 @@ function onProtocol() {
   const t = cfg.value.trim();
   const untouched = !t || t === '{}' || Object.values(TEMPLATES).some(x => t === JSON.stringify(x, null, 2));
   if (untouched) cfg.value = JSON.stringify(TEMPLATES[key] || {}, null, 2);
+  if (opc) {
+    let current = {};
+    try { current = JSON.parse(cfg.value || '{}'); } catch (e) { /* start empty */ }
+    if (Object.values(TEMPLATES).some(x => JSON.stringify(x) === JSON.stringify(current))) current = {};
+    fillOpc(current);
+  }
   if (!p) { help.innerHTML = ''; return; }
   const items = Object.entries(p.config_fields).map(([k, v]) => `<div><code>${k}</code> — ${v}</div>`).join('');
   help.innerHTML = '<div style="margin-top:6px">Fields: ' + items + '</div>';
@@ -139,13 +304,14 @@ function openForm(d) {
   document.getElementById('formError').style.display = 'none';
   const sel = document.getElementById('f_protocol');
   sel.innerHTML = PROTOCOLS.map(p => `<option value="${p.key}">${p.label}</option>`).join('');
-  document.getElementById('modalTitle').textContent = d ? 'Edit camera' : 'Add camera';
+  document.getElementById('modalTitle').textContent = d ? 'Edit device' : 'Add device';
   document.getElementById('f_id').value = d ? d.id : '';
   document.getElementById('f_name').value = d ? d.name : '';
   document.getElementById('f_host').value = d ? d.host : '';
   document.getElementById('f_port').value = d ? d.port : 23;
   document.getElementById('f_interval').value = d ? d.poll_interval : 5;
   document.getElementById('f_idle').value = d ? d.idle_timeout_min : 30;
+  document.getElementById('f_stats').value = d ? d.stats_default : 'include';
   sel.value = d ? d.protocol : (PROTOCOLS[0] && PROTOCOLS[0].key);
   document.getElementById('f_config').value = JSON.stringify(d ? d.protocol_config : {}, null, 2);
   document.getElementById('f_enabled').checked = d ? d.enabled : true;
@@ -158,15 +324,21 @@ async function save() {
   err.style.display = 'none';
   try {
     const id = document.getElementById('f_id').value;
+    const protocol = document.getElementById('f_protocol').value;
+    const opc = protocol === 'opcua';
+    const config = opc ? opcConfig() : parseJSONField(document.getElementById('f_config').value, {});
+    if (opc && !config.endpoint) throw new Error('Enter the endpoint URL of the OPC UA server.');
     const payload = {
       name: document.getElementById('f_name').value.trim(),
-      host: document.getElementById('f_host').value.trim(),
-      port: parseInt(document.getElementById('f_port').value, 10),
-      protocol: document.getElementById('f_protocol').value,
-      protocol_config: parseJSONField(document.getElementById('f_config').value, {}),
+      // OPC UA: the server takes host and port from the endpoint URL
+      host: opc ? '' : document.getElementById('f_host').value.trim(),
+      port: opc ? 4840 : parseInt(document.getElementById('f_port').value, 10),
+      protocol,
+      protocol_config: config,
       poll_interval: parseInt(document.getElementById('f_interval').value, 10),
       enabled: document.getElementById('f_enabled').checked,
       idle_timeout_min: parseInt(document.getElementById('f_idle').value, 10) || 30,
+      stats_default: document.getElementById('f_stats').value,
     };
     if (id) await patchJSON('/api/devices/' + id, payload);
     else await postJSON('/api/devices', payload);
@@ -176,7 +348,7 @@ async function save() {
 }
 
 async function remove(d) {
-  if (!confirm('Delete camera "' + d.name + '" and all its data?')) return;
+  if (!confirm('Delete device "' + d.name + '" and all its data?')) return;
   try { await delJSON('/api/devices/' + d.id); load(); } catch (e) { toast(e.message, true); }
 }
 
@@ -185,33 +357,33 @@ async function pollNow(id) {
   catch (e) { toast(e.message, true); load(); }
 }
 
-async function exportCameras() {
+async function exportDevices() {
   try {
     const data = await getJSON('/api/devices/export');
     const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-    downloadJSON('cognex-cameras-' + stamp + '.json', data);
-    toast('Exported ' + data.cameras.length + ' camera(s)');
+    downloadJSON('scrap-meter-devices-' + stamp + '.json', data);
+    toast('Exported ' + data.cameras.length + ' device(s). Passwords are not exported.');
   } catch (e) { toast(e.message, true); }
 }
 
-async function importCameras(input) {
+async function importDevices(input) {
   const file = input.files[0];
   input.value = '';
   if (!file) return;
   let data;
   try { data = JSON.parse(await file.text()); }
   catch (e) { toast('That file is not valid JSON: ' + e.message, true); return; }
-  const cams = Array.isArray(data) ? data : (data.cameras || []);
-  if (!cams.length) { toast('No cameras found in that file.', true); return; }
+  const devs = Array.isArray(data) ? data : (data.cameras || data.devices || []);
+  if (!devs.length) { toast('No devices found in that file.', true); return; }
   const existing = new Set((await getJSON('/api/devices')).map(d => d.name));
-  const upd = cams.filter(c => existing.has(c.name)).length;
-  if (!confirm(`Import ${cams.length} camera(s) from ${file.name}?
+  const upd = devs.filter(c => existing.has(c.name)).length;
+  if (!confirm(`Import ${devs.length} device(s) from ${file.name}?
 
 ` +
-    `${cams.length - upd} new, ${upd} existing (same name) will be updated.
+    `${devs.length - upd} new, ${upd} existing (same name) will be updated.
 Counters and history are not touched.`)) return;
   try {
-    const r = await postJSON('/api/devices/import', { version: data.version || 1, cameras: cams });
+    const r = await postJSON('/api/devices/import', { version: data.version || 1, cameras: devs });
     toast(`Imported: ${r.created.length} added, ${r.updated.length} updated`);
     load();
   } catch (e) { toast(e.message, true); }

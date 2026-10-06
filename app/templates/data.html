@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Data log · Cognex Monitor{% endblock %}
+{% block title %}Data log · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
   <div><h1>Data log</h1><p class="lead">Per-job running totals and the raw reading history from the database.</p></div>
-  <select id="deviceFilter" style="max-width:240px" onchange="load()"><option value="">All cameras</option></select>
+  <select id="deviceFilter" style="max-width:240px" onchange="load()"><option value="">All devices</option></select>
 </div>
 
 <div class="section">
   <h2>Running counters by job</h2>
-  <table><thead><tr><th>Camera</th><th>Job</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th><th>State</th></tr></thead>
+  <table><thead><tr><th>Device</th><th>Job</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th><th>State</th></tr></thead>
   <tbody id="counterRows"></tbody></table>
   <div id="counterEmpty" class="empty" style="display:none">No counters yet.</div>
 </div>
@@ -20,8 +20,8 @@
       <option value="">All readings</option><option value="true">Excluded readings only</option>
     </select>
   </div>
-  <p class="hint">Readings marked <span class="badge off">excluded</span> or <span class="badge warn">not in production</span> are left out of the <a href="/scrap">scrap statistics</a>.{% if user.has_permission('exclude_readings') %} Use Exclude to leave a reading's parts out; Include takes them back.{% endif %}</p>
-  <table><thead><tr><th>Time</th><th>Camera</th><th>Job</th><th>Raw pass</th><th>Raw fail</th><th>Total pass</th><th>Total fail</th><th>Scrap statistics</th></tr></thead>
+  <p class="hint">Readings marked <span class="badge off">excluded</span>, <span class="badge off">device not in totals</span> or <span class="badge warn">not in production</span> are left out of the overall <a href="/scrap">scrap statistics</a>.{% if user.has_permission('exclude_readings') %} Use Exclude to leave a reading's parts out; Include counts them, also for a device that is excluded from the statistics by default.{% endif %}</p>
+  <table><thead><tr><th>Time</th><th>Device</th><th>Job</th><th>Raw pass</th><th>Raw fail</th><th>Total pass</th><th>Total fail</th><th>Scrap statistics</th></tr></thead>
   <tbody id="readingRows"></tbody></table>
   <div id="readingEmpty" class="empty" style="display:none">No readings yet.</div>
 </div>
@@ -37,7 +37,7 @@ async function load() {
   DEVICES = await getJSON('/api/devices');
   const sel = document.getElementById('deviceFilter');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">All cameras</option>' + DEVICES.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  sel.innerHTML = '<option value="">All devices</option>' + DEVICES.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
   sel.value = cur;
   const filter = sel.value;
 
@@ -68,7 +68,7 @@ async function load() {
   const rRows = document.getElementById('readingRows'); rRows.innerHTML = '';
   document.getElementById('readingEmpty').style.display = readings.length ? 'none' : 'block';
   for (const r of readings) {
-    rRows.append(el('tr', { class: r.excluded ? 'excluded' : '' },
+    rRows.append(el('tr', { class: leftOut(r) ? 'excluded' : '' },
       el('td', { class: 'muted' }, new Date(r.created_at).toLocaleString()),
       el('td', {}, devName(r.device_id)), el('td', {}, r.job_name || '—'),
       el('td', {}, String(r.raw_pass)), el('td', {}, String(r.raw_fail)),
@@ -77,13 +77,16 @@ async function load() {
     ));
   }
 }
+// left out by a user, or by its device's statistics default (and not included)
+function leftOut(r) { return r.excluded || (r.device_excluded && !r.included); }
 function readingState(r) {
   const cell = el('div', { class: 'actions', style: 'align-items:center;flex-wrap:nowrap' });
   if (r.excluded) cell.append(el('span', { class: 'badge off' }, 'excluded'));
+  else if (r.device_excluded && !r.included) cell.append(el('span', { class: 'badge off', title: 'The device is excluded from the statistics by default' }, 'device not in totals'));
   else if (r.in_production === false) cell.append(el('span', { class: 'badge warn' }, 'not in production'));
-  else cell.append(el('span', { class: 'badge ok' }, 'counted'));
-  if (CAN_EXCLUDE) cell.append(el('button', { class: 'btn secondary small', onclick: () => setExcluded(r, !r.excluded) },
-    r.excluded ? 'Include' : 'Exclude'));
+  else cell.append(el('span', { class: 'badge ok' }, r.device_excluded ? 'included' : 'counted'));
+  if (CAN_EXCLUDE) cell.append(el('button', { class: 'btn secondary small', onclick: () => setExcluded(r, !leftOut(r)) },
+    leftOut(r) ? 'Include' : 'Exclude'));
   return cell;
 }
 async function setExcluded(r, excluded) {

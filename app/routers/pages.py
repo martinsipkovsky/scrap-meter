@@ -51,7 +51,8 @@ def users_page(request: Request, user: User = Depends(require_page_permission("m
     return templates.TemplateResponse(request, "users.html", _ctx(request, user, page="users"))
 
 
-@router.get("/camera/{device_id}", response_class=HTMLResponse)
+@router.get("/device/{device_id}", response_class=HTMLResponse)
+@router.get("/camera/{device_id}", response_class=HTMLResponse)  # old links
 def camera_page(device_id: int, request: Request, user: User = Depends(require_page_permission("view_dashboard"))):
     return templates.TemplateResponse(
         request, "camera.html", _ctx(request, user, page="dashboard", device_id=device_id)

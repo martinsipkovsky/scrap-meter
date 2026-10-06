@@ -40,6 +40,7 @@ def _device_summary(db: Session, d: Device) -> dict:
         "current_job": d.current_job,
         "last_error": d.last_error,
         "last_poll_at": d.last_poll_at,
+        "stats_default": d.stats_default,
         **production.describe(d),
         "active_job": None
         if active is None
@@ -130,8 +131,12 @@ def readings(
     if device_id is not None:
         q = q.filter(Reading.device_id == device_id)
     if excluded is not None:
-        q = q.filter(Reading.excluded.is_(True) if excluded else Reading.excluded.isnot(True))
+        # left out by a user, or by the device's statistics default
+        by_default = Reading.device_id.in_(_excluded_device_ids(db)) & Reading.included.isnot(True)
+        is_out = Reading.excluded.is_(True) | by_default
+        q = q.filter(is_out if excluded else ~is_out)
     rows = q.order_by(Reading.created_at.desc()).limit(min(limit, 1000)).all()
+    out_ids = set(_excluded_device_ids(db))
     return [
         {
             "id": r.id,
@@ -142,6 +147,9 @@ def readings(
             "total_pass": r.total_pass,
             "total_fail": r.total_fail,
             "excluded": bool(r.excluded),
+            # the device is excluded from the statistics by default
+            "device_excluded": r.device_id in out_ids,
+            "included": bool(r.included),
             "in_production": r.in_production,
             "created_at": r.created_at,
         }
@@ -157,7 +165,11 @@ class ExcludePeriod(BaseModel):
     excluded: bool
     start: dt.datetime
     end: dt.datetime
-    device_id: int | None = None  # None = all cameras
+    device_id: int | None = None  # None = all devices
+
+
+def _excluded_device_ids(db: Session) -> list[int]:
+    return [i for (i,) in db.query(Device.id).filter(Device.stats_default == "exclude")]
 
 
 @router.patch("/readings/{reading_id}")
@@ -167,13 +179,15 @@ def exclude_reading(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("exclude_readings")),
 ):
-    """Leave one reading's parts out of the scrap statistics, or take them back."""
+    """Leave one reading's parts out of the scrap statistics, or take them back
+    (also when its device is excluded from the statistics by default)."""
     r = db.get(Reading, reading_id)
     if not r:
         raise HTTPException(404, "Reading not found")
     r.excluded = payload.excluded
+    r.included = not payload.excluded and r.device.excluded_by_default
     db.commit()
-    return {"id": r.id, "excluded": r.excluded}
+    return {"id": r.id, "excluded": r.excluded, "included": r.included}
 
 
 @router.post("/readings/exclude")
@@ -182,14 +196,18 @@ def exclude_period(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("exclude_readings")),
 ):
-    """Exclude (or include again) every reading in a time period."""
+    """Exclude (or include) every reading in a time period. Including also
+    counts readings of devices that are excluded from the statistics by default."""
     start, end = _aware(payload.start), _aware(payload.end)
     if end <= start:
         raise HTTPException(400, "The end must be after the start")
     q = db.query(Reading).filter(Reading.created_at >= start, Reading.created_at < end)
     if payload.device_id is not None:
         q = q.filter(Reading.device_id == payload.device_id)
-    changed = q.update({Reading.excluded: payload.excluded}, synchronize_session=False)
+    changed = q.update({Reading.excluded: payload.excluded, Reading.included: False}, synchronize_session=False)
+    if not payload.excluded:
+        q.filter(Reading.device_id.in_(_excluded_device_ids(db))).update(
+            {Reading.included: True}, synchronize_session=False)
     db.commit()
     return {"changed": changed}
 

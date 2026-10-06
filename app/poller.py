@@ -116,7 +116,7 @@ def record_sample(db: Session, device: Device, sample: Sample) -> Reading:
 
     if previous_job is not None and previous_job != sample.job_name:
         notifications.emit(db, "job_change",
-                           f"Camera '{device.name}' changed job from '{previous_job}' to '{sample.job_name}'", device)
+                           f"Device '{device.name}' changed job from '{previous_job}' to '{sample.job_name}'", device)
     notifications.evaluate_device(db, device)
     return reading
 

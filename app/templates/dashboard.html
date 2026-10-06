@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · Cognex Monitor{% endblock %}
+{% block title %}Dashboard · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
   <div>
     <h1>Dashboard</h1>
-    <p class="lead">Live pass/fail counters across all cameras. Grayed cameras are not in production. Click a camera for its OK/NOK chart.</p>
+    <p class="lead">Live pass/fail counters across all devices. Grayed devices are not in production. Click a device for its OK/NOK chart.</p>
   </div>
   <button class="btn secondary small" onclick="load()">Refresh now</button>
 </div>
@@ -18,14 +18,15 @@ async function load() {
   try { data = await getJSON('/api/data/summary'); }
   catch (e) { cards.innerHTML = ''; cards.append(el('div', { class: 'empty' }, e.message)); return; }
   cards.innerHTML = '';
-  if (!data.length) { cards.append(el('div', { class: 'empty' }, 'No cameras configured yet. Add one under Cameras.')); return; }
+  if (!data.length) { cards.append(el('div', { class: 'empty' }, 'No devices configured yet. Add one under Devices.')); return; }
   for (const d of data) {
     const dot = d.connected ? 'ok' : (d.enabled ? 'bad' : 'off');
     const job = d.active_job;
     const body = [];
     body.push(el('h3', {}, el('span', { class: 'dot ' + dot }), d.name,
       el('span', { class: 'badge ' + PROD_BADGE[d.production_state][0], style: 'margin-left:auto' }, PROD_BADGE[d.production_state][1])));
-    body.push(el('div', { class: 'muted' }, d.protocol + (d.current_job ? ' · job ' + d.current_job : '')));
+    body.push(el('div', { class: 'muted' }, d.protocol + (d.current_job ? ' · job ' + d.current_job : '') +
+      (d.stats_default === 'exclude' ? ' · not in statistics totals' : '')));
     if (job) {
       const total = job.total_count || (job.total_pass + job.total_fail);
       const kp = el('div', { class: 'kpis' },
@@ -42,7 +43,7 @@ async function load() {
       body.push(el('div', { class: 'muted', style: 'margin-top:12px' }, d.last_error ? ('Error: ' + d.last_error) : 'Waiting for first reading…'));
     }
     if (d.production_state === 'idle') body.push(el('div', { class: 'muted', style: 'margin-top:4px' }, idleText(d)));
-    cards.append(el('a', { class: 'card clickable' + (d.in_production ? '' : ' not-producing'), href: '/camera/' + d.id }, ...body));
+    cards.append(el('a', { class: 'card clickable' + (d.in_production ? '' : ' not-producing'), href: '/device/' + d.id }, ...body));
   }
 }
 load();

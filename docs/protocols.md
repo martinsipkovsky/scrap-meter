@@ -1,33 +1,34 @@
 # Protocols
 
-> **None of these protocols has been tested on real Cognex cameras or
-> Mitsubishi PLCs yet.** They are built from the vendors' protocol
+> **None of these protocols has been tested on real Cognex cameras,
+> Mitsubishi PLCs or OPC UA servers yet.** They are built from the vendors' protocol
 > descriptions and tested against simulators and unit tests. Expect to adjust
 > settings on first contact with real hardware.
 
 Each protocol is one self-contained file in `app/protocols/`, so a protocol can
-be read and debugged on its own. The Cameras tab lists every protocol's config
+be read and debugged on its own. The Devices tab lists every protocol's config
 fields, and each file's docstring describes them too.
 
 There are two kinds:
 
-- **Polled:** the app connects to the camera or PLC every *poll interval*
-  seconds and reads the counters.
-- **Push (listener):** the app opens a port and the camera connects or sends to
-  it. *Port* must be in `LISTEN_PORTS` (default 5100-5119), each push camera
+- **Polled:** the app connects to the device (camera, PLC, OPC UA server)
+  every *poll interval* seconds and reads the counters.
+- **Push (listener):** the app opens a port and the device connects or sends to
+  it. *Port* must be in `LISTEN_PORTS` (default 5100-5119), each push device
   needs its own port, and *Host* optionally limits which IP may send.
 
 | Key | Name | Kind | File |
 |---|---|---|---|
 | `datachannel` | Cognex Data Channel (TCP) | Polled | `datachannel.py` |
 | `modbus` | Modbus/TCP | Polled | `modbus.py` |
+| `opcua` | OPC UA client | Polled | `opcua.py` |
 | `tcp` | Generic TCP / Native Mode | Polled | `tcp.py` |
 | `tcp_listen` | TCP listener | Push | `tcp_listener.py` |
 | `udp_listen` | UDP listener | Push | `udp_listener.py` |
 | `slmp` | SLMP / MC protocol (read PLC registers) | Polled | `slmp.py` |
-| `slmp_listen` | SLMP server (camera writes to the app as if it were a PLC) | Push | `slmp_server.py` |
+| `slmp_listen` | SLMP server (device writes to the app as if it were a PLC) | Push | `slmp_server.py` |
 | `profinet` | PROFINET (via gateway) | Polled | `profinet.py` |
-| `simulator` | Simulated camera | Polled | `simulator.py` |
+| `simulator` | Simulated device | Polled | `simulator.py` |
 
 ## Counter mode and event mode
 
@@ -164,6 +165,54 @@ port from `LISTEN_PORTS` as the PLC address in the camera's SLMP settings.
 | `job_device` / `job_length` / `job_format` / `default_job` | As for the SLMP client |
 | `preset` | Optional `{"D0": 1}` values the camera can read before writing |
 
+## OPC UA client (`opcua`)
+
+Reads the counters from any OPC UA server: a PLC (Siemens S7-1500, Beckhoff,
+B&R, Omron, ...), an edge gateway such as Kepware, a machine controller, or a
+camera or sensor with its own OPC UA server. The app is the client; each poll
+connects, reads the configured nodes and disconnects. Counters are folded into
+the reset-proof running totals like every other protocol.
+
+The device form has its own fields for OPC UA (stored in the config):
+
+| Field | Meaning |
+|---|---|
+| `endpoint` | The server's endpoint URL, e.g. `opc.tcp://10.0.0.5:4840`. The device list shows it as the address. |
+| `security_mode` | `None`, `Sign` or `SignAndEncrypt` |
+| `security_policy` | With Sign / SignAndEncrypt: `Basic256Sha256` (default), `Aes128_Sha256_RsaOaep`, `Aes256_Sha256_RsaPss`, or the older `Basic256` / `Basic128Rsa15` |
+| `username` / `password` | Login; leave the username blank for anonymous. The password is never sent back to the browser or exported. |
+| `pass_node` / `fail_node` | Node ids of the pass and fail counters, e.g. `ns=2;s=Line1.Pass` or `ns=3;i=1001` |
+| `count_node` | Optional node id of a total counter (otherwise pass + fail) |
+| `job_node` | Optional node id holding the job / recipe name or number |
+| `default_job` | Job name when `job_node` is not set (default `MAIN`) |
+| `timeout` | Connection timeout in seconds (default 5) |
+
+**Browse…** next to each node field lists the server's address space from the
+Objects folder down, with each variable's current value and data type; press
+**Use** to take its node id. Browsing uses the endpoint, security and login
+entered in the form, so it also tests them.
+
+Counter nodes may be any numeric type (integers, floats, Boolean); job nodes
+may be text or a number.
+
+**Client certificate.** With Sign or SignAndEncrypt the app presents its own
+certificate (application URI `urn:scrap-meter:opcua-client`, valid 10 years).
+It is generated on first use and kept in `DATA_DIR/opcua` (the `app_data`
+volume), so it stays the same across updates and the server has to trust it
+only once. Many servers reject unknown client certificates at first: download
+it with the link on the device form (or `GET /api/devices/opcua/certificate`)
+and move it to the server's trusted list. The app accepts any server
+certificate.
+
+Common errors are reported in plain words on the device list: the server
+refused the login, no endpoint with the chosen security mode and policy,
+the certificate is not trusted, or a node id does not exist.
+
+To try it without a real server, run the simulation server from the tests:
+`python tests/opcua_sim.py --port 4840 --user operator:secret` serves
+`ns=2;s=Line1.Pass`, `.Fail`, `.Total` and `.Job` with security None, Sign and
+SignAndEncrypt.
+
 ## PROFINET (`profinet`): gateway mode only
 
 PROFINET IO is a real-time protocol over raw layer-2 Ethernet frames, with
@@ -182,7 +231,7 @@ an error instead of pretending to work.
 | `gateway_host` / `gateway_port` | The gateway or PLC Modbus endpoint (port default 502) |
 | `modbus` | Register map, same fields as the Modbus driver |
 
-## Simulated camera (`simulator`)
+## Simulated device (`simulator`)
 
 Needs no hardware. Fabricates a counting job that periodically resets and
 changes job, which is useful for demos and for trying out alerts.

@@ -55,7 +55,7 @@ function toast(msg, isErr) {
   setTimeout(() => t.remove(), 4000);
 }
 
-// Production state badges shared by the dashboard and the camera view.
+// Production state badges shared by the dashboard and the device view.
 const PROD_BADGE = {
   running: ['ok', 'In production'],
   idle: ['off', 'Not in production'],

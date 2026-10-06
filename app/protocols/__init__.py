@@ -9,6 +9,7 @@ from __future__ import annotations
 from .base import ProtocolDriver, ProtocolError
 from .datachannel import DataChannelDriver
 from .modbus import ModbusDriver
+from .opcua import OpcUaDriver
 from .profinet import ProfinetDriver
 from .simulator import SimulatorDriver
 from .slmp import SlmpDriver
@@ -22,6 +23,7 @@ _DRIVERS: dict[str, type[ProtocolDriver]] = {
     for d in (
         DataChannelDriver,
         ModbusDriver,
+        OpcUaDriver,
         TcpDriver,
         TcpListenerDriver,
         UdpListenerDriver,

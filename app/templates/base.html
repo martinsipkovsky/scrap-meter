@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{% block title %}Cognex Monitor{% endblock %}</title>
+  <title>{% block title %}Scrap Meter{% endblock %}</title>
   <link rel="stylesheet" href="{{ static_url('style.css') }}" />
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="brand">Cognex<span> Monitor</span></div>
+      <div class="brand">Scrap<span> Meter</span></div>
       <nav class="nav">
         {% if user.has_permission('view_dashboard') %}
         <a href="/" class="{{ 'active' if page=='dashboard' }}">Dashboard</a>
-        <a href="/devices" class="{{ 'active' if page=='devices' }}">Cameras</a>
+        <a href="/devices" class="{{ 'active' if page=='devices' }}">Devices</a>
         {% endif %}
         {% if user.has_permission('view_data') %}
         <a href="/data" class="{{ 'active' if page=='data' }}">Data log</a>

@@ -27,7 +27,7 @@ _STATE: dict[int, dict] = {}
 
 class SimulatorDriver(ProtocolDriver):
     key = "simulator"
-    label = "Simulated camera (no hardware)"
+    label = "Simulated device (no hardware)"
     config_fields = {
         "jobs": "List of job names to cycle through",
         "fail_ratio": "Fraction of parts that fail (0-1)",

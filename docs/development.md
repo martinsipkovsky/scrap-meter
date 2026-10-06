@@ -23,9 +23,9 @@ pytest -q
 Or run them inside the Docker image, with no local Python setup:
 
 ```bash
-docker build -t cognex-monitor:test .
+docker build -t scrap-meter:test .
 docker run --rm -v "$(pwd)/tests:/srv/tests" -e POLL_ENABLED=false \
-  cognex-monitor:test python -m pytest -q /srv/tests
+  scrap-meter:test python -m pytest -q /srv/tests
 ```
 
 On Windows Git Bash, prefix the `docker run` with `MSYS_NO_PATHCONV=1` and use
@@ -35,8 +35,9 @@ The FTP backup tests run against a real FTP server from `pyftpdlib`, which is
 not an app dependency; they are skipped unless it is installed
 (`pip install pyftpdlib`, inside the container before `pytest`).
 
-The tests cover the counter logic, production state, the SLMP frames, the TCP
-and UDP listeners, and the API end to end. They use simulated devices only.
+The tests cover the counter logic, production state, the SLMP frames, the OPC UA
+client (against `tests/opcua_sim.py`), the TCP and UDP listeners, the
+statistics, and the API end to end. They use simulated devices only.
 
 ## Project layout
 
@@ -51,7 +52,7 @@ app/
   backup_ftp.py      FTP/FTPS upload and the automatic backup schedule
   models.py          User, Device, CounterState, Reading, Notification*
   counters.py        reset-proof accumulation (pure, unit-tested)
-  production.py      running / idle / stopped state per camera
+  production.py      running / idle / stopped state per device
   scrap_stats.py     scrap statistics for a date range, Excel export
   poller.py          background poll loop and one-shot poll
   notifications.py   rule conditions, evaluation, events and routing to providers
@@ -60,7 +61,7 @@ app/
   dependencies.py    login and permission checks
   seed.py            first admin account
   templating.py      Jinja2 setup, cache-busted static URLs
-  protocols/         one file per camera protocol
+  protocols/         one file per device protocol (opcua.py: OPC UA client)
   notifiers/         one file per notification transport (whatsapp, telegram;
                      whatsapp_linked runs the linked-phone client process)
   routers/           auth, account, users, devices, data, notifications, commands,
@@ -68,7 +69,7 @@ app/
   templates/         dark-mode Jinja2 pages
   static/            style.css, app.js
 deploy/              compose file and .env template for a prebuilt image
-tests/               pytest suite
+tests/               pytest suite; opcua_sim.py is an OPC UA simulation server
 ```
 
 Static files are linked as `/static/<file>?v=<content hash>`, so browsers load
@@ -91,5 +92,5 @@ Multi-architecture build and push:
 
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t <your-registry>/cognex-monitor:latest --push .
+  -t <your-registry>/scrap-meter:latest --push .
 ```

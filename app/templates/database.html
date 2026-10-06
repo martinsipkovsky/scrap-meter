@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Database · Cognex Monitor{% endblock %}
+{% block title %}Database · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
   <div><h1>Database</h1><p class="lead">Which PostgreSQL database the app stores its data in. Administrators only.</p></div>
@@ -29,7 +29,7 @@
   <div id="importBox" class="card" style="display:none;margin-top:14px">
     <h3>Import this backup?</h3>
     <div id="importInfo" class="muted"></div>
-    <div class="warnbox" style="margin-top:10px">Importing <strong>replaces all current data</strong> (cameras, readings, counters, users, notification settings) with the data in the file. The current data is saved first as a backup on this server, listed below, so the import can be undone by importing that file. You will be signed out and sign in with an account from the backup.</div>
+    <div class="warnbox" style="margin-top:10px">Importing <strong>replaces all current data</strong> (devices, readings, counters, users, notification settings) with the data in the file. The current data is saved first as a backup on this server, listed below, so the import can be undone by importing that file. You will be signed out and sign in with an account from the backup.</div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" id="importConfirm" style="width:auto" onchange="document.getElementById('importBtn').disabled = !this.checked"/> I understand that all current data will be replaced.</label>
     <div class="actions" style="margin-top:12px">
       <button class="btn danger" id="importBtn" disabled onclick="runImport()">Replace all data with this backup</button>
@@ -254,7 +254,7 @@ async function resetConn() {
 }
 
 async function restartApp() {
-  if (!confirm('Restart the app now? Everyone is disconnected for a few seconds and cameras are not read during the restart.')) return;
+  if (!confirm('Restart the app now? Everyone is disconnected for a few seconds and devices are not read during the restart.')) return;
   try { await postJSON('/api/database/restart'); } catch (e) { /* the process may already be going down */ }
   showMsg('Restarting… this page reloads when the app is back.', 'warn');
   const started = Date.now();
@@ -402,7 +402,7 @@ async function runImport() {
   if (!IMPORT_TOKEN || !document.getElementById('importConfirm').checked) return;
   if (!confirm('Replace ALL current data with this backup? The current data is saved on the server first.')) return;
   document.getElementById('importBtn').disabled = true;
-  box('bmsg', 'Saving the current data and importing, this can take a while. Cameras are not read meanwhile…', 'warn');
+  box('bmsg', 'Saving the current data and importing, this can take a while. Devices are not read meanwhile…', 'warn');
   try {
     const r = await postJSON('/api/database/backup/import', { token: IMPORT_TOKEN, confirm: true });
     IMPORT_TOKEN = null;

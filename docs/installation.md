@@ -1,6 +1,6 @@
 # Installation and deployment
 
-Cognex Monitor runs as two containers: the web app and a PostgreSQL database.
+Scrap Meter runs as two containers: the web app and a PostgreSQL database.
 There are two ways to get the app image:
 
 1. **Build it from this source code** (works for everyone).
@@ -11,14 +11,14 @@ There are two ways to get the app image:
 
 - Docker Engine 24+ with the Compose plugin (`docker compose`), on Linux,
   Windows or macOS. Images build for `linux/amd64` and `linux/arm64`.
-- Network access from the server to the cameras (for polled protocols) and
-  from the cameras to the server (for listener protocols).
+- Network access from the server to the devices (for polled protocols) and
+  from the devices to the server (for listener protocols).
 
 ## Option 1: build from source
 
 ```bash
-git clone <this repository> cognex-monitor
-cd cognex-monitor
+git clone <this repository> scrap-meter
+cd scrap-meter
 cp .env.example .env
 ```
 
@@ -46,14 +46,15 @@ pushed anywhere.
 ## Option 2: prebuilt image
 
 `deploy/docker-compose.yml` runs a prebuilt image without any source code on
-the server. It points at `azanar666/cognex-monitor:latest`, which is a
+the server. It points at `azanar666/scrap-meter:latest`, which is a
 **private** Docker Hub repository; only accounts given access can pull it.
+Each release is also tagged with its version, e.g. `azanar666/scrap-meter:1.4.0`.
 To use your own registry instead, build and push the image yourself and change
 the `image:` line:
 
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t <your-registry>/cognex-monitor:latest --push .
+  -t <your-registry>/scrap-meter:latest --push .
 ```
 
 On the server, put `deploy/docker-compose.yml` and `deploy/.env.example` in one
@@ -77,7 +78,7 @@ docker compose up -d
 
 An update replaces only the app container. Everything else is kept:
 
-- users, cameras, counters, readings and notification rules are in the
+- users, devices, counters, readings and notification rules are in the
   PostgreSQL database (`db_data` volume, or the server chosen on the Database
   tab);
 - the WhatsApp login is in the same bundled PostgreSQL database;
@@ -92,6 +93,24 @@ If a saved database server is not reachable when the app starts, it retries
 for about a minute before falling back to the bundled database (the Database
 tab then says so). `GET /healthz` shows the running version.
 
+### Coming from Cognex Monitor (1.3 and earlier)
+
+The app was renamed to Scrap Meter in 1.4.0 and its image moved from
+`azanar666/cognex-monitor` to `azanar666/scrap-meter`. To update, change only
+the `image:` line under `web:` in the server's compose file:
+
+```yaml
+    image: azanar666/scrap-meter:latest
+```
+
+then `docker compose pull` and `docker compose up -d` as usual. Keep the
+folder, the service names (`db`, `web`) and the volume names as they are, so
+the same database and settings are used; nothing has to be moved. The
+database name and user (`cognex`) also stay. Version 1.4.0 was published under
+the old image name too.
+
+### Before 1.2.0
+
 Versions before 1.2.0 did not keep that copy. If your server's compose file has
 no `app_data` volume (check for `app_data:/srv/data` under `web:`), copy the
 current `deploy/docker-compose.yml` before updating; otherwise the database
@@ -103,7 +122,7 @@ and are kept from then on.
 | Port | Protocol | Used by |
 |---|---|---|
 | `8000` (`WEB_PORT`) | TCP | Web UI and API |
-| `5100-5119` (`LISTEN_PORTS`) | TCP and UDP | Cameras that push data: TCP listener, UDP listener, SLMP server. One port per camera. |
+| `5100-5119` (`LISTEN_PORTS`) | TCP and UDP | Devices that push data: TCP listener, UDP listener, SLMP server. One port per device. |
 
 Compose publishes the whole listener range on both TCP and UDP. Open it in the
 host firewall too, for example:
@@ -113,8 +132,9 @@ sudo ufw allow 5100:5119/tcp
 sudo ufw allow 5100:5119/udp
 ```
 
-Polled protocols (Data Channel, Modbus, Native Mode, SLMP client, PROFINET
-gateway) need no inbound ports; the app connects out to the camera or PLC.
+Polled protocols (OPC UA, Data Channel, Modbus, Native Mode, SLMP client,
+PROFINET gateway) need no inbound ports; the app connects out to the device,
+PLC or OPC UA server (usually port 4840 for OPC UA).
 
 If you change `LISTEN_PORTS`, the app and the published ports both follow it,
 since compose uses the same variable for each.
@@ -125,8 +145,8 @@ Two Docker volumes hold everything that must survive an update:
 
 | Volume | Contents |
 |---|---|
-| `db_data` | The bundled PostgreSQL database: users, cameras, counters, readings, alerts |
-| `app_data` | `/srv/data` in the app container: the database choice and FTP backup settings saved on the Database tab (also copied into `db_data`), and backups taken before an import |
+| `db_data` | The bundled PostgreSQL database: users, devices, counters, readings, alerts |
+| `app_data` | `/srv/data` in the app container: the database choice and FTP backup settings saved on the Database tab (also copied into `db_data`), backups taken before an import, and the OPC UA client certificate |
 
 The easiest backup is on the Database tab: **Download backup**, or the
 automatic backup to an FTP server (see [Configuration](configuration.md#backups-database-tab)).

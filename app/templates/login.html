@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sign in · Cognex Monitor</title>
+  <title>Sign in · Scrap Meter</title>
   <link rel="stylesheet" href="{{ static_url('style.css') }}" />
 </head>
 <body>
   <div class="login-wrap">
     <form class="login-card" method="post" action="/login">
-      <h1>Cognex<span style="color:var(--accent)"> Monitor</span></h1>
-      <p class="sub">Sign in to manage your cameras</p>
+      <h1>Scrap<span style="color:var(--accent)"> Meter</span></h1>
+      <p class="sub">Scrap and production figures for your plant</p>
       {% if error %}<div class="error">{{ error }}</div>{% endif %}
       <label for="username">Username</label>
       <input id="username" name="username" autocomplete="username" autofocus required />

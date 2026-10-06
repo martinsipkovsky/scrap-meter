@@ -45,9 +45,9 @@ def utcnow() -> dt.datetime:
 
 # Granular permission keys. Admin implicitly has all of them.
 PERMISSIONS = {
-    "view_dashboard": "View dashboards and camera data",
-    "manage_devices": "Create, edit and delete camera devices",
-    "control_connections": "Start/stop camera connections, polling and production; reset counters",
+    "view_dashboard": "View dashboards and device data",
+    "manage_devices": "Create, edit and delete devices",
+    "control_connections": "Start/stop device connections, polling and production; reset counters",
     "view_data": "Browse logged readings and counters",
     "exclude_readings": "Exclude readings from the scrap statistics",
     "manage_notifications": "Configure notification rules and providers",
@@ -114,6 +114,12 @@ class Device(Base):
     # production state last reported by a "production_change" notification
     notified_state: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
+    # Whether this device's readings count in the overall statistics (Scrap
+    # statistics totals, the Excel export, chat command totals): "include" or
+    # "exclude". Readings of an "exclude" device can still be included one at
+    # a time or by period (Reading.included).
+    stats_default: Mapped[str] = mapped_column(String(16), default="include")
+
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     counters: Mapped[list["CounterState"]] = relationship(
@@ -122,6 +128,10 @@ class Device(Base):
     readings: Mapped[list["Reading"]] = relationship(
         back_populates="device", cascade="all, delete-orphan"
     )
+
+    @property
+    def excluded_by_default(self) -> bool:
+        return self.stats_default == "exclude"
 
     @property
     def production_state(self) -> str:
@@ -220,6 +230,9 @@ class Reading(Base):
     # in production (idle or stopped, see app.production) at that moment.
     # in_production is None for readings logged before it was recorded.
     excluded: Mapped[bool] = mapped_column(Boolean, default=False)
+    # included by a user although its device is excluded from the statistics
+    # by default (Device.stats_default); ignored for "include" devices
+    included: Mapped[bool] = mapped_column(Boolean, default=False)
     in_production: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(

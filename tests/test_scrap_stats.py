@@ -119,7 +119,7 @@ def test_scrap_xlsx_matches_screen(client):
     assert resp.status_code == 200
     assert "scrap_2026-09-29_2026-09-30.xlsx" in resp.headers["content-disposition"]
     wb = load_workbook(io.BytesIO(resp.content))
-    assert wb.sheetnames == ["Overall", "Per camera", "Per job", "Per day"]
+    assert wb.sheetnames == ["Overall", "Per device", "Per job", "Per day"]
     assert [c.value for c in wb["Overall"][2]] == ["Counted, 2026-09-29 to 2026-09-30", 130, 13, 143, round(13 / 143, 4)]
     assert wb["Overall"]["A3"].value == "Left out: excluded readings"
     assert [c.value for c in wb["Per job"][3]][:5] == ["Cam1", "B", 40, 3, 43]

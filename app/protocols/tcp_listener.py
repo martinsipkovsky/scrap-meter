@@ -88,13 +88,13 @@ def parse_port_range(spec: str) -> tuple[int, int]:
 
 class TcpListenerDriver(ProtocolDriver):
     key = "tcp_listen"
-    label = "TCP listener (camera pushes data)"
+    label = "TCP listener (device pushes data)"
     #: tells the poller not to poll this device; the ListenerManager serves it
     push = True
-    #: shown on the Cameras form when this protocol is picked
-    push_help = ("The app opens a TCP server on this port and the camera connects to it "
+    #: shown on the Devices form when this protocol is picked
+    push_help = ("The app opens a TCP server on this port and the device connects to it "
                  "(In-Sight: TCP/IP client pointing at this server's IP and the port below). "
-                 "Each line the camera sends is split by the delimiter; set which field holds "
+                 "Each line the device sends is split by the delimiter; set which field holds "
                  "the job name and the counters below.")
     config_fields = {
         "delimiter": "Field separator in each record (default ',')",
@@ -117,7 +117,7 @@ class TcpListenerDriver(ProtocolDriver):
 
     def read(self) -> Sample:
         raise ProtocolError(
-            "This camera pushes its data to the app (TCP listener); it is not polled. "
+            "This device pushes its data to the app (TCP listener); it is not polled. "
             "Point the camera at this server's IP on port %s." % self.port
         )
 

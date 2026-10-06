@@ -43,11 +43,11 @@ CONDITIONS: dict[str, dict] = {
                    "severity": "alert", "threshold": "fraction, e.g. 0.05 = 5%", "camera": True},
     "fail_count": {"label": "Fail (NOK) count ≥ threshold", "group": "Production",
                    "severity": "warning", "threshold": "parts", "camera": True},
-    "disconnected": {"label": "Camera disconnected or read error", "group": "Faults",
+    "disconnected": {"label": "Device disconnected or read error", "group": "Faults",
                      "severity": "alert", "camera": True},
-    "production_change": {"label": "Camera stopped, idle or back in production", "group": "Production",
+    "production_change": {"label": "Device stopped, idle or back in production", "group": "Production",
                           "severity": "warning", "camera": True, "event": True},
-    "job_change": {"label": "Camera changed job", "group": "Production",
+    "job_change": {"label": "Device changed job", "group": "Production",
                    "severity": "info", "camera": True, "event": True},
     "backup_failed": {"label": "FTP backup failed", "group": "System", "severity": "alert", "event": True},
     "backup_ok": {"label": "FTP backup finished", "group": "System", "severity": "info", "event": True},
@@ -81,7 +81,7 @@ def threshold_for(rule: NotificationRule, device: Device) -> float:
 def _condition_met(rule: NotificationRule, device: Device, state: CounterState | None) -> tuple[bool, str]:
     if rule.condition == "disconnected":
         if not device.connected:
-            return True, f"Camera '{device.name}' is disconnected: {device.last_error or 'no data'}"
+            return True, f"Device '{device.name}' is disconnected: {device.last_error or 'no data'}"
         return False, ""
 
     if state is None:
@@ -232,7 +232,7 @@ def check_production(db: Session, device: Device) -> None:
     if previous is None:
         return
     text = _PRODUCTION_TEXT[current].format(timeout=device.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN)
-    emit(db, "production_change", f"Camera '{device.name}' {text}", device)
+    emit(db, "production_change", f"Device '{device.name}' {text}", device)
 
 
 def check_all_production(db: Session) -> None:
@@ -243,9 +243,9 @@ def check_all_production(db: Session) -> None:
 
 def startup_notice(version: str, previous: str | None, delay: float = STARTUP_NOTICE_DELAY) -> None:
     if previous and previous != version:
-        message = f"Cognex Monitor was updated from version {previous} to {version} and is running."
+        message = f"Scrap Meter was updated from version {previous} to {version} and is running."
     else:
-        message = f"Cognex Monitor {version} started."
+        message = f"Scrap Meter {version} started."
     timer = threading.Timer(delay, emit_system, args=("app_started", message))
     timer.daemon = True
     timer.start()

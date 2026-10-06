@@ -5,14 +5,14 @@ is answered with live figures from the app.
   default, changeable on the Notifications page), so normal chat never
   triggers anything.
 * The word after the prefix is the command's keyword. Anything after it
-  narrows the reply to the cameras whose name contains it.
+  narrows the reply to the devices whose name contains it.
 * Each command lists the groups it answers in (none = every group the linked
   phone is in). Private chats are never answered.
 * "help" is built in (unless a command with that keyword exists) and lists the
   commands allowed in that group.
 * Every handled command is logged (CommandLog), also when it was refused.
 
-A reply is the command's header, one line per camera and its footer. Their
+A reply is the command's header, one line per device and its footer. Their
 {placeholders} are listed in PLACEHOLDERS; an unknown one stays as typed.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ PERIODS = {
 
 PLACEHOLDERS = {
     "line": {
-        "camera": "camera name",
+        "device": "device name ({camera} works too)",
         "state": "▶ in production / ⏸ idle / ⏹ stopped",
         "online": "online / offline",
         "job": "current job",
@@ -56,20 +56,24 @@ PLACEHOLDERS = {
     },
     "header / footer": {
         "date": "today's date", "time": "current time", "period": "the period in words",
-        "cameras": "number of cameras in the reply", "in_production": "how many are in production",
-        "total_pass": "OK parts, all cameras", "total_fail": "NOK parts, all cameras",
-        "total": "all parts", "total_scrap": "scrap %, all cameras",
+        "devices": "number of devices in the reply ({cameras} works too)",
+        "in_production": "how many are in production",
+        "total_pass": "OK parts, devices in the totals", "total_fail": "NOK parts, devices in the totals",
+        "total": "all parts in the totals", "total_scrap": "scrap %, devices in the totals",
     },
 }
 
 DEFAULT_STATUS = {
     "keyword": "status",
-    "description": "Production state, OK / NOK and scrap of every camera",
+    "description": "Production state, OK / NOK and scrap of every device",
     "period": "dashboard",
     "header": "📊 Status {date} {time}",
-    "line": "{camera}: {state}, job {job}\n   OK {pass} · NOK {fail} · scrap {scrap}",
+    "line": "{device}: {state}, job {job}\n   OK {pass} · NOK {fail} · scrap {scrap}",
     "footer": "Total: OK {total_pass} · NOK {total_fail} · scrap {total_scrap}",
 }
+
+# added to the line of a device that is excluded from the statistics by default
+NOT_IN_TOTALS = " (not in totals)"
 
 _STATE_TEXT = {production.RUNNING: "▶ in production", production.IDLE: "⏸ idle", production.STOPPED: "⏹ stopped"}
 
@@ -142,7 +146,7 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
         f = camera_filter.lower()
         devices = [d for d in devices if f in d.name.lower()]
         if not devices:
-            return f"No camera matches '{camera_filter}'."
+            return f"No device matches '{camera_filter}'."
 
     if cmd.period == "today":
         today = now.astimezone(tz).date()
@@ -157,33 +161,40 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
 
     lines, tot_ok, tot_nok, running = [], 0, 0, 0
     for d in devices:
+        # a device excluded from the statistics by default keeps its own line
+        # but stays out of the totals (for "today": except readings a user
+        # included, like Scrap statistics)
         if cmd.period == "today":
             row = stats.get(d.id, {})
             ok, nok = row.get("pass", 0), row.get("fail", 0)
-        elif cmd.period == "hours":
-            ok, nok = _window_counts(db, d, start)
+            in_ok, in_nok = row.get("counted_pass", 0), row.get("counted_fail", 0)
         else:
-            state = (db.query(CounterState)
-                     .filter(CounterState.device_id == d.id, CounterState.is_active.is_(True)).first())
-            ok, nok = (state.shown_pass, state.shown_fail) if state else (0, 0)
-        tot_ok, tot_nok = tot_ok + ok, tot_nok + nok
+            if cmd.period == "hours":
+                ok, nok = _window_counts(db, d, start)
+            else:
+                state = (db.query(CounterState)
+                         .filter(CounterState.device_id == d.id, CounterState.is_active.is_(True)).first())
+                ok, nok = (state.shown_pass, state.shown_fail) if state else (0, 0)
+            in_ok, in_nok = (0, 0) if d.excluded_by_default else (ok, nok)
+        tot_ok, tot_nok = tot_ok + in_ok, tot_nok + in_nok
         prod = production.state(d, now)
         running += prod == production.RUNNING
         values = {
-            "camera": d.name, "state": _STATE_TEXT[prod], "online": "online" if d.connected else "offline",
+            "device": d.name, "camera": d.name, "state": _STATE_TEXT[prod], "online": "online" if d.connected else "offline",
             "job": d.current_job or "—", "pass": ok, "fail": nok, "total": ok + nok,
             "scrap": _pct(nok, ok + nok), "last_data": _local(d.last_poll_at, tz),
         }
-        lines.append(_fill(cmd.line, values))
+        line = _fill(cmd.line, values)
+        lines.append(line + NOT_IN_TOTALS if d.excluded_by_default else line)
 
     local_now = now.astimezone(tz)
     summary = {
         "date": local_now.strftime("%d.%m.%Y"), "time": local_now.strftime("%H:%M"), "period": period,
-        "cameras": len(devices), "in_production": running,
+        "devices": len(devices), "cameras": len(devices), "in_production": running,
         "total_pass": tot_ok, "total_fail": tot_nok, "total": tot_ok + tot_nok,
         "total_scrap": _pct(tot_nok, tot_ok + tot_nok),
     }
-    parts = [_fill(cmd.header, summary)] + (lines or ["No cameras."]) + [_fill(cmd.footer, summary)]
+    parts = [_fill(cmd.header, summary)] + (lines or ["No devices."]) + [_fill(cmd.footer, summary)]
     text = "\n".join(p for p in parts if p.strip())
     return text[:MAX_REPLY]
 
@@ -233,7 +244,7 @@ def answer(db: Session, msg: dict, prefix: str | None = None) -> tuple[str, str 
             return "not_allowed", keyword, None
         listing = "\n".join(f"{p}{c.keyword}" + (f" – {c.description}" if c.description else "")
                             for c in sorted(here, key=lambda c: c.keyword))
-        return "answered", keyword, f"Commands (add a camera name to see only that camera):\n{listing}"
+        return "answered", keyword, f"Commands (add a device name to see only that device):\n{listing}"
     if cmd is None:
         if not here:
             return "not_allowed", keyword, None

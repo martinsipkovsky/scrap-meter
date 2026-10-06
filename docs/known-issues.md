@@ -3,11 +3,12 @@
 ## Not tested on real hardware
 
 Every protocol (Data Channel, Modbus/TCP, Native Mode, TCP and UDP listeners,
-SLMP client, SLMP server, PROFINET gateway) has only been tested against
-simulators and automated tests. **None has been run against a real Cognex
-In-Sight camera or a real Mitsubishi PLC.** Field layouts, register widths,
-word order and SLMP framing in particular may need adjusting. Reports from
-real installations are very welcome.
+SLMP client, SLMP server, PROFINET gateway, OPC UA client) has only been tested
+against simulators and automated tests. **None has been run against a real
+Cognex In-Sight camera, a real Mitsubishi PLC or a production OPC UA server.**
+Field layouts, register widths, word order and SLMP framing in particular may
+need adjusting; for OPC UA, the server's certificate trust and user settings
+are the usual first hurdle. Reports from real installations are very welcome.
 
 ## Data Channel event mode drops consecutive passes
 
@@ -38,14 +39,14 @@ clients, and a WhatsApp change can break it until the library is updated.
 Use a spare number, and consider Telegram for alerts that must arrive. See
 [Notifications](notifications.md).
 
-## Counts lost across a camera reset
+## Counts lost across a counter reset
 
-If a camera's counters are reset between two readings, parts counted after the
+If a device's counters are reset between two readings, parts counted after the
 last reading and before the reset can't be seen. Running totals are never
 reduced. A shorter poll interval, or a push protocol, narrows the gap.
 
 ## Single app instance
 
 The poller and the listeners run inside the web process. Run one app
-container per database; several replicas would poll each camera several times
+container per database; several replicas would poll each device several times
 and fight over listener ports.

@@ -15,7 +15,7 @@ services:
       retries: 10
 
   web:
-    image: azanar666/cognex-monitor:latest
+    image: azanar666/scrap-meter:latest
     build: .
     restart: unless-stopped
     depends_on:

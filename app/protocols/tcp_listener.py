@@ -118,7 +118,7 @@ class TcpListenerDriver(ProtocolDriver):
     def read(self) -> Sample:
         raise ProtocolError(
             "This device pushes its data to the app (TCP listener); it is not polled. "
-            "Point the camera at this server's IP on port %s." % self.port
+            "Point the device at this server's IP on port %s." % self.port
         )
 
     # ---- parsing ---------------------------------------------------------
@@ -273,7 +273,7 @@ class ListenerManager:
     #: Device.protocol this manager serves
     protocol = "tcp_listen"
     #: status text shown until the camera first sends something
-    waiting = "Listening on TCP port {port}, waiting for the camera to connect"
+    waiting = "Listening on TCP port {port}, waiting for the device to connect"
 
     def __init__(self, on_sample: SampleHandler, status: StatusHandler):
         self.on_sample = on_sample

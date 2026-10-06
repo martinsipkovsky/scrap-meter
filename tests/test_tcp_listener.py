@@ -96,10 +96,10 @@ def test_camera_push_feeds_counters_and_survives_reset(client):
     port = _free_port_in_range()
     r = client.post("/api/devices", json={
         "name": "Pusher", "host": "", "port": port, "protocol": "tcp_listen",
-        "protocol_config": {"job_field": 0, "pass_field": 1, "fail_field": 2},
+        "protocol_config": {"job_field": 0, "pass_field": 1, "fail_field": 2}, "create_station": True,
     })
     assert r.status_code == 201, r.text
-    did = r.json()["id"]
+    sid = client.get("/api/stations").json()[0]["id"]
 
     listener_manager.sync(_listen_devices())
     try:
@@ -110,7 +110,7 @@ def test_camera_push_feeds_counters_and_survives_reset(client):
             cam.sendall(b"JOB_A,3,0\r\n")
 
             def totals():
-                c = client.get(f"/api/devices/{did}/counters").json()
+                c = client.get(f"/api/stations/{sid}/counters").json()
                 return (c[0]["total_pass"], c[0]["total_fail"]) if c else None
 
             assert _wait(lambda: totals() == (118, 6)), totals()
@@ -120,9 +120,9 @@ def test_camera_push_feeds_counters_and_survives_reset(client):
 
         # camera hung up -> device goes offline
         assert _wait(lambda: not client.get("/api/devices").json()[0]["connected"])
-        counters = client.get(f"/api/devices/{did}/counters").json()
+        counters = client.get(f"/api/stations/{sid}/counters").json()
         assert {c["job_name"] for c in counters} == {"JOB_A", "JOB_B"}
-        rows = client.get("/api/data/readings", params={"device_id": did}).json()
+        rows = client.get("/api/data/readings", params={"station_id": sid}).json()
         assert rows, "pushed records should be logged as readings"
     finally:
         listener_manager.sync([])
@@ -134,14 +134,14 @@ def test_listener_rejects_other_ip(client):
     login(client)
     port = _free_port_in_range()
     r = client.post("/api/devices", json={
-        "name": "OnlyCam", "host": "10.9.9.9", "port": port, "protocol": "tcp_listen",
+        "name": "OnlyCam", "host": "10.9.9.9", "port": port, "protocol": "tcp_listen", "create_station": True,
     })
-    did = r.json()["id"]
+    sid = client.get("/api/stations").json()[0]["id"]
     listener_manager.sync(_listen_devices())
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=3) as cam:
             cam.sendall(b"J,1,0\r\n")
             time.sleep(0.5)
-        assert client.get(f"/api/devices/{did}/counters").json() == []
+        assert client.get(f"/api/stations/{sid}/counters").json() == []
     finally:
         listener_manager.sync([])

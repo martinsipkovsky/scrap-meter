@@ -45,6 +45,13 @@ If a device's counters are reset between two readings, parts counted after the
 last reading and before the reset can't be seen. Running totals are never
 reduced. A shorter poll interval, or a push protocol, narrows the gap.
 
+## OEE assumes 24 hours of planned time
+
+There are no shifts, breaks or planned stops yet, so the OEE meter counts the
+whole last 24 hours as planned production time. A line that runs one shift
+shows an availability of about a third at best. Time in production comes from
+device readings; manual entries add parts but no time.
+
 ## Single app instance
 
 The poller and the listeners run inside the web process. Run one app

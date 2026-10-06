@@ -3,10 +3,12 @@
 A self-hosted web app that tracks scrap and production across a plant in one
 place. It reads pass/fail counters from the plant's devices (Cognex vision
 cameras, PLCs, OPC UA servers and other counters), by polling them or by
-letting them push their results, keeps **reset-proof running totals** per
-device and job, logs everything to a database, and sends alerts to WhatsApp or
-Telegram groups when scrap is high, a device drops off the network, or
-something else you choose happens.
+letting them push their results, and counts them per **station**: a station
+takes its OK, NOK and job from one or several devices (or from manual
+entries). It keeps **reset-proof running totals** per station and job, shows
+OEE, logs everything to a database, and sends alerts to WhatsApp or Telegram
+groups when scrap is high, a device drops off the network, or something else
+you choose happens.
 
 It is a Python/FastAPI app with a dark-mode web UI, logins with per-user
 permissions, and PostgreSQL storage, shipped as a Docker image. It was called
@@ -28,28 +30,34 @@ versions keep working.
   device pushes data to the app), Mitsubishi SLMP / MC protocol (as client or
   as a fake PLC the device writes to), PROFINET via a gateway, and a built-in
   simulator.
+- **Stations:** the dashboard's building blocks. Each takes its OK, NOK, total
+  and job from any device's values, e.g. OK from an OPC UA PLC and NOK from a
+  reject counter that pushes over TCP. Parts counted by hand are added as
+  manual entries on the station.
+- **OEE meter:** availability, performance and quality over the last 24 hours,
+  with total OK and NOK, at the bottom of the dashboard.
 - **Reset-proof counters:** if an operator resets the counters on the device,
   the running totals keep going. A job change freezes the old job's totals and
   starts new ones.
-- **Production state:** a device that stops counting for its idle timeout is
+- **Production state:** a station that stops counting for its idle timeout is
   shown grayed out and gets no scrap alerts, so idle lines don't cause false
   alarms.
-- **Device view:** an OK/NOK chart over 1 h, 8 h, 24 h or 7 days, manual
+- **Station view:** an OK/NOK chart over 1 h, 8 h, 24 h or 7 days, manual
   Start/Stop of production, and **Reset counters** for the dashboard counters
   (history and statistics are kept).
 - **Scrap statistics:** pass, fail and scrap % for any date range, overall,
-  per device, per job and per day, with an Excel export. Time out of
-  production, readings a user excluded and devices set to *Exclude* (such as a
-  test rig) are left out of the overall figures.
-- **Alerts:** rules for scrap rate (with per-device thresholds), fail count,
+  per station, per job and per day, with an Excel export. Time out of
+  production, readings a user excluded and stations set to *Exclude* (such as
+  a test rig) are left out of the overall figures.
+- **Alerts:** rules for scrap rate (with per-station thresholds), fail count,
   disconnects, production and job changes, backup results and app updates,
   each with a level (info / warning / alert) and its own destinations:
   WhatsApp sent from your own number (linked device, unofficial), Telegram
   bots, webhooks, Green API or Meta Cloud API.
 - **WhatsApp group commands:** `!status` (or your own commands) in a group
-  answers with live production state, OK / NOK and scrap per device.
+  answers with live production state, OK / NOK and scrap per station.
 - **Users and permissions:** login required, with granular permissions per user.
-- **Device export/import** as JSON, and an admin **Database tab** to move the
+- **Export/import** of devices and stations as JSON, and an admin **Database tab** to move the
   app to another PostgreSQL server.
 - **Backups:** download all data as one file, import it again, and automatic
   scheduled backups to an FTP/FTPS server, with a reminder when the last
@@ -73,7 +81,7 @@ Open <http://localhost:8000> and sign in as `Admin` / `1234`. Change that
 password straight away under *Account*.
 
 To try it without any hardware, add a device with the **Simulated device**
-protocol on the Devices tab. For OPC UA, `python tests/opcua_sim.py` runs a
+protocol on the Devices tab (with "Also add a station" ticked). For OPC UA, `python tests/opcua_sim.py` runs a
 small simulation server (see [Protocols](docs/protocols.md#opc-ua-client-opcua)).
 
 ## Documentation
@@ -82,7 +90,7 @@ small simulation server (see [Protocols](docs/protocols.md#opc-ua-client-opcua))
 |---|---|
 | [Installation and deployment](docs/installation.md) | Building from source, running on a server, firewall ports, updates, backups |
 | [Configuration](docs/configuration.md) | Environment variables and the Database tab |
-| [User guide](docs/user-guide.md) | Dashboard, devices, production state, device view, data, statistics, users, export/import |
+| [User guide](docs/user-guide.md) | Devices and stations, dashboard and OEE, manual entries, production state, data, statistics, users, export/import |
 | [Protocols](docs/protocols.md) | How to connect each device type, with every config field |
 | [Notifications](docs/notifications.md) | Alert rules, WhatsApp (linked phone) and Telegram delivery |
 | [Development](docs/development.md) | Running locally, tests, project layout, adding a protocol |

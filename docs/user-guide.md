@@ -1,19 +1,34 @@
 # User guide
 
+Scrap Meter has two building blocks:
+
+- **Devices** are the connections the app reads: a Cognex camera, a PLC, an
+  OPC UA server, a counter or gateway. A device only delivers values (for most
+  protocols its pass, fail, total and job; for OPC UA any value of the server).
+- **Stations** are what is counted, e.g. machine "M1". A station's OK, NOK,
+  total (optional) and job (optional) each come from one device and one of its
+  values, so a station can combine several devices: OK pieces from device 1,
+  NOK pieces from device 2. Parts can also be entered by hand. The dashboard,
+  statistics, alerts, chat commands and the OEE meter all work per station.
+
+Up to version 1.4 every device was counted by itself. When 1.5 starts for the
+first time it gives each existing device its own station with the same name
+and the same history, so the dashboard looks as before.
+
 ## Dashboard
 
-The dashboard shows every device with its connection state, current job, and
-the running pass/fail totals and scrap rate for that job (since the last
-**Reset counters**, if one was pressed on the device view).
+One block per station with its connection state, current job, and the running
+OK/NOK totals and scrap rate for that job (since the last **Reset counters**,
+if one was pressed on the station view). Stations that are not in production
+(see below) are shown **grayed out**. Click a station to open its station
+view.
 
-Devices that are not in production (see below) are shown **grayed out**.
-Devices excluded from the statistics say "not in statistics totals". Click a
-device to open its device view.
+At the bottom, **Last 24 hours** shows the OEE meter and the total OK and NOK
+of the stations included in the statistics. See [OEE](#oee).
 
 ## Devices tab
 
-A device is anything the app reads counters from: a Cognex camera, a PLC, an
-OPC UA server, a counter or gateway. Add one with:
+Add a device with:
 
 | Field | Meaning |
 |---|---|
@@ -22,96 +37,165 @@ OPC UA server, a counter or gateway. Add one with:
 | Host / Port | For polled protocols: the device's or PLC's address. For listener protocols: *Port* is the port the app listens on, and *Host* optionally restricts which IP may send (blank = anyone). OPC UA uses the endpoint URL instead. |
 | Config (JSON) | Protocol settings. The form lists the fields for the chosen protocol. OPC UA has its own form fields instead (see below). |
 | Poll interval | Seconds between reads, for polled protocols |
-| Idle timeout | Minutes without a new pass before the device counts as idle (default 30) |
-| Statistics | **Include** (default) or **Exclude**: whether the device's readings count in the overall statistics. See [Devices excluded from the statistics](#devices-excluded-from-the-statistics). |
+| Also add a station | Makes a station with the same name that counts this device's pass and fail (and its total and job). Untick it when the device's values go into a station that combines devices. Not offered for OPC UA, whose stations pick nodes. |
 
-**Poll now** reads a polled device immediately, which is the quickest way to
-check a new configuration.
+The list shows each device's latest values and the stations that use it.
+**Poll now** reads a polled device immediately (and updates its stations),
+which is the quickest way to check a new configuration. A device that a
+station uses can't be deleted until the station is changed or deleted.
 
 ### OPC UA devices
 
-With the **OPC UA client** protocol the form shows:
+An OPC UA device is only the connection to the server:
 
 - **Endpoint URL** of the server, e.g. `opc.tcp://10.0.0.5:4840`.
 - **Security mode** None, Sign or SignAndEncrypt, and the **security policy**
   (Basic256Sha256 unless the server needs another one).
 - **Login**: anonymous, or username and password. The password is never shown
   again or exported; leaving it as `********` keeps the saved one.
-- **Node ids** for the pass, fail, total (optional) and job (optional) values.
-  **Browse…** next to each field connects to the server with the settings
-  above and lists its address space: open folders and objects, then press
-  **Use** on a variable. Current values and data types are shown to help pick
-  the right node.
+- **Test and browse the server…** connects with these settings and lists the
+  server's address space.
 
-With Sign or SignAndEncrypt the app logs in with its own client certificate,
-made on first use and kept in the data volume. If the server rejects it,
-download it with the link in the form and add it to the server's trusted
-certificates. See [Protocols](protocols.md#opc-ua-client-opcua).
+The values are picked on the station: any variable the server exposes. With
+Sign or SignAndEncrypt the app logs in with its own client certificate, made
+on first use and kept in the data volume. If the server rejects it, download
+it with the link in the form and add it to the server's trusted certificates.
+See [Protocols](protocols.md#opc-ua-client-opcua).
 
-### Export and import
+## Stations tab
 
-**Export** downloads every device's settings as one JSON file, including the
-statistics setting but not passwords. **Import** reads such a file: devices
-with a new name are added, devices whose name already exists are updated (a
-missing password keeps the saved one). Counters and history are never
-touched. If any device in the file is invalid, nothing is imported. Files
-exported by earlier versions (Cognex Monitor) import as before; their devices
-are set to Include.
+Add a station with:
+
+| Field | Meaning |
+|---|---|
+| Name | Unique display name, e.g. `M1` |
+| OK (pass) count | Device and value that count the good parts |
+| NOK (fail) count | Device and value that count the bad parts |
+| Total count (optional) | Device and value of a total counter; without it total = OK + NOK |
+| Job (optional) | Device and value holding the job or recipe; without it the station uses *Job name when no job value is set* (default `MAIN`) |
+| Order | Lower numbers come first on the dashboard |
+| Production idle timeout | Minutes without an OK increase before the station counts as idle (default 30) |
+| Ideal cycle time | Seconds per part at full speed, for the OEE performance factor (optional) |
+| Statistics | **Include** (default) or **Exclude**, see [Stations excluded from the statistics](#stations-excluded-from-the-statistics) |
+
+Pick OK, NOK or both; a missing one counts as 0. A station with no device at
+all is fed only by [manual entries](#manual-entries). For most devices the
+value is chosen from a list (OK counter, NOK counter, total counter, job name,
+with the current value). For an OPC UA device, type a node id or press
+**Browse…**: open folders and objects, then **Use** on the variable. Current
+values and data types are shown to help pick the right node.
+
+A station is **online** when every device it uses is online and has delivered
+its value; otherwise the list and the dashboard say what is missing (e.g. "no
+value 'ns=2;s=M1.Bad' from device 'PLC' yet").
+
+Deleting a station deletes its counters, readings and alert rules; its devices
+stay.
 
 ## How counting works
 
-Every reading gives the device's raw pass and fail counters and the current
-job name. The app adds the **increase** since the previous reading to a running
-total for that device and job.
+Whenever a device is read (or pushes a record), every station that uses it
+takes the latest values of its devices: the raw OK, NOK and total counters and
+the current job. The app adds the **increase** since the station's previous
+reading to a running total for that station and job.
 
-- **Counter reset on the device:** the app sees a counter drop, treats the
-  new values as counted from zero, and keeps adding. Banked totals are never
-  lost, but parts counted between the last reading and the reset can't be
-  seen, so poll often enough for your line speed.
+- **Counter reset on a device:** the app sees a counter drop, treats the new
+  value as counted from zero, and keeps adding. When all of a station's
+  counters come from one device, a drop in one of them means all were reset
+  together. When they come from different devices, each counter is checked on
+  its own, so resetting the reject counter does not touch the OK count.
+  Banked totals are never lost, but parts counted between the last reading and
+  the reset can't be seen, so poll often enough for your line speed.
 - **Job change:** the old job's totals are frozen and a new running total
   starts. If an earlier job comes back, its totals continue where they stopped.
+- **First reading:** the counters a device already shows when a station first
+  sees them are the starting totals, not parts made since.
 
 ## Production state
 
-A device is **running** while its pass counter keeps increasing. If the pass
-counter does not increase for the device's idle timeout, the device becomes
-**idle**: it is grayed out on the dashboard and scrap-rate and fail-count
-alerts are suppressed, because NOK counts on a stopped line are usually false
-signals. The next pass puts it back into production.
+A station is **running** while its OK counter keeps increasing. If it does not
+increase for the station's idle timeout, the station becomes **idle**: it is
+grayed out on the dashboard and scrap-rate and fail-count alerts are
+suppressed, because NOK counts on a stopped line are usually false signals.
+The next OK puts it back into production.
 
-Disconnect alerts are still sent for idle devices.
+Disconnect alerts are still sent for idle stations.
 
-## Device view
+## Station view
 
-Opening a device shows an OK/NOK chart over 1 hour, 8 hours, 24 hours or
-7 days, and these buttons:
+Opening a station shows its devices, an OK/NOK chart over 1 hour, 8 hours,
+24 hours or 7 days, and these buttons:
 
-- **Stop** puts the device out of production by hand. It stays stopped until
+- **Stop** puts the station out of production by hand. It stays stopped until
   someone presses Start, even if parts are counted.
-- **Start** clears a manual stop and restarts the idle clock. A device that
+- **Start** clears a manual stop and restarts the idle clock. A station that
   still doesn't count goes idle again after its timeout.
 - **Reset counters** sets the OK / NOK counters shown on the dashboard and the
-  device view for the current job back to zero, after a confirmation (needs
+  station view for the current job back to zero, after a confirmation (needs
   the *control_connections* permission). The card then says "Since reset" with
-  the time. Nothing is sent to the device, and the job totals in the Data log,
+  the time. Nothing is sent to the devices, and the job totals in the Data log,
   the chart, the readings history and the scrap statistics stay as they were.
   Scrap and fail-count alerts follow the reset counters.
 
-The device view is at `/device/<id>`; old `/camera/<id>` links still work.
+With the `manual_entry` permission the station view also has an **Add entry**
+form, see [Manual entries](#manual-entries).
+
+The station view is at `/station/<id>`; links from earlier versions
+(`/camera/<id>`, `/device/<id>`) still open it.
+
+## Manual entries
+
+Parts counted by hand, for example after a manual check or on a machine
+without a connection, are added on the station view under **Add entry**: OK
+and NOK parts, the time (now by default; set an earlier time to add parts made
+earlier), the job (the current job by default) and an optional note. Needs the
+`manual_entry` permission (administrators have it).
+
+A manual entry counts like device data: it adds to the station's counters on
+the dashboard and the station view, and its parts are in the OK/NOK chart,
+Scrap statistics, the Excel export, chat command replies and the OEE meter's
+quality and totals at the time of the entry. It adds no time in production.
+
+In the Data log manual entries are marked **manual** with who entered them and
+the note. They can be excluded and included like any reading, and **Edit**
+(parts, time, job, note) or **Delete** changes them; the station's counters
+follow.
+
+## OEE
+
+The bottom of the dashboard shows OEE over the last 24 hours:
+
+- **Availability** = time in production / 24 h. There are no shifts or planned
+  stops yet, so the whole 24 hours counts as planned time; a line that runs
+  one shift a day can reach at most about 33 %.
+- **Performance** = ideal cycle time × parts made / time in production. It
+  needs the station's ideal cycle time; a value above 100 % means the ideal
+  cycle time is set too long.
+- **Quality** = OK / (OK + NOK).
+- **OEE** = availability × performance × quality.
+
+Time in production is the time between device readings while the station
+was in production (a gap counts at most the idle timeout); manual entries add
+parts but no time. Parts are counted like
+Scrap statistics: excluded readings and parts made while not in production are
+left out. The meter, the factors and the total OK / NOK cover the stations
+included in the statistics; the OEE itself covers those of them with an ideal
+cycle time, and the panel names the stations without one. **Per station**
+under the meter shows the same figures for every station.
 
 ## Data log
 
-The running totals per device and job, and the raw reading history, as stored
-in the database. Each reading shows whether its parts count in the scrap
+The running totals per station and job, and the reading history, as stored in
+the database. Each reading shows whether its parts count in the scrap
 statistics:
 
 - **counted**: included.
-- **not in production**: taken while the device was idle or stopped, so left
+- **not in production**: taken while the station was idle or stopped, so left
   out.
 - **excluded**: left out by a user.
-- **device not in totals**: the device is excluded from the statistics by
+- **station not in totals**: the station is excluded from the statistics by
   default.
-- **included**: a reading of such a device that a user included.
+- **included**: a reading of such a station that a user included.
 
 Users with the `exclude_readings` permission get an **Exclude** button on each
 counted reading, and **Include** on a left-out one. Choose **Excluded readings
@@ -125,51 +209,65 @@ for anyone with the `view_data` permission.
 - Pick **Current month** (the default), **Today**, **Last 7 days** or
   **Last 30 days**, or set your own **From** and **To** dates (both days
   included, up to a year).
-- The figures are shown overall, per device, per job and per day. A line under
-  the totals says how many parts were left out, and why.
+- The figures are shown overall, per station, per job and per day. A line
+  under the totals says how many parts were left out, and why.
 - **Download Excel** saves an .xlsx file with the same figures as the screen,
-  one sheet each for Overall, Per device, Per job and Per day.
+  one sheet each for Overall, Per station, Per job and Per day.
 
-Parts are counted from the reading history the same way as the device view's
+Parts are counted from the reading history the same way as the station view's
 OK/NOK chart: the growth of each job's totals between readings. Scrap is
 fail / (pass + fail). Days are calendar days in the time zone of the browser
-you are using. Parts a device had already counted before the app first saw a
+you are using. Parts a station had already counted before the app first saw a
 job are not included, so the figures can be a little lower than the running
 totals.
 
 These parts are left out of the overall figures:
 
-- **Not in production:** parts counted while the device was idle (no pass
+- **Not in production:** parts counted while the station was idle (no OK
   increase within its idle timeout) or stopped by an operator, the same state
   the dashboard grays out. For readings logged before this was recorded
-  (before October 2026) only the idle rule is applied, using the device's
+  (before October 2026) only the idle rule is applied, using the station's
   current idle timeout.
 - **Excluded readings:** readings a user excluded, one at a time in the Data
   log or for a whole period under **Exclude or include a time period** on this
-  page. Pick a device (or all devices) and a start and end time, then press
+  page. Pick a station (or all stations) and a start and end time, then press
   **Exclude**. **Include** with the same period takes them back. Excluding a
   reading drops only the parts counted since the reading before it.
-- **Devices excluded from the statistics** (see below).
+- **Stations excluded from the statistics** (see below).
 
-### Devices excluded from the statistics
+### Stations excluded from the statistics
 
-A device whose **Statistics** setting is **Exclude**, for example a test rig
-or a line still being set up, keeps its own rows in *Per device* and *Per job*
-(marked **not in totals**, and "No (excluded by default)" in the Excel file),
-but its parts are not in the overall figures, the per-day rows, or the totals
-of chat commands such as `!status`. Its parts are listed under "Left out".
+A station whose **Statistics** setting is **Exclude**, for example a test rig
+or a line still being set up, keeps its own rows in *Per station* and *Per
+job* (marked **not in totals**, and "No (excluded by default)" in the Excel
+file), but its parts are not in the overall figures, the per-day rows, the
+totals of chat commands such as `!status`, or the OEE meter. Its parts are
+listed under "Left out".
 
 To count some of its parts anyway, include them like any excluded reading:
 one reading at a time in the Data log, or a period with **Include** under
 **Exclude or include a time period**. Those readings are then in the overall
-figures; the badge's tooltip on the device row says how many parts that is.
-Changing the setting applies to all readings of the device, old and new.
+figures; the badge's tooltip on the station row says how many parts that is.
+Changing the setting applies to all readings of the station, old and new.
+
+## Export and import
+
+**Export** on the Devices tab downloads every device and station as one JSON
+file (devices without passwords; stations name their devices). **Import**
+reads such a file: devices and stations with a new name are added, existing
+ones (same name) are updated, and a missing password keeps the saved one.
+Counters and history are never touched. If anything in the file is invalid,
+nothing is imported.
+
+Files exported by earlier versions (Cognex Monitor, or Scrap Meter 1.4) import
+too: each new device in them also gets its own station, with the idle timeout
+and statistics setting from the file.
 
 ## Notifications tab
 
-Alert rules, delivery providers, the linked WhatsApp phone and the commands
-it answers in WhatsApp groups (e.g. `!status`). See
-[Notifications](notifications.md).
+Alert rules (per station or for all stations), delivery providers, the linked
+WhatsApp phone and the commands it answers in WhatsApp groups (e.g. `!status`).
+See [Notifications](notifications.md).
 
 ## Users and permissions
 
@@ -180,11 +278,12 @@ assign permissions. The last administrator can't be deleted.
 
 | Permission | Allows |
 |---|---|
-| `view_dashboard` | View dashboards and device data, export device settings |
-| `manage_devices` | Create, edit, delete and import devices, browse OPC UA servers |
-| `control_connections` | Start/stop device connections, polling and production, reset the dashboard counters |
+| `view_dashboard` | View the dashboard, stations, devices and the OEE meter; export settings |
+| `manage_devices` | Create, edit, delete and import devices and stations, browse OPC UA servers |
+| `control_connections` | Poll devices, start/stop production, reset the dashboard counters |
 | `view_data` | Browse logged readings and counters, scrap statistics |
 | `exclude_readings` | Exclude readings from (or include them in) the scrap statistics |
+| `manual_entry` | Add, edit and delete manual entries (OK / NOK parts counted by hand) |
 | `manage_notifications` | Configure notification rules and providers |
 | `manage_users` | Create users and edit their permissions |
 
@@ -200,5 +299,6 @@ is where backups are made: **Download backup** saves all data in one file,
 **Import backup** puts a backup file back (replacing the current data), and
 the automatic backup sends a backup to an FTP server on a schedule. Take
 backups regularly; the tab warns when the last one is more than 7 days old.
-Backups made by earlier versions (Cognex Monitor) can be imported. See
+Backups made by earlier versions (Cognex Monitor, Scrap Meter 1.4) can be
+imported; their devices become stations as on an update. See
 [Configuration](configuration.md#backups-database-tab) for details.

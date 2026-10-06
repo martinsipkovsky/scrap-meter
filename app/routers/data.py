@@ -1,5 +1,6 @@
-"""Read-only data API: readings history, dashboard summary and the per-camera
-view (OK/NOK over time)."""
+"""Data API: readings history (and excluding readings), the dashboard
+summary with the OEE meter, the station view (OK/NOK over time) and the scrap
+statistics."""
 from __future__ import annotations
 
 import datetime as dt
@@ -9,10 +10,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import production, scrap_stats
+from .. import oee, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
-from ..models import CounterState, Device, Reading, User, utcnow
+from ..models import CounterState, Reading, Station, User, utcnow
+from .stations import ManualEntry, check_entry
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -25,23 +27,24 @@ def _aware(t: dt.datetime) -> dt.datetime:
     return t.replace(tzinfo=dt.timezone.utc) if t.tzinfo is None else t
 
 
-def _device_summary(db: Session, d: Device) -> dict:
+def _station_summary(db: Session, st: Station, devices: dict) -> dict:
     active = (
         db.query(CounterState)
-        .filter(CounterState.device_id == d.id, CounterState.is_active.is_(True))
+        .filter(CounterState.station_id == st.id, CounterState.is_active.is_(True))
         .first()
     )
+    online = stations.status(st, devices)
     return {
-        "id": d.id,
-        "name": d.name,
-        "protocol": d.protocol,
-        "connected": d.connected,
-        "enabled": d.enabled,
-        "current_job": d.current_job,
-        "last_error": d.last_error,
-        "last_poll_at": d.last_poll_at,
-        "stats_default": d.stats_default,
-        **production.describe(d),
+        "id": st.id,
+        "name": st.name,
+        "devices": sorted(devices[i].name for i in st.device_ids() if i in devices),
+        "connected": online["connected"],
+        "last_error": online["problem"],
+        "current_job": st.current_job,
+        "last_poll_at": st.last_reading_at,
+        "stats_default": st.stats_default,
+        "ideal_cycle_s": st.ideal_cycle_s,
+        **production.describe(st),
         "active_job": None
         if active is None
         else {
@@ -56,9 +59,26 @@ def _device_summary(db: Session, d: Device) -> dict:
     }
 
 
+def _stations(db: Session) -> list[Station]:
+    return db.query(Station).order_by(Station.sort_order, Station.name).all()
+
+
 @router.get("/summary")
 def summary(db: Session = Depends(get_db), _: User = Depends(require_permission("view_dashboard"))):
-    return [_device_summary(db, d) for d in db.query(Device).order_by(Device.name).all()]
+    """Every station's dashboard block."""
+    rows = _stations(db)
+    devices = stations.devices_of(db, rows)
+    return [_station_summary(db, st, devices) for st in rows]
+
+
+@router.get("/oee")
+def oee_last_24h(
+    hours: float = Query(24, gt=0, le=24 * 31),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("view_dashboard")),
+):
+    """OEE and total OK / NOK over the last 24 hours (dashboard bottom panel)."""
+    return oee.compute(db, hours=hours)
 
 
 def ok_nok_buckets(readings: list[Reading], start: dt.datetime, end: dt.datetime, bucket_s: int) -> list[dict]:
@@ -74,6 +94,12 @@ def ok_nok_buckets(readings: list[Reading], start: dt.datetime, end: dt.datetime
     bars = [{"t": dt.datetime.fromtimestamp(first + i * bucket_s, dt.timezone.utc), "ok": 0, "nok": 0} for i in range(n)]
     prev = None
     for r in readings:
+        if r.manual:  # entered by hand: its own parts
+            idx = (int(_aware(r.created_at).timestamp()) - first) // bucket_s
+            if 0 <= idx < n:
+                bars[idx]["ok"] += r.raw_pass
+                bars[idx]["nok"] += r.raw_fail
+            continue
         if prev is not None and prev.job_name == r.job_name:
             d_ok = r.total_pass - prev.total_pass
             d_nok = r.total_fail - prev.total_fail
@@ -85,30 +111,30 @@ def ok_nok_buckets(readings: list[Reading], start: dt.datetime, end: dt.datetime
     return bars
 
 
-@router.get("/devices/{device_id}")
-def device_view(
-    device_id: int,
+@router.get("/stations/{station_id}")
+@router.get("/devices/{station_id}", include_in_schema=False)  # 1.4 path (device ids became station ids)
+def station_view(
+    station_id: int,
     hours: float = Query(8, gt=0, le=24 * 31),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("view_dashboard")),
 ):
-    """Everything the camera view needs: status, totals and OK/NOK over time."""
-    device = db.get(Device, device_id)
-    if not device:
-        raise HTTPException(404, "Device not found")
+    """Everything the station view needs: status, totals and OK/NOK over time."""
+    station = db.get(Station, station_id)
+    if not station:
+        raise HTTPException(404, "Station not found")
     end = utcnow()
     start = end - dt.timedelta(hours=hours)
     window = (end - start).total_seconds()
     bucket_s = next((b for b in _BUCKETS if window / b <= _MAX_BARS), _BUCKETS[-1])
 
-    q = db.query(Reading).filter(Reading.device_id == device_id)
-    baseline = q.filter(Reading.created_at < start).order_by(Reading.created_at.desc()).first()
+    q = db.query(Reading).filter(Reading.station_id == station_id)
+    baseline = (q.filter(Reading.created_at < start, Reading.manual.isnot(True))
+                .order_by(Reading.created_at.desc()).first())
     rows = q.filter(Reading.created_at >= start).order_by(Reading.created_at.asc(), Reading.id.asc()).all()
     bars = ok_nok_buckets(([baseline] if baseline else []) + rows, start, end, bucket_s)
     return {
-        **_device_summary(db, device),
-        "host": device.host,
-        "port": device.port,
+        **_station_summary(db, station, stations.devices_of(db, [station])),
         "history": {
             "hours": hours,
             "bucket_seconds": bucket_s,
@@ -121,34 +147,37 @@ def device_view(
 
 @router.get("/readings")
 def readings(
-    device_id: int | None = None,
+    station_id: int | None = None,
     excluded: bool | None = None,
     limit: int = 100,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("view_data")),
 ):
     q = db.query(Reading)
-    if device_id is not None:
-        q = q.filter(Reading.device_id == device_id)
+    if station_id is not None:
+        q = q.filter(Reading.station_id == station_id)
     if excluded is not None:
-        # left out by a user, or by the device's statistics default
-        by_default = Reading.device_id.in_(_excluded_device_ids(db)) & Reading.included.isnot(True)
+        # left out by a user, or by the station's statistics default
+        by_default = Reading.station_id.in_(_excluded_station_ids(db)) & Reading.included.isnot(True)
         is_out = Reading.excluded.is_(True) | by_default
         q = q.filter(is_out if excluded else ~is_out)
     rows = q.order_by(Reading.created_at.desc()).limit(min(limit, 1000)).all()
-    out_ids = set(_excluded_device_ids(db))
+    out_ids = set(_excluded_station_ids(db))
     return [
         {
             "id": r.id,
-            "device_id": r.device_id,
+            "station_id": r.station_id,
             "job_name": r.job_name,
             "raw_pass": r.raw_pass,
             "raw_fail": r.raw_fail,
             "total_pass": r.total_pass,
             "total_fail": r.total_fail,
             "excluded": bool(r.excluded),
-            # the device is excluded from the statistics by default
-            "device_excluded": r.device_id in out_ids,
+            "manual": bool(r.manual),
+            "note": r.note,
+            "entered_by": r.entered_by,
+            # the station is excluded from the statistics by default
+            "station_excluded": r.station_id in out_ids,
             "included": bool(r.included),
             "in_production": r.in_production,
             "created_at": r.created_at,
@@ -165,11 +194,11 @@ class ExcludePeriod(BaseModel):
     excluded: bool
     start: dt.datetime
     end: dt.datetime
-    device_id: int | None = None  # None = all devices
+    station_id: int | None = None  # None = all stations
 
 
-def _excluded_device_ids(db: Session) -> list[int]:
-    return [i for (i,) in db.query(Device.id).filter(Device.stats_default == "exclude")]
+def _excluded_station_ids(db: Session) -> list[int]:
+    return [i for (i,) in db.query(Station.id).filter(Station.stats_default == "exclude")]
 
 
 @router.patch("/readings/{reading_id}")
@@ -180,14 +209,43 @@ def exclude_reading(
     _: User = Depends(require_permission("exclude_readings")),
 ):
     """Leave one reading's parts out of the scrap statistics, or take them back
-    (also when its device is excluded from the statistics by default)."""
+    (also when its station is excluded from the statistics by default)."""
     r = db.get(Reading, reading_id)
     if not r:
         raise HTTPException(404, "Reading not found")
     r.excluded = payload.excluded
-    r.included = not payload.excluded and r.device.excluded_by_default
+    r.included = not payload.excluded and r.station is not None and r.station.excluded_by_default
     db.commit()
     return {"id": r.id, "excluded": r.excluded, "included": r.included}
+
+
+@router.put("/readings/{reading_id}/entry")
+def edit_entry(
+    reading_id: int,
+    payload: ManualEntry,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("manual_entry")),
+):
+    """Change a manual entry (parts, time, job, note)."""
+    r = db.get(Reading, reading_id)
+    if not r or not r.manual:
+        raise HTTPException(404, "Manual entry not found")
+    check_entry(payload)
+    stations.update_entry(db, r, payload.ok, payload.nok, payload.at, payload.job, payload.note)
+    return {"id": r.id}
+
+
+@router.delete("/readings/{reading_id}", status_code=204)
+def delete_entry(
+    reading_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("manual_entry")),
+):
+    """Delete a manual entry (device readings can only be excluded)."""
+    r = db.get(Reading, reading_id)
+    if not r or not r.manual:
+        raise HTTPException(404, "Manual entry not found")
+    stations.delete_entry(db, r)
 
 
 @router.post("/readings/exclude")
@@ -197,16 +255,16 @@ def exclude_period(
     _: User = Depends(require_permission("exclude_readings")),
 ):
     """Exclude (or include) every reading in a time period. Including also
-    counts readings of devices that are excluded from the statistics by default."""
+    counts readings of stations that are excluded from the statistics by default."""
     start, end = _aware(payload.start), _aware(payload.end)
     if end <= start:
         raise HTTPException(400, "The end must be after the start")
     q = db.query(Reading).filter(Reading.created_at >= start, Reading.created_at < end)
-    if payload.device_id is not None:
-        q = q.filter(Reading.device_id == payload.device_id)
+    if payload.station_id is not None:
+        q = q.filter(Reading.station_id == payload.station_id)
     changed = q.update({Reading.excluded: payload.excluded, Reading.included: False}, synchronize_session=False)
     if not payload.excluded:
-        q.filter(Reading.device_id.in_(_excluded_device_ids(db))).update(
+        q.filter(Reading.station_id.in_(_excluded_station_ids(db))).update(
             {Reading.included: True}, synchronize_session=False)
     db.commit()
     return {"changed": changed}
@@ -231,7 +289,7 @@ def scrap(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("view_data")),
 ):
-    """Pass/fail/scrap for a date range: overall, per camera, per job, per day."""
+    """Pass/fail/scrap for a date range: overall, per station, per job, per day."""
     return _scrap_range(start, end, tz, db)
 
 

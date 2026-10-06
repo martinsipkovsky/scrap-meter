@@ -105,9 +105,11 @@ def test_camera_writes_to_app_and_slmp_client_reads_it_back(client):
         "name": "SlmpCam", "host": "", "port": port, "protocol": "slmp_listen",
         "protocol_config": {"pass_device": "D100", "fail_device": "D102", "width": 2,
                             "job_device": "D200", "job_length": 4},
+        "create_station": True,
     })
     assert r.status_code == 201, r.text
     did = r.json()["id"]
+    sid = client.get("/api/stations").json()[0]["id"]
     slmp_server_manager.sync(_listen_devices("slmp_listen"))
 
     def camera():
@@ -130,7 +132,7 @@ def test_camera_writes_to_app_and_slmp_client_reads_it_back(client):
             send(build_write(0xA8, 100, [3, 0, 0, 0]))  # camera counter reset
 
             def totals():
-                c = client.get(f"/api/devices/{did}/counters").json()
+                c = client.get(f"/api/stations/{sid}/counters").json()
                 return (c[0]["job_name"], c[0]["total_pass"], c[0]["total_fail"]) if c else None
 
             assert _wait(lambda: totals() == ("JOB_S", 70013, 6)), totals()
@@ -145,7 +147,7 @@ def test_camera_writes_to_app_and_slmp_client_reads_it_back(client):
             assert r.status_code == 201, r.text
             read = client.post(f"/api/devices/{r.json()['id']}/poll")
             assert read.status_code == 200, read.text
-            assert read.json()["job"] == "JOB_S"
+            assert read.json()["values"]["job"] == "JOB_S"
         assert _wait(lambda: not camera()["connected"])
     finally:
         slmp_server_manager.sync([])

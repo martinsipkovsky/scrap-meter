@@ -56,7 +56,7 @@ class UdpListenerDriver(TcpListenerDriver):
         **TcpListenerDriver.config_fields,
         "terminator": "Record terminator inside a datagram (default CRLF); optional, "
                       "a datagram without one is one record",
-        "offline_after": "Seconds without a datagram before the camera shows offline (0 = never)",
+        "offline_after": "Seconds without a datagram before the device shows offline (0 = never)",
     }
 
     def records(self, data: bytes) -> list[str]:

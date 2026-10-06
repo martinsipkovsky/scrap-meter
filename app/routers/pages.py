@@ -51,11 +51,17 @@ def users_page(request: Request, user: User = Depends(require_page_permission("m
     return templates.TemplateResponse(request, "users.html", _ctx(request, user, page="users"))
 
 
-@router.get("/device/{device_id}", response_class=HTMLResponse)
-@router.get("/camera/{device_id}", response_class=HTMLResponse)  # old links
-def camera_page(device_id: int, request: Request, user: User = Depends(require_page_permission("view_dashboard"))):
+@router.get("/stations", response_class=HTMLResponse)
+def stations_page(request: Request, user: User = Depends(require_page_permission("view_dashboard"))):
+    return templates.TemplateResponse(request, "stations.html", _ctx(request, user, page="stations"))
+
+
+@router.get("/station/{station_id}", response_class=HTMLResponse)
+@router.get("/device/{station_id}", response_class=HTMLResponse)  # 1.4 links
+@router.get("/camera/{station_id}", response_class=HTMLResponse)  # older links
+def station_page(station_id: int, request: Request, user: User = Depends(require_page_permission("view_dashboard"))):
     return templates.TemplateResponse(
-        request, "camera.html", _ctx(request, user, page="dashboard", device_id=device_id)
+        request, "station.html", _ctx(request, user, page="dashboard", station_id=station_id)
     )
 
 

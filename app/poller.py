@@ -1,14 +1,15 @@
-"""Background poller (and the TCP listener wiring for cameras that push).
+"""Background poller (and the listener wiring for devices that push).
 
-Runs in a daemon thread. On each device's interval it: reads a sample via the
-device's protocol driver, folds it into the reset-proof running totals,
-handles job changes, writes a Reading row, updates the Device status, and
-evaluates notification rules.
+Runs in a daemon thread. On each device's interval it reads the device's
+values via its protocol driver (only the values its stations use, for OPC
+UA), and hands them to app.stations.device_read, which updates the device and
+records a reading for every station that uses it (reset-proof totals, job
+changes, production state, notification rules).
 
 One poll cycle is also exposed as ``poll_device_once`` so it can be called
 synchronously from the API ("test / poll now" buttons) and from tests.
 
-Cameras on a push protocol (``tcp_listen``, ``udp_listen``, ``slmp_listen``)
+Devices on a push protocol (``tcp_listen``, ``udp_listen``, ``slmp_listen``)
 are not polled; ``listener`` runs a server for each and hands every received
 record to ``record_sample``, so pushed and polled data go through exactly the
 same accumulation and logging.
@@ -21,104 +22,37 @@ import time
 
 from sqlalchemy.orm import Session
 
-from . import notifications, production, protocols
+from . import notifications, protocols, stations
 from .config import settings
-from .counters import Sample, apply_sample, new_state_for
+from .counters import Sample, sample_values
 from .database import SessionLocal
-from .models import CounterState, Device, Reading, utcnow
+from .models import Device, Reading, utcnow
 from .protocols.slmp_server import SlmpServerManager
 from .protocols.tcp_listener import ListenerManager, ListenerRunner
 from .protocols.udp_listener import UdpListenerManager
 
 log = logging.getLogger("cognex.poller")
 
-# seconds between checks of every camera's production state (notifications)
+# seconds between checks of every station's production state (notifications)
 PRODUCTION_CHECK_INTERVAL = 30
 
 
-def _handle_sample(db: Session, device: Device, sample: Sample) -> CounterState:
-    """Apply a sample to the right CounterState, rotating on job change."""
-    active = (
-        db.query(CounterState)
-        .filter(CounterState.device_id == device.id, CounterState.is_active.is_(True))
-        .first()
-    )
-
-    if active is None:
-        # first ever sample for this device
-        active = new_state_for(device, sample)
-        db.add(active)
-        db.flush()
-    elif active.job_name != sample.job_name:
-        # job changed: freeze the old totals, start fresh for the new job.
-        active.is_active = False
-        # Resume a previous run of the same job if one exists, else start new.
-        prior = (
-            db.query(CounterState)
-            .filter(
-                CounterState.device_id == device.id,
-                CounterState.job_name == sample.job_name,
-            )
-            .first()
-        )
-        if prior is not None:
-            prior.is_active = True
-            # treat the camera as freshly baselined for the resumed job
-            prior.last_raw_pass = sample.raw_pass
-            prior.last_raw_fail = sample.raw_fail
-            prior.last_raw_count = sample.raw_count
-            active = prior
-        else:
-            active = new_state_for(device, sample)
-            db.add(active)
-            db.flush()
-    else:
-        before = active.total_pass
-        apply_sample(active, sample)
-        if active.total_pass > before:
-            production.note_pass_increase(device)
-
-    return active
-
-
-def poll_device_once(db: Session, device: Device) -> Reading:
-    """Perform exactly one read+accumulate for a device. Raises on read error."""
+def read_device(db: Session, device: Device) -> dict:
+    """Read a device's values (no recording). Raises ProtocolError."""
     driver = protocols.get_driver(
         device.protocol, device.host, device.port, {**device.protocol_config, "device_id": device.id}
     )
-    sample = driver.read()  # may raise ProtocolError
-    return record_sample(db, device, sample)
+    return driver.read_values(stations.keys_for_device(db, device.id))
 
 
-def record_sample(db: Session, device: Device, sample: Sample) -> Reading:
-    """Accumulate one sample, log a Reading, mark the device online, notify."""
-    previous_job = device.current_job
-    state = _handle_sample(db, device, sample)
+def poll_device_once(db: Session, device: Device) -> list[Reading]:
+    """Read a device once and record its stations. Raises on read error."""
+    return stations.device_read(db, device, read_device(db, device))
 
-    reading = Reading(
-        device_id=device.id,
-        job_name=sample.job_name,
-        raw_pass=sample.raw_pass,
-        raw_fail=sample.raw_fail,
-        raw_count=sample.raw_count,
-        total_pass=state.total_pass,
-        total_fail=state.total_fail,
-        extra=sample.extra or {},
-        in_production=production.in_production(device),
-    )
-    db.add(reading)
 
-    device.connected = True
-    device.last_error = None
-    device.last_poll_at = utcnow()
-    device.current_job = sample.job_name
-    db.commit()
-
-    if previous_job is not None and previous_job != sample.job_name:
-        notifications.emit(db, "job_change",
-                           f"Device '{device.name}' changed job from '{previous_job}' to '{sample.job_name}'", device)
-    notifications.evaluate_device(db, device)
-    return reading
+def record_sample(db: Session, device: Device, sample: Sample) -> list[Reading]:
+    """A pushed record: same as a poll of the device."""
+    return stations.device_read(db, device, sample_values(sample))
 
 
 class Poller:
@@ -156,7 +90,7 @@ class Poller:
             devices = db.query(Device).filter(Device.enabled.is_(True)).all()
             for device in devices:
                 if protocols.is_push(device.protocol):
-                    continue  # served by the TCP listener, not polled
+                    continue  # served by a listener, not polled
                 interval = max(settings.min_poll_interval, device.poll_interval)
                 due = self._next_due.get(device.id, 0.0)
                 if now < due:
@@ -164,7 +98,7 @@ class Poller:
                 self._next_due[device.id] = now + interval
                 self._poll_safe(db, device)
             if now >= self._next_production_check:
-                # cameras go idle by time, also when no reading comes in
+                # stations go idle by time, also when no reading comes in
                 self._next_production_check = now + PRODUCTION_CHECK_INTERVAL
                 try:
                     notifications.check_all_production(db)
@@ -179,21 +113,18 @@ class Poller:
             poll_device_once(db, device)
         except Exception as exc:  # noqa: BLE001
             db.rollback()
-            device.connected = False
-            device.last_error = str(exc)
-            device.last_poll_at = utcnow()
-            db.commit()
             try:
-                notifications.evaluate_device(db, device)
+                stations.device_failed(db, device, str(exc))
             except Exception:  # noqa: BLE001
                 db.rollback()
+                log.exception("could not record the failed read of device %s", device.id)
 
 
 poller = Poller()
 
 
 # --------------------------------------------------------------------------- #
-# Listeners (cameras that push data to the app: TCP, UDP, SLMP server)
+# Listeners (devices that push data to the app: TCP, UDP, SLMP server)
 # --------------------------------------------------------------------------- #
 
 
@@ -217,12 +148,13 @@ def _listener_status(device_id: int, connected: bool, error: str | None) -> None
         device = db.get(Device, device_id)
         if device is None:
             return
+        if not connected:
+            stations.device_failed(db, device, error or "disconnected")
+            return
         device.connected = connected
         device.last_error = error
         device.last_poll_at = utcnow()
         db.commit()
-        if not connected:
-            notifications.evaluate_device(db, device)
     except Exception:  # noqa: BLE001
         db.rollback()
         log.exception("could not update listener status for device %s", device_id)

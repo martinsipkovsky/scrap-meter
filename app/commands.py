@@ -5,14 +5,14 @@ is answered with live figures from the app.
   default, changeable on the Notifications page), so normal chat never
   triggers anything.
 * The word after the prefix is the command's keyword. Anything after it
-  narrows the reply to the devices whose name contains it.
+  narrows the reply to the stations whose name contains it.
 * Each command lists the groups it answers in (none = every group the linked
   phone is in). Private chats are never answered.
 * "help" is built in (unless a command with that keyword exists) and lists the
   commands allowed in that group.
 * Every handled command is logged (CommandLog), also when it was refused.
 
-A reply is the command's header, one line per device and its footer. Their
+A reply is the command's header, one line per station and its footer. Their
 {placeholders} are listed in PLACEHOLDERS; an unknown one stays as typed.
 """
 from __future__ import annotations
@@ -25,8 +25,8 @@ import time
 
 from sqlalchemy.orm import Session
 
-from . import production, scrap_stats, settings_store
-from .models import ChatCommand, CommandLog, CounterState, Device, Reading, utcnow
+from . import production, scrap_stats, settings_store, stations
+from .models import ChatCommand, CommandLog, CounterState, Reading, Station, utcnow
 
 log = logging.getLogger("cognex.commands")
 
@@ -44,7 +44,7 @@ PERIODS = {
 
 PLACEHOLDERS = {
     "line": {
-        "device": "device name ({camera} works too)",
+        "station": "station name ({device} and {camera} work too)",
         "state": "▶ in production / ⏸ idle / ⏹ stopped",
         "online": "online / offline",
         "job": "current job",
@@ -56,23 +56,23 @@ PLACEHOLDERS = {
     },
     "header / footer": {
         "date": "today's date", "time": "current time", "period": "the period in words",
-        "devices": "number of devices in the reply ({cameras} works too)",
+        "stations": "number of stations in the reply ({devices} and {cameras} work too)",
         "in_production": "how many are in production",
-        "total_pass": "OK parts, devices in the totals", "total_fail": "NOK parts, devices in the totals",
-        "total": "all parts in the totals", "total_scrap": "scrap %, devices in the totals",
+        "total_pass": "OK parts, stations in the totals", "total_fail": "NOK parts, stations in the totals",
+        "total": "all parts in the totals", "total_scrap": "scrap %, stations in the totals",
     },
 }
 
 DEFAULT_STATUS = {
     "keyword": "status",
-    "description": "Production state, OK / NOK and scrap of every device",
+    "description": "Production state, OK / NOK and scrap of every station",
     "period": "dashboard",
     "header": "📊 Status {date} {time}",
-    "line": "{device}: {state}, job {job}\n   OK {pass} · NOK {fail} · scrap {scrap}",
+    "line": "{station}: {state}, job {job}\n   OK {pass} · NOK {fail} · scrap {scrap}",
     "footer": "Total: OK {total_pass} · NOK {total_fail} · scrap {total_scrap}",
 }
 
-# added to the line of a device that is excluded from the statistics by default
+# added to the line of a station that is excluded from the statistics by default
 NOT_IN_TOTALS = " (not in totals)"
 
 _STATE_TEXT = {production.RUNNING: "▶ in production", production.IDLE: "⏸ idle", production.STOPPED: "⏹ stopped"}
@@ -117,13 +117,18 @@ def _pct(fail: int, total: int) -> str:
     return f"{fail / total * 100:.1f}%" if total else "—"
 
 
-def _window_counts(db: Session, device: Device, start: dt.datetime) -> tuple[int, int]:
+def _window_counts(db: Session, station: Station, start: dt.datetime) -> tuple[int, int]:
     """OK / NOK made since ``start``: differences of consecutive readings of
-    the same job (like the camera view's chart)."""
-    q = db.query(Reading.job_name, Reading.total_pass, Reading.total_fail).filter(Reading.device_id == device.id)
-    prev = q.filter(Reading.created_at < start).order_by(Reading.created_at.desc(), Reading.id.desc()).first()
+    the same job (like the station view's chart)."""
+    q = db.query(Reading.job_name, Reading.total_pass, Reading.total_fail, Reading.manual,
+                 Reading.raw_pass, Reading.raw_fail).filter(Reading.station_id == station.id)
+    prev = (q.filter(Reading.created_at < start, Reading.manual.isnot(True))
+            .order_by(Reading.created_at.desc(), Reading.id.desc()).first())
     ok = nok = 0
     for r in q.filter(Reading.created_at >= start).order_by(Reading.created_at.asc(), Reading.id.asc()):
+        if r.manual:  # entered by hand: its own parts
+            ok, nok = ok + r.raw_pass, nok + r.raw_fail
+            continue
         if prev is not None and prev.job_name == r.job_name:
             ok += max(r.total_pass - prev.total_pass, 0)
             nok += max(r.total_fail - prev.total_fail, 0)
@@ -141,16 +146,17 @@ def _local(t: dt.datetime | None, tz: dt.tzinfo) -> str:
 def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datetime | None = None) -> str:
     now = now or utcnow()
     tz = scrap_stats.zone(cmd.timezone)
-    devices = db.query(Device).order_by(Device.name).all()
+    rows = db.query(Station).order_by(Station.sort_order, Station.name).all()
     if camera_filter:
         f = camera_filter.lower()
-        devices = [d for d in devices if f in d.name.lower()]
-        if not devices:
-            return f"No device matches '{camera_filter}'."
+        rows = [d for d in rows if f in d.name.lower()]
+        if not rows:
+            return f"No station matches '{camera_filter}'."
+    devices = stations.devices_of(db, rows)
 
     if cmd.period == "today":
         today = now.astimezone(tz).date()
-        stats = {r["camera_id"]: r for r in scrap_stats.compute(db, today, today, tz)["per_camera"]}
+        stats = {r["station_id"]: r for r in scrap_stats.compute(db, today, today, tz)["per_station"]}
         period = "today (production time)"
     elif cmd.period == "hours":
         hours = max(1, cmd.hours or 8)
@@ -160,8 +166,8 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
         period = "current job"
 
     lines, tot_ok, tot_nok, running = [], 0, 0, 0
-    for d in devices:
-        # a device excluded from the statistics by default keeps its own line
+    for d in rows:
+        # a station excluded from the statistics by default keeps its own line
         # but stays out of the totals (for "today": except readings a user
         # included, like Scrap statistics)
         if cmd.period == "today":
@@ -173,16 +179,18 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
                 ok, nok = _window_counts(db, d, start)
             else:
                 state = (db.query(CounterState)
-                         .filter(CounterState.device_id == d.id, CounterState.is_active.is_(True)).first())
+                         .filter(CounterState.station_id == d.id, CounterState.is_active.is_(True)).first())
                 ok, nok = (state.shown_pass, state.shown_fail) if state else (0, 0)
             in_ok, in_nok = (0, 0) if d.excluded_by_default else (ok, nok)
         tot_ok, tot_nok = tot_ok + in_ok, tot_nok + in_nok
         prod = production.state(d, now)
         running += prod == production.RUNNING
+        online = stations.status(d, devices)["connected"]
         values = {
-            "device": d.name, "camera": d.name, "state": _STATE_TEXT[prod], "online": "online" if d.connected else "offline",
+            "station": d.name, "device": d.name, "camera": d.name, "state": _STATE_TEXT[prod],
+            "online": "online" if online else "offline",
             "job": d.current_job or "—", "pass": ok, "fail": nok, "total": ok + nok,
-            "scrap": _pct(nok, ok + nok), "last_data": _local(d.last_poll_at, tz),
+            "scrap": _pct(nok, ok + nok), "last_data": _local(d.last_reading_at, tz),
         }
         line = _fill(cmd.line, values)
         lines.append(line + NOT_IN_TOTALS if d.excluded_by_default else line)
@@ -190,11 +198,11 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
     local_now = now.astimezone(tz)
     summary = {
         "date": local_now.strftime("%d.%m.%Y"), "time": local_now.strftime("%H:%M"), "period": period,
-        "devices": len(devices), "cameras": len(devices), "in_production": running,
+        "stations": len(rows), "devices": len(rows), "cameras": len(rows), "in_production": running,
         "total_pass": tot_ok, "total_fail": tot_nok, "total": tot_ok + tot_nok,
         "total_scrap": _pct(tot_nok, tot_ok + tot_nok),
     }
-    parts = [_fill(cmd.header, summary)] + (lines or ["No devices."]) + [_fill(cmd.footer, summary)]
+    parts = [_fill(cmd.header, summary)] + (lines or ["No stations."]) + [_fill(cmd.footer, summary)]
     text = "\n".join(p for p in parts if p.strip())
     return text[:MAX_REPLY]
 
@@ -244,7 +252,7 @@ def answer(db: Session, msg: dict, prefix: str | None = None) -> tuple[str, str 
             return "not_allowed", keyword, None
         listing = "\n".join(f"{p}{c.keyword}" + (f" – {c.description}" if c.description else "")
                             for c in sorted(here, key=lambda c: c.keyword))
-        return "answered", keyword, f"Commands (add a device name to see only that device):\n{listing}"
+        return "answered", keyword, f"Commands (add a station name to see only that station):\n{listing}"
     if cmd is None:
         if not here:
             return "not_allowed", keyword, None

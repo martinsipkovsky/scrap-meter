@@ -43,7 +43,8 @@ setting returns the app to `DATABASE_URL` after a restart.
 ## Backups (Database tab)
 
 **Download backup** saves one file, `cognex-backup-DATE-TIME.json.gz`, with all
-app data: devices, readings, counters, users and notification settings. It is
+app data: devices, stations, readings (and manual entries), counters, users
+and notification settings. It is
 written by the app itself (no `pg_dump`), so it can be imported into any
 database the app is configured to use. The tab shows when the last backup was
 made (downloaded or uploaded to FTP) and turns yellow when there is none or

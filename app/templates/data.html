@@ -3,12 +3,12 @@
 {% block content %}
 <div class="toolbar">
   <div><h1>Data log</h1><p class="lead">Per-job running totals and the raw reading history from the database.</p></div>
-  <select id="deviceFilter" style="max-width:240px" onchange="load()"><option value="">All devices</option></select>
+  <select id="deviceFilter" style="max-width:240px" onchange="load()"><option value="">All stations</option></select>
 </div>
 
 <div class="section">
   <h2>Running counters by job</h2>
-  <table><thead><tr><th>Device</th><th>Job</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th><th>State</th></tr></thead>
+  <table><thead><tr><th>Station</th><th>Job</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th><th>State</th></tr></thead>
   <tbody id="counterRows"></tbody></table>
   <div id="counterEmpty" class="empty" style="display:none">No counters yet.</div>
 </div>
@@ -20,24 +20,46 @@
       <option value="">All readings</option><option value="true">Excluded readings only</option>
     </select>
   </div>
-  <p class="hint">Readings marked <span class="badge off">excluded</span>, <span class="badge off">device not in totals</span> or <span class="badge warn">not in production</span> are left out of the overall <a href="/scrap">scrap statistics</a>.{% if user.has_permission('exclude_readings') %} Use Exclude to leave a reading's parts out; Include counts them, also for a device that is excluded from the statistics by default.{% endif %}</p>
-  <table><thead><tr><th>Time</th><th>Device</th><th>Job</th><th>Raw pass</th><th>Raw fail</th><th>Total pass</th><th>Total fail</th><th>Scrap statistics</th></tr></thead>
+  <p class="hint">Manual entries are marked <span class="badge warn">manual</span> with who entered them.{% if user.has_permission('manual_entry') %} Edit or Delete changes them; add them on a station's view.{% endif %} Readings marked <span class="badge off">excluded</span>, <span class="badge off">station not in totals</span> or <span class="badge warn">not in production</span> are left out of the overall <a href="/scrap">scrap statistics</a>.{% if user.has_permission('exclude_readings') %} Use Exclude to leave a reading's parts out; Include counts them, also for a station that is excluded from the statistics by default.{% endif %}</p>
+  <table><thead><tr><th>Time</th><th>Station</th><th>Job</th><th>Raw pass</th><th>Raw fail</th><th>Total pass</th><th>Total fail</th><th>Scrap statistics</th></tr></thead>
   <tbody id="readingRows"></tbody></table>
   <div id="readingEmpty" class="empty" style="display:none">No readings yet.</div>
+</div>
+
+<div class="modal-back" id="entryModal">
+  <div class="modal">
+    <h2>Edit manual entry</h2>
+    <div id="entryError" class="error" style="display:none"></div>
+    <input type="hidden" id="m_id" />
+    <div class="row">
+      <div><label>OK</label><input id="m_ok" type="number" min="0" /></div>
+      <div><label>NOK</label><input id="m_nok" type="number" min="0" /></div>
+    </div>
+    <div class="row">
+      <div><label>Time</label><input id="m_at" type="datetime-local" /></div>
+      <div><label>Job</label><input id="m_job" /></div>
+    </div>
+    <label>Note</label><input id="m_note" maxlength="1000" />
+    <div class="actions" style="margin-top:20px;justify-content:flex-end">
+      <button class="btn secondary" onclick="closeModal('entryModal')">Cancel</button>
+      <button class="btn" onclick="saveEntry()">Save</button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
 if (location.hash === '#scrap') location.replace('/scrap');  // the old Scrap statistics tab
 const CAN_EXCLUDE = {{ 'true' if user.has_permission('exclude_readings') else 'false' }};
+const CAN_ENTER = {{ 'true' if user.has_permission('manual_entry') else 'false' }};
 let DEVICES = [];
 function devName(id) { const d = DEVICES.find(x => x.id === id); return d ? d.name : ('#' + id); }
 
 async function load() {
-  DEVICES = await getJSON('/api/devices');
+  DEVICES = await getJSON('/api/stations');
   const sel = document.getElementById('deviceFilter');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">All devices</option>' + DEVICES.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  sel.innerHTML = '<option value="">All stations</option>' + DEVICES.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
   sel.value = cur;
   const filter = sel.value;
 
@@ -46,7 +68,7 @@ async function load() {
   let counters = [];
   for (const d of DEVICES) {
     if (filter && String(d.id) !== filter) continue;
-    const cs = await getJSON('/api/devices/' + d.id + '/counters');
+    const cs = await getJSON('/api/stations/' + d.id + '/counters');
     cs.forEach(c => counters.push({ ...c, device: d.name }));
   }
   document.getElementById('counterEmpty').style.display = counters.length ? 'none' : 'block';
@@ -63,37 +85,76 @@ async function load() {
 
   // readings
   const exFilter = document.getElementById('excludedFilter').value;
-  const url = '/api/data/readings?limit=100' + (filter ? '&device_id=' + filter : '') + (exFilter ? '&excluded=' + exFilter : '');
+  const url = '/api/data/readings?limit=100' + (filter ? '&station_id=' + filter : '') + (exFilter ? '&excluded=' + exFilter : '');
   const readings = await getJSON(url);
   const rRows = document.getElementById('readingRows'); rRows.innerHTML = '';
   document.getElementById('readingEmpty').style.display = readings.length ? 'none' : 'block';
   for (const r of readings) {
     rRows.append(el('tr', { class: leftOut(r) ? 'excluded' : '' },
       el('td', { class: 'muted' }, new Date(r.created_at).toLocaleString()),
-      el('td', {}, devName(r.device_id)), el('td', {}, r.job_name || '—'),
-      el('td', {}, String(r.raw_pass)), el('td', {}, String(r.raw_fail)),
-      el('td', {}, String(r.total_pass)), el('td', {}, String(r.total_fail)),
+      el('td', {}, devName(r.station_id),
+        r.manual ? el('div', { class: 'muted' }, el('span', { class: 'badge warn' }, 'manual'), ' ' + (r.entered_by || '') + (r.note ? ' · ' + r.note : '')) : null),
+      el('td', {}, r.job_name || '—'),
+      el('td', {}, (r.manual ? '+' : '') + r.raw_pass), el('td', {}, (r.manual ? '+' : '') + r.raw_fail),
+      el('td', {}, r.manual ? '—' : String(r.total_pass)), el('td', {}, r.manual ? '—' : String(r.total_fail)),
       el('td', {}, readingState(r)),
     ));
   }
 }
-// left out by a user, or by its device's statistics default (and not included)
-function leftOut(r) { return r.excluded || (r.device_excluded && !r.included); }
+// left out by a user, or by its station's statistics default (and not included)
+function leftOut(r) { return r.excluded || (r.station_excluded && !r.included); }
 function readingState(r) {
   const cell = el('div', { class: 'actions', style: 'align-items:center;flex-wrap:nowrap' });
   if (r.excluded) cell.append(el('span', { class: 'badge off' }, 'excluded'));
-  else if (r.device_excluded && !r.included) cell.append(el('span', { class: 'badge off', title: 'The device is excluded from the statistics by default' }, 'device not in totals'));
+  else if (r.station_excluded && !r.included) cell.append(el('span', { class: 'badge off', title: 'The station is excluded from the statistics by default' }, 'station not in totals'));
   else if (r.in_production === false) cell.append(el('span', { class: 'badge warn' }, 'not in production'));
-  else cell.append(el('span', { class: 'badge ok' }, r.device_excluded ? 'included' : 'counted'));
+  else cell.append(el('span', { class: 'badge ok' }, r.station_excluded ? 'included' : 'counted'));
   if (CAN_EXCLUDE) cell.append(el('button', { class: 'btn secondary small', onclick: () => setExcluded(r, !leftOut(r)) },
     leftOut(r) ? 'Include' : 'Exclude'));
+  if (r.manual && CAN_ENTER) {
+    cell.append(el('button', { class: 'btn secondary small', onclick: () => editEntry(r) }, 'Edit'));
+    cell.append(el('button', { class: 'btn danger small', onclick: () => deleteEntry(r) }, 'Delete'));
+  }
   return cell;
+}
+function toLocalInput(iso) {
+  const d = new Date(iso), p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function editEntry(r) {
+  document.getElementById('entryError').style.display = 'none';
+  document.getElementById('m_id').value = r.id;
+  document.getElementById('m_ok').value = r.raw_pass;
+  document.getElementById('m_nok').value = r.raw_fail;
+  document.getElementById('m_at').value = toLocalInput(r.created_at);
+  document.getElementById('m_job').value = r.job_name || '';
+  document.getElementById('m_note').value = r.note || '';
+  openModal('entryModal');
+}
+async function saveEntry() {
+  const err = document.getElementById('entryError');
+  try {
+    const at = document.getElementById('m_at').value;
+    await api('PUT', '/api/data/readings/' + document.getElementById('m_id').value + '/entry', {
+      ok: parseInt(document.getElementById('m_ok').value, 10) || 0,
+      nok: parseInt(document.getElementById('m_nok').value, 10) || 0,
+      at: at ? new Date(at).toISOString() : null,
+      job: document.getElementById('m_job').value.trim() || null,
+      note: document.getElementById('m_note').value,
+    });
+    closeModal('entryModal');
+    load();
+  } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+async function deleteEntry(r) {
+  if (!confirm('Delete this manual entry (OK ' + r.raw_pass + ' / NOK ' + r.raw_fail + ')?')) return;
+  try { await delJSON('/api/data/readings/' + r.id); load(); } catch (e) { toast(e.message, true); }
 }
 async function setExcluded(r, excluded) {
   try { await patchJSON('/api/data/readings/' + r.id, { excluded }); load(); }
   catch (e) { toast(e.message, true); }
 }
 load();
-setInterval(load, 5000);
+setInterval(() => { if (!document.querySelector('.modal-back.open')) load(); }, 5000);
 </script>
 {% endblock %}

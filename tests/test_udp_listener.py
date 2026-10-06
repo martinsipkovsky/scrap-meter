@@ -56,10 +56,10 @@ def test_camera_datagrams_feed_counters(client):
     port = _free_udp_port()
     r = client.post("/api/devices", json={
         "name": "UdpCam", "host": "", "port": port, "protocol": "udp_listen",
-        "protocol_config": {"mode": "event", "job_field": 0, "status_field": 1},
+        "protocol_config": {"mode": "event", "job_field": 0, "status_field": 1}, "create_station": True,
     })
     assert r.status_code == 201, r.text
-    did = r.json()["id"]
+    sid = client.get("/api/stations").json()[0]["id"]
     udp_listener_manager.sync(_listen_devices("udp_listen"))
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as cam:
@@ -68,7 +68,7 @@ def test_camera_datagrams_feed_counters(client):
                 time.sleep(0.05)
 
             def totals():
-                c = client.get(f"/api/devices/{did}/counters").json()
+                c = client.get(f"/api/stations/{sid}/counters").json()
                 return (c[0]["total_pass"], c[0]["total_fail"]) if c else None
 
             # every part is counted, repeat passes included

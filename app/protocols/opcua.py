@@ -1,8 +1,10 @@
 """OPC UA client driver: reads counters from any OPC UA server (a PLC, an
 edge gateway, a machine controller, a camera with an OPC UA server).
 
-The app is the OPC UA *client*. Each poll connects to the server, reads the
-configured nodes, and disconnects. Config::
+The app is the OPC UA *client*. The device holds only the connection; each
+station that uses it picks the node it needs (its OK, NOK, total or job
+value), and each poll connects, reads exactly those nodes (``read_values``),
+and disconnects. Config::
 
     config = {
         "endpoint": "opc.tcp://10.0.0.5:4840",  # server endpoint URL
@@ -10,17 +12,16 @@ configured nodes, and disconnects. Config::
         "security_policy": "Basic256Sha256",  # used with Sign / SignAndEncrypt
         "username": "",                     # blank = anonymous login
         "password": "",
-        "pass_node": "ns=2;s=Line1.Pass",   # node ids of the counters
-        "fail_node": "ns=2;s=Line1.Fail",
-        "count_node": null,                 # optional total counter
-        "job_node": null,                   # optional job / recipe name or number
-        "default_job": "MAIN",              # job name when job_node is not set
         "timeout": 5
     }
 
+Version 1.4 also had "pass_node", "fail_node", "count_node", "job_node" and
+"default_job" here; they still work (as the values "pass", "fail", "count",
+"job" and ``read``), and the upgrade to stations moves them to the station.
+
 Node ids use the standard string form: ``ns=2;s=Line1.Pass``, ``ns=3;i=1001``,
-``i=2258``. The Browse helper on the device form (``browse``) walks the
-server's address space to pick them.
+``i=2258``. The Browse helper (``browse``) walks the server's address space
+to pick them.
 
 Security: with Sign or SignAndEncrypt the app presents its own client
 certificate. It is generated once (valid 10 years) and kept in DATA_DIR/opcua,
@@ -207,6 +208,14 @@ def _to_int(value, node_id: str) -> int:
         raise ProtocolError(f"Node {node_id} holds {value!r}, not a number") from None
 
 
+def _plain(value):
+    """A node value as JSON can store it: numbers, text and booleans stay,
+    anything else (LocalizedText, dates, arrays) becomes text."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return _to_text(value)
+
+
 def _to_text(value) -> str:
     text = getattr(value, "Text", None)  # LocalizedText
     if text is not None:
@@ -233,13 +242,54 @@ class OpcUaDriver(ProtocolDriver):
                            "Basic256 or Basic128Rsa15; used with Sign / SignAndEncrypt",
         "username": "Login name; blank = anonymous",
         "password": "Login password",
-        "pass_node": "Node id of the pass (OK) counter, e.g. ns=2;s=Line1.Pass",
-        "fail_node": "Node id of the fail (NOK) counter",
-        "count_node": "Optional node id of a total counter",
-        "job_node": "Optional node id holding the job / recipe name or number",
-        "default_job": "Job name when job_node is not set (default MAIN)",
         "timeout": "Connection timeout in seconds (default 5)",
     }
+    #: stations pick any node of the server, not only pass/fail/count/job
+    any_value = True
+
+    # 1.4 config keys for the fixed values
+    LEGACY = {"pass": "pass_node", "fail": "fail_node", "count": "count_node", "job": "job_node"}
+
+    def read_values(self, keys: set[str]) -> dict:
+        """Read the given node ids (and the 1.4 pass/fail/... nodes if set).
+
+        A node that cannot be read is left out and listed in "_errors"; a
+        failed connection raises ProtocolError.
+        """
+        cfg = self.config
+        nodes = {k: k for k in keys if k and k not in self.LEGACY}
+        for key, cfg_key in self.LEGACY.items():
+            if (cfg.get(cfg_key) or "").strip():
+                nodes[key] = cfg[cfg_key].strip()
+        url = endpoint_url(self.host, self.port, cfg)
+        timeout = float(cfg.get("timeout") or 5)
+        return _run(self._read_values(url, nodes), url, timeout * 3)
+
+    async def _read_values(self, url: str, nodes: dict[str, str]) -> dict:
+        client = _make_client(url, self.config)
+        await _connect(client)
+        values, errors = {}, {}
+        try:
+            if not nodes:  # no station uses the server yet: just check it answers
+                await client.get_node("i=2258").read_value()
+            read: dict[str, object] = {}  # each node once, also when two keys name it
+            for key, node_id in nodes.items():
+                try:
+                    if node_id not in read:
+                        read[node_id] = _plain(await client.get_node(node_id).read_value())
+                    values[key] = read[node_id]
+                except Exception as exc:  # noqa: BLE001
+                    errors[key] = f"Could not read {node_id}: {exc.__class__.__name__} {exc}".strip()
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+        if "job" in nodes and "job" in values:
+            values["job"] = _to_text(values["job"])
+        if errors:
+            values["_errors"] = errors
+        return values
 
     def read(self) -> Sample:
         cfg = self.config

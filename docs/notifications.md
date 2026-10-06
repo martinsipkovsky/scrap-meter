@@ -18,19 +18,19 @@ bottom of the tab.
 |---|---|---|
 | Scrap rate ≥ threshold | state | The current job's scrap rate (as shown on the dashboard) reaches the threshold. Entered in %, e.g. `5` |
 | Fail (NOK) count ≥ threshold | state | The current job's NOK count (as shown on the dashboard) reaches the threshold |
-| Device disconnected or read error | state | The device can't be read or has gone offline |
-| Device stopped, idle or back in production | event | A device's [production state](user-guide.md#production-state) changes |
-| Device changed job | event | A device reports a new job name |
+| Station's device disconnected or read error | state | A device the station uses can't be read, has gone offline, or doesn't deliver the value |
+| Station stopped, idle or back in production | event | A station's [production state](user-guide.md#production-state) changes |
+| Station changed job | event | A station's job changes |
 | FTP backup failed / FTP backup finished | event | An automatic or *Run now* FTP backup ends |
 | App started or updated | event | The app starts; after an image update the message says which version it was updated from. Sent about a minute after startup, so a linked WhatsApp has reconnected |
 
 For each rule you choose:
 
-- **Device**: one device or all devices (device conditions only).
+- **Station**: one station or all stations (station conditions only).
 - **Level**: ℹ️ INFO, ⚠️ WARNING or 🚨 ALERT. It is put in front of the
   message, e.g. `⚠️ WARNING · High scrap on 'Line 1' …`.
-- **Threshold** for scrap and fail-count rules. A rule for **all devices**
-  can set a different threshold for individual devices ("Per device"); an
+- **Threshold** for scrap and fail-count rules. A rule for **all stations**
+  can set a different threshold for individual stations ("Per station"); an
   empty box uses the rule's threshold.
 - **Send to**: tick the providers that get the message. With none ticked it
   goes to every enabled provider (rules made before this option existed work
@@ -45,12 +45,14 @@ Typical setup: a *warning* rule at 3 % scrap to the shift group, an *alert*
 rule at 5 % to the shift group and the maintenance group, disconnects to
 maintenance only, and backup and app messages to an admin chat.
 
-Scrap-rate and fail-count rules are suppressed while a device is idle or
+Scrap-rate and fail-count rules are suppressed while a station is idle or
 manually stopped. They use the counters shown on the dashboard, so
-**Reset counters** on the device view also clears them.
+**Reset counters** on the station view also clears them. A disconnect rule
+fires when a device the station uses is offline or can't deliver its value.
 
-Messages say "Device 'Line 1' …" (earlier versions said "Camera"), and the
-startup message names the app Scrap Meter.
+Rules are per station since 1.5; rules made for a device in earlier versions
+now belong to the station the device became. Messages say "Station 'M1' …"
+and name the app Scrap Meter.
 
 ## WhatsApp
 
@@ -98,8 +100,8 @@ in `docker compose logs web`, starting with `whatsapp`.
 ### Commands in WhatsApp groups
 
 With a phone linked, people in a WhatsApp group can ask the app for figures:
-send `!status` in the group and the linked phone answers with every device's
-production state, OK / NOK and scrap. `!status line 1` answers for the devices
+send `!status` in the group and the linked phone answers with every station's
+production state, OK / NOK and scrap. `!status line 1` answers for the stations
 whose name contains "line 1" only, and `!help` lists the commands allowed in
 that group.
 
@@ -114,14 +116,15 @@ tab. A `status` command is there from the start.
 - **Counts**: *dashboard counters* (current job, since the last reset, as on
   the dashboard), *today* (production time only, the same figures as Scrap
   statistics) or *the last N hours*.
-- **Header, one line per device, footer**: the reply text. `{placeholders}`
-  are filled in; the dialog lists them (`{device}`, `{state}`, `{job}`,
+- **Header, one line per station, footer**: the reply text. `{placeholders}`
+  are filled in; the dialog lists them (`{station}`, `{state}`, `{job}`,
   `{pass}`, `{fail}`, `{scrap}`, `{total_scrap}`, `{date}`, `{time}`, …).
-  `{camera}` and `{cameras}` from earlier versions still work.
+  `{device}`, `{camera}`, `{devices}` and `{cameras}` from earlier versions
+  still work and mean the station.
   **Preview reply** shows what it would send now, without sending.
 - **Totals** (`{total_pass}`, `{total_fail}`, `{total}`, `{total_scrap}`)
-  leave out devices excluded from the statistics (see the
-  [User guide](user-guide.md#devices-excluded-from-the-statistics)). Their
+  leave out stations excluded from the statistics (see the
+  [User guide](user-guide.md#stations-excluded-from-the-statistics)). Their
   line still appears, ending in "(not in totals)". With *today*, readings a
   user included count, as on Scrap statistics.
 - **Answers in**: tick the groups where the command works. None ticked = every

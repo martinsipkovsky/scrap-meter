@@ -13,6 +13,7 @@
       <nav class="nav">
         {% if user.has_permission('view_dashboard') %}
         <a href="/" class="{{ 'active' if page=='dashboard' }}">Dashboard</a>
+        <a href="/stations" class="{{ 'active' if page=='stations' }}">Stations</a>
         <a href="/devices" class="{{ 'active' if page=='devices' }}">Devices</a>
         {% endif %}
         {% if user.has_permission('view_data') %}

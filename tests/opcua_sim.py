@@ -3,10 +3,13 @@
 Run it on its own to try the app against it:
 
     python tests/opcua_sim.py --port 4840 [--user operator:secret] [--no-anonymous]
+                              [--values-file values.json]
 
 It serves ns=2;s=Line1.Pass / .Fail / .Total / .Job (a few parts a second,
 about 3 % fail) under Objects > Line1, with security None, Basic256Sha256
-Sign and SignAndEncrypt. ``--user`` adds a username login; ``--no-anonymous``
+Sign and SignAndEncrypt. With ``--values-file`` the counters do not run by
+themselves: they take the values in the JSON file, e.g. {"Pass": 100,
+"Job": "A"}, whenever it changes. ``--user`` adds a username login; ``--no-anonymous``
 then requires it. The tests start it in a thread with ``SimServer``.
 """
 from __future__ import annotations
@@ -43,8 +46,9 @@ class SimServer:
     """Runs the server on its own thread; counters change only through set()."""
 
     def __init__(self, port: int, users: dict[str, str] | None = None, anonymous: bool = True,
-                 auto: bool = False):
+                 auto: bool = False, values_file: str | None = None):
         self.port, self.users, self.anonymous, self.auto = port, users or {}, anonymous, auto
+        self.values_file, self._mtime = values_file, None
         self.values = {"Pass": 0, "Fail": 0, "Total": 0, "Job": "JOB_A"}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ready = threading.Event()
@@ -72,6 +76,23 @@ class SimServer:
         for name, node in self._nodes.items():
             vt = ua.VariantType.String if name == "Job" else ua.VariantType.UInt32
             await node.write_value(ua.Variant(self.values[name], vt))
+
+    async def _read_values_file(self) -> None:
+        import json
+        import os
+
+        try:
+            mtime = os.path.getmtime(self.values_file)
+            if mtime == self._mtime:
+                return
+            self._mtime = mtime
+            with open(self.values_file, encoding="utf-8") as f:
+                new = json.load(f)
+        except (OSError, ValueError):
+            return
+        self.values.update({k: v for k, v in new.items() if k in self.values})
+        await self._write()
+        print("values:", self.values, flush=True)
 
     async def _main(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -106,7 +127,9 @@ class SimServer:
             await self._write()
             self._ready.set()
             while not self._stop.is_set():
-                if self.auto:
+                if self.values_file:
+                    await self._read_values_file()
+                elif self.auto:
                     n = random.randint(1, 4)
                     bad = sum(random.random() < 0.03 for _ in range(n))
                     self.values["Pass"] += n - bad
@@ -124,9 +147,10 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=4840)
     ap.add_argument("--user", action="append", default=[], help="name:password (repeatable)")
     ap.add_argument("--no-anonymous", action="store_true")
+    ap.add_argument("--values-file", help="JSON file with the values to serve (no automatic counting)")
     a = ap.parse_args()
     users = dict(u.split(":", 1) for u in a.user)
-    sim = SimServer(a.port, users, anonymous=not a.no_anonymous, auto=True).start()
+    sim = SimServer(a.port, users, anonymous=not a.no_anonymous, auto=True, values_file=a.values_file).start()
     print(f"OPC UA sim server on opc.tcp://<this host>:{a.port}/sim  (Ctrl+C to stop)", flush=True)
     try:
         threading.Event().wait()

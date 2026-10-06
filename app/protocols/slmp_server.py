@@ -145,7 +145,7 @@ class SlmpServerDriver(ProtocolDriver):
         "job_length": "Words of the ASCII job name (2 chars per word, default 8)",
         "job_format": "'ascii' (job name text) or 'number' (job id)",
         "default_job": "Job name when job_device is not set (default 'MAIN')",
-        "preset": "Optional {\"D0\": 1} values the camera can read before writing",
+        "preset": "Optional {\"D0\": 1} values the device can read before writing",
     }
 
     def __init__(self, host: str, port: int, config: dict | None = None):
@@ -164,7 +164,7 @@ class SlmpServerDriver(ProtocolDriver):
     def read(self) -> Sample:
         raise ProtocolError(
             "This device writes its data to the app over SLMP; it is not polled. "
-            "Point the camera's SLMP PLC address at this server's IP, port %s." % self.port
+            "Point the device's SLMP PLC address at this server's IP, port %s." % self.port
         )
 
     # ---- frames ----------------------------------------------------------
@@ -351,7 +351,7 @@ class SlmpServerManager(ListenerManager):
     """One SLMP server per enabled ``slmp_listen`` camera (see ListenerManager)."""
 
     protocol = "slmp_listen"
-    waiting = "SLMP server on TCP port {port}, waiting for the camera to connect"
+    waiting = "SLMP server on TCP port {port}, waiting for the device to connect"
 
     def make_server(self, device_id: int, host: str, port: int, cfg: dict):
         return _Server(port, device_id, SlmpServerDriver(host, port, cfg), host.strip(), self)

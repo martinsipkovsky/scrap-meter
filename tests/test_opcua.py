@@ -91,6 +91,7 @@ def test_device_poll_survives_counter_reset(client, sim):
     r = client.post("/api/devices", json={
         "name": "Line 1", "host": "", "port": 0, "protocol": "opcua",
         "protocol_config": {"endpoint": sim.endpoint, **NODES, "username": "operator", "password": "secret"},
+        "create_station": True,
     })
     assert r.status_code == 201, r.text
     dev = r.json()
@@ -101,7 +102,8 @@ def test_device_poll_survives_counter_reset(client, sim):
         assert client.post(f"/api/devices/{dev['id']}/poll").status_code == 200
     db = SessionLocal()
     try:
-        st = db.query(CounterState).filter_by(device_id=dev["id"], is_active=True).one()
+        sid = client.get("/api/stations").json()[0]["id"]
+        st = db.query(CounterState).filter_by(station_id=sid, is_active=True).one()
         assert (st.total_pass, st.total_fail) == (155, 14)
         # saving the form with the masked password keeps the real one
         cfg = {**dev["protocol_config"], "password": "********"}

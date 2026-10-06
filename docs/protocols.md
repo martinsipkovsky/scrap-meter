@@ -9,6 +9,11 @@ Each protocol is one self-contained file in `app/protocols/`, so a protocol can
 be read and debugged on its own. The Devices tab lists every protocol's config
 fields, and each file's docstring describes them too.
 
+A device delivers values: for every protocol except OPC UA these are `pass`,
+`fail`, `count` and `job` (the fields below say where they come from); OPC UA
+delivers whichever nodes its stations pick. What is counted is set on the
+stations (see the [User guide](user-guide.md#stations-tab)).
+
 There are two kinds:
 
 - **Polled:** the app connects to the device (camera, PLC, OPC UA server)
@@ -167,11 +172,18 @@ port from `LISTEN_PORTS` as the PLC address in the camera's SLMP settings.
 
 ## OPC UA client (`opcua`)
 
-Reads the counters from any OPC UA server: a PLC (Siemens S7-1500, Beckhoff,
+Reads values from any OPC UA server: a PLC (Siemens S7-1500, Beckhoff,
 B&R, Omron, ...), an edge gateway such as Kepware, a machine controller, or a
-camera or sensor with its own OPC UA server. The app is the client; each poll
-connects, reads the configured nodes and disconnects. Counters are folded into
-the reset-proof running totals like every other protocol.
+camera or sensor with its own OPC UA server. The app is the client.
+
+The OPC UA device is only the connection. Which values are read is set on the
+stations that use it: each station picks its OK, NOK, total and job from any
+variable the server exposes (**Browse…** on the station form), so one server
+can feed several stations and a station can combine an OPC UA value with
+another device's. Each poll connects, reads exactly the nodes the stations
+use, and disconnects; with no station yet it only checks that the server
+answers. Counters are folded into the stations' reset-proof running totals
+like every other protocol.
 
 The device form has its own fields for OPC UA (stored in the config):
 
@@ -181,19 +193,20 @@ The device form has its own fields for OPC UA (stored in the config):
 | `security_mode` | `None`, `Sign` or `SignAndEncrypt` |
 | `security_policy` | With Sign / SignAndEncrypt: `Basic256Sha256` (default), `Aes128_Sha256_RsaOaep`, `Aes256_Sha256_RsaPss`, or the older `Basic256` / `Basic128Rsa15` |
 | `username` / `password` | Login; leave the username blank for anonymous. The password is never sent back to the browser or exported. |
-| `pass_node` / `fail_node` | Node ids of the pass and fail counters, e.g. `ns=2;s=Line1.Pass` or `ns=3;i=1001` |
-| `count_node` | Optional node id of a total counter (otherwise pass + fail) |
-| `job_node` | Optional node id holding the job / recipe name or number |
-| `default_job` | Job name when `job_node` is not set (default `MAIN`) |
 | `timeout` | Connection timeout in seconds (default 5) |
 
-**Browse…** next to each node field lists the server's address space from the
-Objects folder down, with each variable's current value and data type; press
-**Use** to take its node id. Browsing uses the endpoint, security and login
-entered in the form, so it also tests them.
+Node ids use the standard form, e.g. `ns=2;s=Line1.Pass` or `ns=3;i=1001`.
+**Browse…** (on the station form, and **Test and browse the server…** on the
+device form) lists the server's address space from the Objects folder down,
+with each variable's current value and data type; on the station form press
+**Use** to take its node id. Counter nodes may be any numeric type (integers,
+floats, Boolean); job nodes may be text or a number. A node that can't be read
+shows on the device ("Could not read ns=2;s=…") and on its station, while the
+device's other nodes keep working.
 
-Counter nodes may be any numeric type (integers, floats, Boolean); job nodes
-may be text or a number.
+Devices made in version 1.4 had the nodes in the device config (`pass_node`,
+`fail_node`, `count_node`, `job_node`, `default_job`); the upgrade to 1.5 moves
+them to the device's station, and the keys keep working.
 
 **Client certificate.** With Sign or SignAndEncrypt the app presents its own
 certificate (application URI `urn:scrap-meter:opcua-client`, valid 10 years).
@@ -205,8 +218,8 @@ and move it to the server's trusted list. The app accepts any server
 certificate.
 
 Common errors are reported in plain words on the device list: the server
-refused the login, no endpoint with the chosen security mode and policy,
-the certificate is not trusted, or a node id does not exist.
+refused the login, no endpoint with the chosen security mode and policy, or
+the certificate is not trusted.
 
 To try it without a real server, run the simulation server from the tests:
 `python tests/opcua_sim.py --port 4840 --user operator:secret` serves

@@ -4,11 +4,35 @@
 <div class="toolbar">
   <div>
     <h1>Dashboard</h1>
-    <p class="lead">Live pass/fail counters across all devices. Grayed devices are not in production. Click a device for its OK/NOK chart.</p>
+    <p class="lead">Live OK / NOK counters per station. Grayed stations are not in production. Click a station for its OK/NOK chart.</p>
   </div>
   <button class="btn secondary small" onclick="load()">Refresh now</button>
 </div>
 <div id="cards" class="grid"></div>
+
+<div class="card oee-panel" id="oeePanel">
+  <div class="toolbar" style="margin-bottom:10px">
+    <h3 style="margin:0">Last 24 hours</h3>
+    <span class="muted" id="oeeNote"></span>
+  </div>
+  <div class="oee-row">
+    <div class="oee-gauge"><svg viewBox="0 0 120 70" id="oeeGauge"></svg><div class="oee-label">OEE</div></div>
+    <div class="oee-factors">
+      <div><div class="muted">Availability</div><div class="stat small" id="oA">—</div><div class="muted">time in production</div></div>
+      <div><div class="muted">Performance</div><div class="stat small" id="oP">—</div><div class="muted">vs. ideal cycle time</div></div>
+      <div><div class="muted">Quality</div><div class="stat small" id="oQ">—</div><div class="muted">OK / all parts</div></div>
+    </div>
+    <div class="oee-totals">
+      <div><div class="muted">Total OK</div><div class="stat value pass" id="tOk">—</div></div>
+      <div><div class="muted">Total NOK</div><div class="stat value fail" id="tNok">—</div></div>
+      <div><div class="muted">Scrap</div><div class="stat" id="tScrap">—</div></div>
+    </div>
+  </div>
+  <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Per station</summary>
+    <table style="margin-top:6px"><thead><tr><th>Station</th><th>OK</th><th>NOK</th><th>In production</th><th>Availability</th><th>Performance</th><th>Quality</th><th>OEE</th></tr></thead>
+    <tbody id="oeeRows"></tbody></table>
+  </details>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -18,20 +42,20 @@ async function load() {
   try { data = await getJSON('/api/data/summary'); }
   catch (e) { cards.innerHTML = ''; cards.append(el('div', { class: 'empty' }, e.message)); return; }
   cards.innerHTML = '';
-  if (!data.length) { cards.append(el('div', { class: 'empty' }, 'No devices configured yet. Add one under Devices.')); return; }
+  if (!data.length) { cards.append(el('div', { class: 'empty' }, 'No stations yet. Add a device under Devices, then a station under Stations.')); }
   for (const d of data) {
-    const dot = d.connected ? 'ok' : (d.enabled ? 'bad' : 'off');
+    const dot = d.connected ? 'ok' : 'bad';
     const job = d.active_job;
     const body = [];
     body.push(el('h3', {}, el('span', { class: 'dot ' + dot }), d.name,
       el('span', { class: 'badge ' + PROD_BADGE[d.production_state][0], style: 'margin-left:auto' }, PROD_BADGE[d.production_state][1])));
-    body.push(el('div', { class: 'muted' }, d.protocol + (d.current_job ? ' · job ' + d.current_job : '') +
+    body.push(el('div', { class: 'muted' }, (d.devices.join(' + ') || 'manual entries') + (d.current_job ? ' · job ' + d.current_job : '') +
       (d.stats_default === 'exclude' ? ' · not in statistics totals' : '')));
     if (job) {
       const total = job.total_count || (job.total_pass + job.total_fail);
       const kp = el('div', { class: 'kpis' },
-        el('div', { class: 'kpi' }, el('div', { class: 'label' }, 'Pass'), el('div', { class: 'value pass' }, String(job.total_pass))),
-        el('div', { class: 'kpi' }, el('div', { class: 'label' }, 'Fail'), el('div', { class: 'value fail' }, String(job.total_fail))),
+        el('div', { class: 'kpi' }, el('div', { class: 'label' }, 'OK'), el('div', { class: 'value pass' }, String(job.total_pass))),
+        el('div', { class: 'kpi' }, el('div', { class: 'label' }, 'NOK'), el('div', { class: 'value fail' }, String(job.total_fail))),
         el('div', { class: 'kpi' }, el('div', { class: 'label' }, 'Scrap'), el('div', { class: 'value ' + scrapClass(job.scrap_rate) }, fmtPct(job.scrap_rate))),
       );
       body.push(kp);
@@ -40,10 +64,61 @@ async function load() {
       body.push(el('div', { class: 'muted', style: 'margin-top:8px' }, 'Total parts: ' + total +
         (job.reset_at ? ' · since reset ' + fmtDateTime(job.reset_at) : '')));
     } else {
-      body.push(el('div', { class: 'muted', style: 'margin-top:12px' }, d.last_error ? ('Error: ' + d.last_error) : 'Waiting for first reading…'));
+      body.push(el('div', { class: 'muted', style: 'margin-top:12px' }, d.last_error ? d.last_error : 'Waiting for the first reading…'));
     }
+    if (job && !d.connected && d.last_error) body.push(el('div', { class: 'muted', style: 'margin-top:4px;color:var(--warn)' }, d.last_error));
     if (d.production_state === 'idle') body.push(el('div', { class: 'muted', style: 'margin-top:4px' }, idleText(d)));
-    cards.append(el('a', { class: 'card clickable' + (d.in_production ? '' : ' not-producing'), href: '/device/' + d.id }, ...body));
+    cards.append(el('a', { class: 'card clickable' + (d.in_production ? '' : ' not-producing'), href: '/station/' + d.id }, ...body));
+  }
+  loadOee();
+}
+
+const pct = (x) => x === null || x === undefined ? '—' : (x * 100).toFixed(1) + '%';
+function gauge(value) {
+  // half circle, 0..100 %; red below 40 %, amber below 65 %, green above (common OEE bands)
+  const svg = document.getElementById('oeeGauge');
+  const v = value === null || value === undefined ? null : Math.max(0, Math.min(1, value));
+  const arc = (from, to) => {
+    const a0 = Math.PI * (1 - from), a1 = Math.PI * (1 - to);
+    const p = (a) => [60 + 50 * Math.cos(a), 62 - 50 * Math.sin(a)];
+    const [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `M ${x0} ${y0} A 50 50 0 ${to - from > 0.5 ? 1 : 0} 1 ${x1} ${y1}`;
+  };
+  const color = v === null ? 'var(--text-dim)' : v < 0.4 ? 'var(--bad)' : v < 0.65 ? 'var(--warn)' : 'var(--ok)';
+  svg.innerHTML = `<path d="${arc(0, 1)}" stroke="var(--bg-3)" stroke-width="10" fill="none" stroke-linecap="round"/>` +
+    (v ? `<path d="${arc(0, Math.max(v, 0.005))}" stroke="${color}" stroke-width="10" fill="none" stroke-linecap="round"/>` : '') +
+    `<text x="60" y="58" text-anchor="middle" font-size="18" font-weight="700" fill="${v === null ? 'var(--text-dim)' : 'var(--text)'}">${v === null ? '—' : (v * 100).toFixed(0) + '%'}</text>`;
+}
+
+async function loadOee() {
+  let r;
+  try { r = await getJSON('/api/data/oee?hours=24'); } catch (e) { return; }
+  const o = r.overall, t = r.totals;
+  gauge(o.oee);
+  document.getElementById('oA').textContent = pct(o.availability);
+  document.getElementById('oP').textContent = pct(o.performance);
+  document.getElementById('oQ').textContent = pct(o.quality);
+  document.getElementById('tOk').textContent = t.ok.toLocaleString();
+  document.getElementById('tNok').textContent = t.nok.toLocaleString();
+  const ts = document.getElementById('tScrap');
+  ts.textContent = t.total ? fmtPct(t.nok / t.total) : '—';
+  ts.className = 'stat value ' + (t.total ? scrapClass(t.nok / t.total) : '');
+  const missing = o.without_cycle_time;
+  document.getElementById('oeeNote').textContent = !r.stations.length ? ''
+    : o.stations === 0 ? 'OEE needs an ideal cycle time per station (Stations tab); shown: availability and quality.'
+    : missing.length ? 'OEE covers ' + o.stations + ' station(s); without a cycle time: ' + missing.join(', ') + '.'
+    : 'Availability counts the whole 24 h as planned time.';
+  const tb = document.getElementById('oeeRows'); tb.innerHTML = '';
+  for (const s of r.stations) {
+    const h = Math.floor(s.production_s / 3600), m = Math.round((s.production_s % 3600) / 60);
+    tb.append(el('tr', {},
+      el('td', {}, s.name, s.in_totals ? null : el('span', { class: 'badge off', style: 'margin-left:6px' }, 'not in totals')),
+      el('td', {}, s.ok.toLocaleString()), el('td', {}, s.nok.toLocaleString()),
+      el('td', {}, h + ' h ' + m + ' min'),
+      el('td', {}, pct(s.availability)),
+      el('td', {}, s.ideal_cycle_s ? pct(s.performance) : el('span', { class: 'muted', title: 'Set an ideal cycle time on the Stations tab' }, 'no cycle time')),
+      el('td', {}, pct(s.quality)),
+      el('td', {}, el('strong', {}, pct(s.oee)))));
   }
 }
 load();

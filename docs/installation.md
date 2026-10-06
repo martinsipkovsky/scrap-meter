@@ -93,6 +93,16 @@ If a saved database server is not reachable when the app starts, it retries
 for about a minute before falling back to the bundled database (the Database
 tab then says so). `GET /healthz` shows the running version.
 
+### Updating to 1.5 (stations)
+
+Version 1.5 separates devices (connections) from stations (what is counted).
+On its first start it gives every existing device its own station with the
+same id, name, settings, counters, readings and alert rules, so the dashboard
+looks as before; nothing has to be done. The compose file does not change for
+1.5. Take a backup first anyway (Database tab, **Download backup**). The
+upgrade runs once per database, and again when a backup from an earlier
+version is imported.
+
 ### Coming from Cognex Monitor (1.3 and earlier)
 
 The app was renamed to Scrap Meter in 1.4.0 and its image moved from
@@ -106,8 +116,8 @@ the `image:` line under `web:` in the server's compose file:
 then `docker compose pull` and `docker compose up -d` as usual. Keep the
 folder, the service names (`db`, `web`) and the volume names as they are, so
 the same database and settings are used; nothing has to be moved. The
-database name and user (`cognex`) also stay. Version 1.4.0 was published under
-the old image name too.
+database name and user (`cognex`) also stay. Versions 1.4 and 1.5 were
+published under the old image name too.
 
 ### Before 1.2.0
 

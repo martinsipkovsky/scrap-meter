@@ -2,7 +2,7 @@
 {% block title %}Scrap statistics · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <div><h1>Scrap statistics</h1><p class="lead">Pass, fail and scrap for a date range, overall, per device, per job and per day.</p></div>
+  <div><h1>Scrap statistics</h1><p class="lead">Pass, fail and scrap for a date range, overall, per station, per job and per day.</p></div>
 </div>
 
 <div class="card" style="margin-bottom:16px">
@@ -20,8 +20,8 @@
       <button class="btn" id="xlsxBtn" onclick="downloadXlsx()">Download Excel</button>
     </div>
   </div>
-  <div class="hint" style="margin-top:8px">Parts are counted from the reading history, like the OK/NOK chart in the device view. Scrap = fail / (pass + fail).
-    Parts from excluded readings, from times a device was not in production (idle or stopped) and from devices set to Exclude from the statistics are left out of the overall figures. Days follow this browser's time zone (<span id="tzName"></span>).</div>
+  <div class="hint" style="margin-top:8px">Parts are counted from the reading history, like the OK/NOK chart in the station view. Scrap = fail / (pass + fail).
+    Parts from excluded readings, from times a station was not in production (idle or stopped) and from stations set to Exclude from the statistics are left out of the overall figures. Days follow this browser's time zone (<span id="tzName"></span>).</div>
 </div>
 <div id="scrapError" class="error" style="display:none"></div>
 
@@ -34,14 +34,14 @@
 <p class="hint" id="leftOut" style="margin:0 0 24px"></p>
 
 <div class="section">
-  <h2>Per device</h2>
-  <table><thead><tr><th>Device</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th></tr></thead>
+  <h2>Per station</h2>
+  <table><thead><tr><th>Station</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th></tr></thead>
   <tbody id="camRows"></tbody></table>
-  <div id="camEmpty" class="empty" style="display:none">No devices configured.</div>
+  <div id="camEmpty" class="empty" style="display:none">No stations configured.</div>
 </div>
 <div class="section">
   <h2>Per job</h2>
-  <table><thead><tr><th>Device</th><th>Job</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th></tr></thead>
+  <table><thead><tr><th>Station</th><th>Job</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th></tr></thead>
   <tbody id="jobRows"></tbody></table>
   <div id="jobEmpty" class="empty" style="display:none">No parts counted in this range.</div>
 </div>
@@ -54,9 +54,9 @@
 {% if user.has_permission('exclude_readings') %}
 <div class="section" id="excludeSection">
   <h2>Exclude or include a time period</h2>
-  <p class="hint" style="margin-top:0">Exclude leaves every reading of the device in this period out of the statistics, for example a test run or a setup with bad parts. Include counts them again, also for a device that is excluded from the statistics by default. Single readings can be excluded or included in the <a href="/data">Data log</a>.</p>
+  <p class="hint" style="margin-top:0">Exclude leaves every reading of the station in this period out of the statistics, for example a test run or a setup with bad parts. Include counts them again, also for a station that is excluded from the statistics by default. Single readings can be excluded or included in the <a href="/data">Data log</a>.</p>
   <div class="row">
-    <div><label>Device</label><select id="exDevice"><option value="">All devices</option></select></div>
+    <div><label>Station</label><select id="exDevice"><option value="">All stations</option></select></div>
     <div><label>From</label><input type="datetime-local" id="exFrom" /></div>
     <div><label>To</label><input type="datetime-local" id="exTo" /></div>
     <div style="flex:0 0 auto" class="actions">
@@ -103,11 +103,11 @@ function fill(id, rows, emptyId, cells) {
   if (emptyId) document.getElementById(emptyId).style.display = rows.length ? 'none' : 'block';
   rows.forEach(r => tb.append(el('tr', {}, ...cells(r))));
 }
-// a device excluded from the statistics by default: its row is not in the overall figures
+// a station excluded from the statistics by default: its row is not in the overall figures
 function deviceCell(r) {
-  if (!r.excluded_by_default) return el('td', {}, r.camera);
+  if (!r.excluded_by_default) return el('td', {}, r.station);
   const counted = (r.counted_pass || 0) + (r.counted_fail || 0);
-  return el('td', {}, r.camera, ' ', el('span', { class: 'badge off', title: 'Excluded from the statistics by default' +
+  return el('td', {}, r.station, ' ', el('span', { class: 'badge off', title: 'Excluded from the statistics by default' +
     (counted ? '; ' + counted.toLocaleString() + ' included parts are in the overall figures' : '') }, 'not in totals'));
 }
 function partsText(r) { return r.pass.toLocaleString() + ' pass / ' + r.fail.toLocaleString() + ' fail'; }
@@ -124,11 +124,11 @@ async function loadScrap() {
   os.textContent = o.total ? fmtPct(o.scrap_rate) : '—';
   os.className = 'stat value ' + (o.total ? scrapClass(o.scrap_rate) : '');
   document.getElementById('oPeriod').textContent = s.from === s.to ? s.from : s.from + ' to ' + s.to;
-  const ex = s.left_out.excluded, np = s.left_out.not_in_production, xd = s.left_out.excluded_devices;
+  const ex = s.left_out.excluded, np = s.left_out.not_in_production, xd = s.left_out.excluded_stations;
   document.getElementById('leftOut').textContent = 'Left out: ' + partsText(np) + ' while not in production; ' +
     partsText(ex) + ' from ' + ex.readings.toLocaleString() + ' excluded reading' + (ex.readings === 1 ? '' : 's') +
-    (xd && xd.total ? '; ' + partsText(xd) + ' from devices excluded from the statistics by default' : '') + '.';
-  fill('camRows', s.per_camera, 'camEmpty', r => [deviceCell(r), ...numCells(r)]);
+    (xd && xd.total ? '; ' + partsText(xd) + ' from stations excluded from the statistics by default' : '') + '.';
+  fill('camRows', s.per_station, 'camEmpty', r => [deviceCell(r), ...numCells(r)]);
   fill('jobRows', s.per_job, 'jobEmpty', r => [deviceCell(r), el('td', {}, r.job), ...numCells(r)]);
   const maxTotal = Math.max(1, ...s.per_day.map(r => r.total));
   fill('dayRows', s.per_day.slice().reverse(), null, r => {
@@ -159,19 +159,19 @@ async function downloadXlsx() {
 
 async function initExclude() {
   if (!document.getElementById('excludeSection')) return;
-  const devices = await getJSON('/api/devices');
+  const devices = await getJSON('/api/stations');
   document.getElementById('exDevice').append(...devices.map(d => el('option', { value: d.id }, d.name)));
 }
 async function excludePeriod(excluded) {
   const f = document.getElementById('exFrom').value, t = document.getElementById('exTo').value;
   if (!f || !t) { toast('Pick the start and end of the period.', true); return; }
   const sel = document.getElementById('exDevice');
-  const who = sel.value ? sel.selectedOptions[0].textContent : 'all devices';
+  const who = sel.value ? sel.selectedOptions[0].textContent : 'all stations';
   const when = new Date(f).toLocaleString() + ' to ' + new Date(t).toLocaleString();
   if (excluded && !confirm('Exclude every reading of ' + who + ' from ' + when + ' from the scrap statistics?')) return;
   try {
     const r = await postJSON('/api/data/readings/exclude', {
-      excluded, device_id: sel.value ? +sel.value : null,
+      excluded, station_id: sel.value ? +sel.value : null,
       start: new Date(f).toISOString(), end: new Date(t).toISOString(),
     });
     toast(r.changed.toLocaleString() + ' reading' + (r.changed === 1 ? '' : 's') + (excluded ? ' excluded.' : ' included.'));

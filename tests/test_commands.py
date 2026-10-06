@@ -6,6 +6,8 @@ from app import commands, settings_store
 from app.database import SessionLocal
 from app.models import ChatCommand, CommandLog
 
+from test_api import add_station_device
+
 GROUP = "120363000000000001@g.us"
 OTHER = "120363000000000002@g.us"
 
@@ -16,11 +18,9 @@ def login(client, user="Admin", pw="1234"):
 
 
 def _camera(client, name):
-    did = client.post("/api/devices", json={
-        "name": name, "host": "sim", "port": 0, "protocol": "simulator",
-        "protocol_config": {"jobs": ["J1"], "parts_per_poll": 10, "fail_ratio": 0.2,
-                            "reset_every": 0, "job_change_every": 0}}).json()["id"]
-    client.post(f"/api/devices/{did}/production/start")
+    did, sid = add_station_device(client, name, {"jobs": ["J1"], "parts_per_poll": 10, "fail_ratio": 0.2,
+                                                 "reset_every": 0, "job_change_every": 0})
+    client.post(f"/api/stations/{sid}/production/start")
     for _ in range(3):
         client.post(f"/api/devices/{did}/poll")
     return did
@@ -61,7 +61,7 @@ def test_status_reply_and_camera_filter(client):
         _, _, one = commands.answer(db, {"chat": GROUP, "text": "!status line 2"}, "!")
         assert "Line 2:" in one and "Line 1:" not in one
         _, _, none = commands.answer(db, {"chat": GROUP, "text": "!status nope"}, "!")
-        assert none == "No device matches 'nope'."
+        assert none == "No station matches 'nope'."
     finally:
         db.close()
 

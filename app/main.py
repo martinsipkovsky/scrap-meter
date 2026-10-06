@@ -1,7 +1,7 @@
 """FastAPI application entrypoint.
 
 Creates the schema on startup, seeds the default admin, starts the background
-poller, the TCP listener for cameras that push data, the FTP backup
+poller, the listeners for devices that push data, the FTP backup
 schedule and the linked WhatsApp client, and wires up the API
 routers, HTML pages and static assets.
 """
@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from . import __version__, commands, settings_store
+from . import __version__, commands, settings_store, stations
 from .notifications import startup_notice
 from .config import settings
 from .database import Base, SessionLocal, engine, migrate_schema
@@ -23,7 +23,7 @@ from .backup_ftp import scheduler as backup_scheduler
 from .notifiers.whatsapp_linked import link as whatsapp_link
 from .poller import listener, poller
 from .routers import (account, auth_routes, backup_admin, commands as commands_api, data, database_admin,
-                      devices, notifications, pages, users)
+                      devices, notifications, pages, stations as stations_api, users)
 from .seed import seed_admin
 from .templating import templates
 
@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
     # The app owns its schema fully.
     Base.metadata.create_all(bind=engine)
     migrate_schema(engine)
+    stations.upgrade(engine)  # 1.4 databases: every device becomes a station
     db = SessionLocal()
     try:
         seed_admin(db)
@@ -78,6 +79,7 @@ app.include_router(auth_routes.router)
 app.include_router(account.router)
 app.include_router(users.router)
 app.include_router(devices.router)
+app.include_router(stations_api.router)
 app.include_router(data.router)
 app.include_router(commands_api.router)  # before notifications: /commands/... is more specific
 app.include_router(notifications.router)

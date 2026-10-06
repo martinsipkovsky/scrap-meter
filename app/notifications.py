@@ -9,13 +9,13 @@ Telegram chat, a webhook.
 Two kinds of condition:
 
 * state conditions (scrap_rate, fail_count, disconnected) are checked by
-  ``evaluate_device`` after each reading or failed read, and fire again after
+  ``evaluate_station`` after each reading or failed read, and fire again after
   the rule's cooldown for as long as they hold;
 * event conditions (production_change, job_change, backup results,
   app_started) fire once when the thing happens, through ``emit``.
 
-Rules for all cameras can override their threshold per camera
-(rule.thresholds = {"<device id>": value}).
+Rules for all stations can override their threshold per station
+(rule.thresholds = {"<station id>": value}).
 """
 from __future__ import annotations
 
@@ -28,10 +28,10 @@ from sqlalchemy.orm import Session
 from . import notifiers, production
 from .models import (
     CounterState,
-    Device,
     NotificationLog,
     NotificationProvider,
     NotificationRule,
+    Station,
     utcnow,
 )
 
@@ -40,15 +40,15 @@ log = logging.getLogger("cognex.notifications")
 # key -> how the Notifications page offers it
 CONDITIONS: dict[str, dict] = {
     "scrap_rate": {"label": "Scrap rate ≥ threshold", "group": "Production",
-                   "severity": "alert", "threshold": "fraction, e.g. 0.05 = 5%", "camera": True},
+                   "severity": "alert", "threshold": "fraction, e.g. 0.05 = 5%", "station": True},
     "fail_count": {"label": "Fail (NOK) count ≥ threshold", "group": "Production",
-                   "severity": "warning", "threshold": "parts", "camera": True},
-    "disconnected": {"label": "Device disconnected or read error", "group": "Faults",
-                     "severity": "alert", "camera": True},
-    "production_change": {"label": "Device stopped, idle or back in production", "group": "Production",
-                          "severity": "warning", "camera": True, "event": True},
-    "job_change": {"label": "Device changed job", "group": "Production",
-                   "severity": "info", "camera": True, "event": True},
+                   "severity": "warning", "threshold": "parts", "station": True},
+    "disconnected": {"label": "Station's device disconnected or read error", "group": "Faults",
+                     "severity": "alert", "station": True},
+    "production_change": {"label": "Station stopped, idle or back in production", "group": "Production",
+                          "severity": "warning", "station": True, "event": True},
+    "job_change": {"label": "Station changed job", "group": "Production",
+                   "severity": "info", "station": True, "event": True},
     "backup_failed": {"label": "FTP backup failed", "group": "System", "severity": "alert", "event": True},
     "backup_ok": {"label": "FTP backup finished", "group": "System", "severity": "info", "event": True},
     "app_started": {"label": "App started or updated", "group": "System", "severity": "info", "event": True},
@@ -69,37 +69,38 @@ def _cooldown_ok(rule: NotificationRule, now: dt.datetime) -> bool:
     return (now - last).total_seconds() >= rule.cooldown
 
 
-def threshold_for(rule: NotificationRule, device: Device) -> float:
-    """The rule's threshold, or the camera's override on a rule for all cameras."""
-    if rule.device_id is None and rule.thresholds:
-        value = rule.thresholds.get(str(device.id))
+def threshold_for(rule: NotificationRule, station: Station) -> float:
+    """The rule's threshold, or the station's override on a rule for all stations."""
+    if rule.station_id is None and rule.thresholds:
+        value = rule.thresholds.get(str(station.id))
         if value is not None and value != "":
             return float(value)
     return rule.threshold
 
 
-def _condition_met(rule: NotificationRule, device: Device, state: CounterState | None) -> tuple[bool, str]:
+def _condition_met(rule: NotificationRule, station: Station, state: CounterState | None,
+                   online: dict) -> tuple[bool, str]:
     if rule.condition == "disconnected":
-        if not device.connected:
-            return True, f"Device '{device.name}' is disconnected: {device.last_error or 'no data'}"
+        if not online["connected"]:
+            return True, f"Station '{station.name}' is disconnected: {online['problem'] or 'no data'}"
         return False, ""
 
     if state is None:
         return False, ""
 
-    # A camera that is not in production (idle or stopped by an operator) only
-    # produces false NOK signals, so counter-based alerts are not sent for it.
-    if not production.in_production(device):
+    # A station that is not in production (idle or stopped by an operator)
+    # only produces false NOK signals, so counter-based alerts are not sent.
+    if not production.in_production(station):
         return False, ""
 
-    threshold = threshold_for(rule, device)
+    threshold = threshold_for(rule, station)
     # Counter alerts use the counters shown on the dashboard, so a reset there
     # also clears the condition.
     if rule.condition == "scrap_rate":
         if state.shown_count > 0 and state.shown_scrap_rate >= threshold:
             pct = state.shown_scrap_rate * 100
             return True, (
-                f"High scrap on '{device.name}' job '{state.job_name}': "
+                f"High scrap on '{station.name}' job '{state.job_name}': "
                 f"{pct:.1f}% ({state.shown_fail}/{state.shown_count}) "
                 f">= {threshold * 100:.1f}%"
             )
@@ -108,7 +109,7 @@ def _condition_met(rule: NotificationRule, device: Device, state: CounterState |
     if rule.condition == "fail_count":
         if state.shown_fail >= threshold:
             return True, (
-                f"Fail count on '{device.name}' job '{state.job_name}' "
+                f"Fail count on '{station.name}' job '{state.job_name}' "
                 f"reached {state.shown_fail} (>= {int(threshold)})"
             )
         return False, ""
@@ -167,34 +168,37 @@ def _fire(db: Session, rule: NotificationRule, message: str, now: dt.datetime) -
     db.commit()
 
 
-def _rules(db: Session, conditions: list[str], device: Device | None) -> list[NotificationRule]:
+def _rules(db: Session, conditions: list[str], station: Station | None) -> list[NotificationRule]:
     q = db.query(NotificationRule).filter(
         NotificationRule.enabled.is_(True), NotificationRule.condition.in_(conditions)
     )
-    if device is not None:
-        q = q.filter((NotificationRule.device_id == device.id) | (NotificationRule.device_id.is_(None)))
+    if station is not None:
+        q = q.filter((NotificationRule.station_id == station.id) | (NotificationRule.station_id.is_(None)))
     return q.all()
 
 
-def evaluate_device(db: Session, device: Device) -> None:
-    """Check the state rules that apply to a device and fire the ones that match."""
+def evaluate_station(db: Session, station: Station) -> None:
+    """Check the state rules that apply to a station and fire the ones that match."""
+    from . import stations
+
     now = utcnow()
-    check_production(db, device)
+    check_production(db, station)
     active_state = (
         db.query(CounterState)
-        .filter(CounterState.device_id == device.id, CounterState.is_active.is_(True))
+        .filter(CounterState.station_id == station.id, CounterState.is_active.is_(True))
         .first()
     )
-    for rule in _rules(db, ["scrap_rate", "fail_count", "disconnected"], device):
-        met, message = _condition_met(rule, device, active_state)
+    online = stations.status(station, stations.devices_of(db, [station]))
+    for rule in _rules(db, ["scrap_rate", "fail_count", "disconnected"], station):
+        met, message = _condition_met(rule, station, active_state, online)
         if met and _cooldown_ok(rule, now):
             _fire(db, rule, message, now)
 
 
-def emit(db: Session, condition: str, message: str, device: Device | None = None) -> None:
+def emit(db: Session, condition: str, message: str, station: Station | None = None) -> None:
     """An event happened: send it through every enabled rule for it."""
     now = utcnow()
-    for rule in _rules(db, [condition], device):
+    for rule in _rules(db, [condition], station):
         if _cooldown_ok(rule, now):
             _fire(db, rule, message, now)
 
@@ -220,25 +224,25 @@ _PRODUCTION_TEXT = {
 }
 
 
-def check_production(db: Session, device: Device) -> None:
-    """Send production_change when the camera's production state changed
+def check_production(db: Session, station: Station) -> None:
+    """Send production_change when the station's production state changed
     since the last check. The first check only records the state."""
-    current = production.state(device)
-    previous = device.notified_state
+    current = production.state(station)
+    previous = station.notified_state
     if previous == current:
         return
-    device.notified_state = current
+    station.notified_state = current
     db.commit()
     if previous is None:
         return
-    text = _PRODUCTION_TEXT[current].format(timeout=device.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN)
-    emit(db, "production_change", f"Device '{device.name}' {text}", device)
+    text = _PRODUCTION_TEXT[current].format(timeout=station.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN)
+    emit(db, "production_change", f"Station '{station.name}' {text}", station)
 
 
 def check_all_production(db: Session) -> None:
-    """Called periodically: a camera goes idle by time, with no reading."""
-    for device in db.query(Device).filter(Device.enabled.is_(True)).all():
-        check_production(db, device)
+    """Called periodically: a station goes idle by time, with no reading."""
+    for station in db.query(Station).all():
+        check_production(db, station)
 
 
 def startup_notice(version: str, previous: str | None, delay: float = STARTUP_NOTICE_DELAY) -> None:

@@ -50,10 +50,13 @@ app/
   settings_store.py  copy of the settings files in the database (survives updates)
   backup.py          backup file format, writing and restoring all data
   backup_ftp.py      FTP/FTPS upload and the automatic backup schedule
-  models.py          User, Device, CounterState, Reading, Notification*
+  models.py          User, Device, Station, CounterState, Reading, Notification*, Meta
   counters.py        reset-proof accumulation (pure, unit-tested)
-  production.py      running / idle / stopped state per device
+  stations.py        stations: values from devices to readings, manual entries,
+                     the upgrade of 1.4 data (devices became stations)
+  production.py      running / idle / stopped state per station
   scrap_stats.py     scrap statistics for a date range, Excel export
+  oee.py             OEE and OK / NOK totals over the last hours (dashboard)
   poller.py          background poll loop and one-shot poll
   notifications.py   rule conditions, evaluation, events and routing to providers
   commands.py        WhatsApp group commands ("!status"): parsing, replies, log
@@ -64,8 +67,8 @@ app/
   protocols/         one file per device protocol (opcua.py: OPC UA client)
   notifiers/         one file per notification transport (whatsapp, telegram;
                      whatsapp_linked runs the linked-phone client process)
-  routers/           auth, account, users, devices, data, notifications, commands,
-                     database_admin, backup_admin, pages
+  routers/           auth, account, users, devices, stations, data, notifications,
+                     commands, database_admin, backup_admin, pages
   templates/         dark-mode Jinja2 pages
   static/            style.css, app.js
 deploy/              compose file and .env template for a prebuilt image
@@ -81,6 +84,10 @@ the new `app.js` and `style.css` after every update instead of a cached copy.
    `ProtocolDriver` (`app/protocols/base.py`). Set `key`, `label` and
    `config_fields`, and implement `read()` returning a `counters.Sample`
    (job name plus raw pass/fail counters). Raise `ProtocolError` on failure.
+   Stations then see the values `pass`, `fail`, `count` and `job`. A protocol
+   that can read any named value (like OPC UA) sets `any_value = True` and
+   overrides `read_values(keys)` to return {key: value} for the keys its
+   stations use.
 2. Register the class in `_DRIVERS` in `app/protocols/__init__.py`.
 3. For a push protocol, set `push = True` and follow `tcp_listener.py`.
 

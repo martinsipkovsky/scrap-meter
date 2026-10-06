@@ -28,6 +28,7 @@ def _camera(client, name):
     r = client.post("/api/devices", json={
         "name": name, "host": "sim", "port": 0, "protocol": "simulator",
         "protocol_config": {"jobs": ["JOB_A"], "parts_per_poll": 10, "fail_ratio": 0.1},
+        "create_station": True,
     })
     assert r.status_code == 201, r.text
     did = r.json()["id"]

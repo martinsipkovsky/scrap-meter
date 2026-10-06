@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Stations · Scrap Meter{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div><h1>Stations</h1><p class="lead">A station is what the dashboard, statistics and alerts count, e.g. machine "M1": its OK, NOK, total and job can each come from a different <a href="/devices">device</a>.</p></div>
+  <div class="actions">
+    {% if user.has_permission('manage_devices') %}
+    <button class="btn" onclick="openForm()">+ Add station</button>
+    {% endif %}
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>Status</th><th>Station</th><th>OK from</th><th>NOK from</th><th>Total / job</th><th>OEE settings</th><th></th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div id="empty" class="empty" style="display:none">No stations yet. Add one, or add a device with "Also add a station".</div>
+
+<div class="modal-back" id="modal">
+  <div class="modal" style="width:620px">
+    <h2 id="modalTitle">Add station</h2>
+    <div id="formError" class="error" style="display:none"></div>
+    <input type="hidden" id="f_id" />
+    <div class="row">
+      <div><label>Name</label><input id="f_name" placeholder="M1" /></div>
+      <div style="flex:.4"><label>Order</label><input id="f_order" type="number" value="0" title="Lower numbers come first on the dashboard" /></div>
+    </div>
+    <div id="sources"></div>
+    <div class="hint">Pick OK, NOK or both (a missing one counts as 0). Without a total, total = OK + NOK. Without a job, the job name below is used. A station without any device is fed by manual entries on its station view.</div>
+    <div class="row">
+      <div><label>Job name when no job value is set</label><input id="f_job" value="MAIN" /></div>
+      <div><label>Production idle timeout (minutes)</label><input id="f_idle" type="number" value="30" min="1" max="10080" /></div>
+    </div>
+    <div class="hint">If OK does not increase for this long, the station counts as not in production: grayed on the dashboard, no scrap alerts.</div>
+    <div class="row">
+      <div><label>Ideal cycle time (seconds per part)</label><input id="f_cycle" type="number" min="0" step="any" placeholder="e.g. 2.5" /></div>
+      <div><label>Statistics</label>
+        <select id="f_stats">
+          <option value="include">Include in overall figures</option>
+          <option value="exclude">Exclude by default</option>
+        </select></div>
+    </div>
+    <div class="hint">The ideal cycle time is the OEE performance factor; without it the OEE meter shows only availability and quality for this station.
+      Excluded stations keep their own rows in Scrap statistics but stay out of the totals, the Excel export totals, chat command totals and the OEE meter; single readings or periods can be included again.</div>
+    <div class="actions" style="margin-top:20px;justify-content:flex-end">
+      <button class="btn secondary" onclick="closeModal('modal')">Cancel</button>
+      <button class="btn" onclick="save()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="browseModal" style="z-index:60">
+  <div class="modal" style="width:680px">
+    <h2>Pick a value from the OPC UA server</h2>
+    <div class="hint" id="browseFor"></div>
+    <div id="browseError" class="error" style="display:none;margin-top:10px"></div>
+    <div id="browsePath" class="muted" style="margin:10px 0"></div>
+    <div style="max-height:52vh;overflow-y:auto">
+      <table><thead><tr><th>Name</th><th>Value</th><th>Type</th><th></th></tr></thead><tbody id="browseRows"></tbody></table>
+    </div>
+    <div class="actions" style="margin-top:16px;justify-content:flex-end">
+      <button class="btn secondary" onclick="closeModal('browseModal')">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const CAN_MANAGE = {{ 'true' if user.has_permission('manage_devices') else 'false' }};
+const ROLES = [['ok', 'OK (pass) count', true], ['nok', 'NOK (fail) count', true],
+               ['count', 'Total count (optional)', false], ['job', 'Job (optional)', false]];
+let DEVICES = [];  // from /api/devices/values
+
+function devName(id) { const d = DEVICES.find(x => x.id === id); return d ? d.name : '#' + id; }
+function srcText(src) {
+  if (!src) return el('span', { class: 'muted' }, '—');
+  const d = DEVICES.find(x => x.id === src.device_id);
+  const v = d && d.values.find(x => x.key === src.key);
+  return el('div', {}, el('div', {}, devName(src.device_id)),
+    el('div', { class: 'muted' }, (v && !d.any_value ? v.label : src.key) + (v && v.value !== undefined && v.value !== null ? ' = ' + v.value : '')));
+}
+
+async function load() {
+  const [stations, devices] = await Promise.all([getJSON('/api/stations'), getJSON('/api/devices/values')]);
+  DEVICES = devices;
+  const rows = document.getElementById('rows');
+  rows.innerHTML = '';
+  document.getElementById('empty').style.display = stations.length ? 'none' : 'block';
+  for (const s of stations) {
+    const actions = el('div', { class: 'actions' }, el('a', { class: 'btn secondary small', href: '/station/' + s.id }, 'View'));
+    if (CAN_MANAGE) {
+      actions.append(el('button', { class: 'btn secondary small', onclick: () => openForm(s) }, 'Edit'));
+      actions.append(el('button', { class: 'btn danger small', onclick: () => remove(s) }, 'Delete'));
+    }
+    const dot = s.connected ? 'ok' : 'bad';
+    rows.append(el('tr', {},
+      el('td', {}, el('span', {}, el('span', { class: 'dot ' + dot }), ' ', s.connected ? 'Online' : 'Offline'),
+        el('div', {}, el('span', { class: 'badge ' + PROD_BADGE[s.production_state][0] }, PROD_BADGE[s.production_state][1]))),
+      el('td', {}, el('strong', {}, s.name),
+        s.stats_default === 'exclude' ? el('span', { class: 'badge off', style: 'margin-left:8px' }, 'not in totals') : null,
+        el('div', { class: 'muted' }, 'job ' + (s.current_job || '—')),
+        s.problem ? el('div', { class: 'muted', style: 'color:var(--warn)' }, s.problem) : null),
+      el('td', {}, srcText(s.sources.ok)),
+      el('td', {}, srcText(s.sources.nok)),
+      el('td', {}, s.sources.count ? srcText(s.sources.count) : el('span', { class: 'muted' }, 'OK + NOK'),
+        el('div', { class: 'muted' }, s.sources.job ? 'job: ' + devName(s.sources.job.device_id) + ' · ' + s.sources.job.key : 'job: ' + s.default_job)),
+      el('td', {}, s.ideal_cycle_s ? s.ideal_cycle_s + ' s / part' : el('span', { class: 'muted' }, 'no cycle time'),
+        el('div', { class: 'muted' }, 'idle after ' + s.idle_timeout_min + ' min')),
+      el('td', {}, actions),
+    ));
+  }
+}
+
+// ---- source pickers ---------------------------------------------------------
+function buildSources() {
+  const box = document.getElementById('sources');
+  box.innerHTML = '';
+  for (const [role, label] of ROLES) {
+    const dev = el('select', { id: 's_dev_' + role, onchange: () => onDevice(role) },
+      el('option', { value: '' }, '— none —'), ...DEVICES.map(d => el('option', { value: d.id }, d.name + (d.connected ? '' : ' (offline)'))));
+    box.append(el('label', {}, label),
+      el('div', { style: 'display:flex;gap:8px;align-items:center' },
+        el('div', { style: 'flex:1' }, dev),
+        el('div', { style: 'flex:1.4;display:flex;gap:6px', id: 's_val_' + role })));
+  }
+}
+function onDevice(role, key) {
+  const box = document.getElementById('s_val_' + role);
+  box.innerHTML = '';
+  const id = +document.getElementById('s_dev_' + role).value;
+  const d = DEVICES.find(x => x.id === id);
+  if (!d) return;
+  if (d.any_value) {
+    // OPC UA: any node of the server
+    const list = 'dl_' + role;
+    box.append(el('input', { id: 's_key_' + role, placeholder: 'node id, e.g. ns=2;s=M1.Good', list, spellcheck: 'false', value: key || '' }),
+      el('datalist', { id: list }, ...d.values.map(v => el('option', { value: v.key }, String(v.value)))),
+      el('button', { class: 'btn secondary small', type: 'button', onclick: () => openBrowse(role, d) }, 'Browse…'));
+  } else {
+    const sel = el('select', { id: 's_key_' + role },
+      ...d.values.map(v => el('option', { value: v.key }, v.label + (v.value !== null && v.value !== undefined ? ' = ' + v.value : ''))));
+    const dflt = { ok: 'pass', nok: 'fail', count: 'count', job: 'job' }[role];
+    sel.value = key || dflt;
+    box.append(sel);
+  }
+}
+function setSource(role, src) {
+  document.getElementById('s_dev_' + role).value = src ? src.device_id : '';
+  onDevice(role, src ? src.key : null);
+}
+function readSources() {
+  const out = {};
+  for (const [role] of ROLES) {
+    const id = +document.getElementById('s_dev_' + role).value;
+    const k = document.getElementById('s_key_' + role);
+    out[role] = id && k && k.value.trim() ? { device_id: id, key: k.value.trim() } : null;
+  }
+  return out;
+}
+
+// ---- OPC UA browse ------------------------------------------------------------
+let browseRole = null, browseDevice = null;
+function openBrowse(role, d) {
+  browseRole = role; browseDevice = d;
+  document.getElementById('browseFor').textContent = 'Server: ' + d.name + '. Open folders and objects, then press Use on the value for ' +
+    ROLES.find(r => r[0] === role)[1] + '.';
+  openModal('browseModal');
+  browseTo(null, []);
+}
+async function browseTo(nodeId, trail) {
+  const err = document.getElementById('browseError'), rows = document.getElementById('browseRows');
+  err.style.display = 'none';
+  rows.innerHTML = '';
+  rows.append(el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'Connecting…')));
+  let r;
+  try { r = await postJSON('/api/devices/opcua/browse', { device_id: browseDevice.id, node_id: nodeId }); }
+  catch (e) { rows.innerHTML = ''; err.textContent = e.message; err.style.display = 'block'; return; }
+  const path = [...trail, { id: r.node_id, name: r.name }];
+  const crumbs = document.getElementById('browsePath'); crumbs.innerHTML = '';
+  path.forEach((p, i) => {
+    if (i) crumbs.append(' › ');
+    crumbs.append(i === path.length - 1 ? el('strong', {}, p.name)
+      : el('a', { href: '#', onclick: (e) => { e.preventDefault(); browseTo(p.id, path.slice(0, i)); } }, p.name));
+  });
+  rows.innerHTML = '';
+  if (!r.children.length) rows.append(el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'This node has no children.')));
+  for (const c of r.children) {
+    const isVar = c.node_class === 'Variable';
+    const action = isVar ? el('button', { class: 'btn small', onclick: () => pickNode(c) }, 'Use')
+      : c.has_children ? el('button', { class: 'btn secondary small', onclick: () => browseTo(c.node_id, path) }, 'Open') : null;
+    rows.append(el('tr', {},
+      el('td', {}, el('div', {}, c.has_children ? el('a', { href: '#', onclick: (e) => { e.preventDefault(); browseTo(c.node_id, path); } }, c.name || c.node_id) : (c.name || c.node_id)),
+        el('div', { class: 'muted' }, c.node_id)),
+      el('td', {}, c.value === null || c.value === undefined ? '' : String(c.value)),
+      el('td', { class: 'muted' }, isVar ? (c.data_type || '') : c.node_class),
+      el('td', {}, action)));
+  }
+}
+function pickNode(c) {
+  document.getElementById('s_key_' + browseRole).value = c.node_id;
+  closeModal('browseModal');
+  toast('Picked ' + (c.name || c.node_id));
+}
+
+// ---- form -----------------------------------------------------------------------
+async function openForm(s) {
+  DEVICES = await getJSON('/api/devices/values');
+  if (!DEVICES.length) { toast('Add a device first, on the Devices tab.', true); return; }
+  document.getElementById('formError').style.display = 'none';
+  document.getElementById('modalTitle').textContent = s ? 'Edit station' : 'Add station';
+  document.getElementById('f_id').value = s ? s.id : '';
+  document.getElementById('f_name').value = s ? s.name : '';
+  document.getElementById('f_order').value = s ? s.sort_order : 0;
+  document.getElementById('f_job').value = s ? s.default_job : 'MAIN';
+  document.getElementById('f_idle').value = s ? s.idle_timeout_min : 30;
+  document.getElementById('f_cycle').value = s && s.ideal_cycle_s ? s.ideal_cycle_s : '';
+  document.getElementById('f_stats').value = s ? s.stats_default : 'include';
+  buildSources();
+  for (const [role] of ROLES) setSource(role, s ? s.sources[role] : null);
+  openModal('modal');
+}
+
+async function save() {
+  const err = document.getElementById('formError');
+  err.style.display = 'none';
+  try {
+    const id = document.getElementById('f_id').value;
+    const cycle = parseFloat(document.getElementById('f_cycle').value);
+    const payload = {
+      name: document.getElementById('f_name').value.trim(),
+      sources: readSources(),
+      default_job: document.getElementById('f_job').value.trim() || 'MAIN',
+      idle_timeout_min: parseInt(document.getElementById('f_idle').value, 10) || 30,
+      ideal_cycle_s: cycle > 0 ? cycle : null,
+      stats_default: document.getElementById('f_stats').value,
+      sort_order: parseInt(document.getElementById('f_order').value, 10) || 0,
+    };
+    if (id) await patchJSON('/api/stations/' + id, payload);
+    else await postJSON('/api/stations', payload);
+    closeModal('modal');
+    load();
+  } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+
+async function remove(s) {
+  if (!confirm('Delete station "' + s.name + '" with its counters, readings and alert rules? The devices stay.')) return;
+  try { await delJSON('/api/stations/' + s.id); load(); } catch (e) { toast(e.message, true); }
+}
+
+load();
+setInterval(() => { if (!document.querySelector('.modal-back.open')) load(); }, 5000);
+</script>
+{% endblock %}

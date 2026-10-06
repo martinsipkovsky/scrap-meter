@@ -5,6 +5,8 @@ import pytest
 
 from app.notifiers import NotifierError, get_notifier
 
+from test_api import add_station_device
+
 
 def login(client, user="Admin", pw="1234"):
     r = client.post("/login", data={"username": user, "password": pw}, follow_redirects=False)
@@ -44,13 +46,11 @@ def _provider(client, name, url):
 
 
 def _camera(client, name="CamN", fail_ratio=0.5):
-    r = client.post("/api/devices", json={
-        "name": name, "host": "sim", "port": 0, "protocol": "simulator",
-        "protocol_config": {"jobs": ["J"], "parts_per_poll": 10, "fail_ratio": fail_ratio,
-                            "reset_every": 0, "job_change_every": 0}})
-    did = r.json()["id"]
-    client.post(f"/api/devices/{did}/production/start")
-    return did
+    """A simulated device with its station, in production: (device id, station id)."""
+    did, sid = add_station_device(client, name, {"jobs": ["J"], "parts_per_poll": 10, "fail_ratio": fail_ratio,
+                                                 "reset_every": 0, "job_change_every": 0})
+    client.post(f"/api/stations/{sid}/production/start")
+    return did, sid
 
 
 def test_rule_goes_only_to_its_providers_with_severity(client, sent):
@@ -61,7 +61,7 @@ def test_rule_goes_only_to_its_providers_with_severity(client, sent):
         "name": "scrap", "condition": "scrap_rate", "threshold": 0.1, "cooldown": 0,
         "severity": "warning", "provider_ids": [a]})
     assert r.status_code == 201, r.text
-    did = _camera(client)
+    did, _ = _camera(client)
     client.post(f"/api/devices/{did}/poll")
     urls = {u for u, _ in sent}
     assert urls == {"http://a/send"}
@@ -71,10 +71,10 @@ def test_rule_goes_only_to_its_providers_with_severity(client, sent):
 def test_per_camera_threshold_overrides_the_global_one(client, sent):
     login(client)
     _provider(client, "all", "http://all/send")
-    did = _camera(client, fail_ratio=0.5)
+    did, sid = _camera(client, fail_ratio=0.5)
     client.post("/api/notifications/rules", json={
         "name": "scrap", "condition": "scrap_rate", "threshold": 0.1, "cooldown": 0,
-        "thresholds": {str(did): 0.9}})  # this camera only alerts at 90 %
+        "thresholds": {str(sid): 0.9}})  # this station only alerts at 90 %
     client.post(f"/api/devices/{did}/poll")
     assert sent == []
     rule = client.get("/api/notifications/rules").json()[0]
@@ -95,7 +95,7 @@ def test_rules_from_before_routing_still_send_to_every_provider(client, sent):
                             provider_ids=None, thresholds=None))
     db.commit()
     db.close()
-    did = _camera(client)
+    did, _ = _camera(client)
     client.post(f"/api/devices/{did}/poll")
     assert {u for u, _ in sent} == {"http://a/send", "http://b/send"}
 
@@ -106,13 +106,11 @@ def test_production_change_and_job_change_events(client, sent):
     for cond in ("production_change", "job_change"):
         assert client.post("/api/notifications/rules", json={
             "name": cond, "condition": cond, "cooldown": 0, "severity": "info"}).status_code == 201
-    r = client.post("/api/devices", json={
-        "name": "CamJ", "host": "sim", "port": 0, "protocol": "simulator",
-        "protocol_config": {"jobs": ["A", "B"], "parts_per_poll": 5, "reset_every": 0, "job_change_every": 2}})
-    did = r.json()["id"]
+    did, sid = add_station_device(client, "CamJ", {"jobs": ["A", "B"], "parts_per_poll": 5, "reset_every": 0,
+                                                   "job_change_every": 2})
     for _ in range(3):
         client.post(f"/api/devices/{did}/poll")
-    client.post(f"/api/devices/{did}/production/stop")
+    client.post(f"/api/stations/{sid}/production/stop")
     client.post(f"/api/devices/{did}/poll")
     messages = [body["message"] for _, body in sent]
     assert any("changed job from 'A' to 'B'" in m for m in messages), messages

@@ -5,7 +5,7 @@ import io
 from openpyxl import load_workbook
 
 from app.database import SessionLocal
-from app.models import Device, Reading
+from app.models import Reading, Station
 
 from test_api import login
 
@@ -14,16 +14,16 @@ RANGE = {"from": "2026-09-29", "to": "2026-09-30", "tz": "UTC"}
 
 
 def _seed(in_production=True):
-    """Readings of one camera; returns their ids in order."""
+    """Readings of one station; returns their ids in order."""
     db = SessionLocal()
     try:
-        cam = Device(name="Cam1", host="sim", port=0, protocol="simulator")
+        cam = Station(name="Cam1", sources={})
         db.add(cam)
         db.flush()
         rows = []
 
         def r(day, hour, job, p, f, month=9):
-            row = Reading(device_id=cam.id, job_name=job, total_pass=p, total_fail=f, in_production=in_production,
+            row = Reading(station_id=cam.id, job_name=job, total_pass=p, total_fail=f, in_production=in_production,
                           created_at=dt.datetime(2026, month, day, hour, tzinfo=UTC))
             db.add(row)
             rows.append(row)
@@ -57,7 +57,7 @@ def test_scrap_range_per_camera_job_day(client):
     _seed()
     s = client.get("/api/data/scrap", params=RANGE).json()
     assert s["overall"] == {"pass": 130, "fail": 13, "total": 143, "scrap_rate": round(13 / 143, 4)}
-    assert [(c["camera"], c["total"]) for c in s["per_camera"]] == [("Cam1", 143)]
+    assert [(c["station"], c["total"]) for c in s["per_station"]] == [("Cam1", 143)]
     assert [(j["job"], j["pass"], j["fail"]) for j in s["per_job"]] == [("A", 90, 10), ("B", 40, 3)]
     assert [(d["day"], d["pass"], d["fail"]) for d in s["per_day"]] == [
         ("2026-09-29", 90, 10), ("2026-09-30", 40, 3)]
@@ -88,7 +88,7 @@ def test_excluded_readings_are_left_out(client):
     assert client.post("/api/data/readings/exclude", json={**period, "excluded": True}).json() == {"changed": 2}
     assert client.get("/api/data/scrap", params=RANGE).json()["overall"]["total"] == 0
     assert len(client.get("/api/data/readings", params={"excluded": "true"}).json()) == 3
-    client.post("/api/data/readings/exclude", json={**period, "excluded": False, "device_id": 1})
+    client.post("/api/data/readings/exclude", json={**period, "excluded": False, "station_id": 1})
     client.patch(f"/api/data/readings/{ids[1]}", json={"excluded": False})
     assert client.get("/api/data/scrap", params=RANGE).json()["overall"]["total"] == 143
 
@@ -119,7 +119,7 @@ def test_scrap_xlsx_matches_screen(client):
     assert resp.status_code == 200
     assert "scrap_2026-09-29_2026-09-30.xlsx" in resp.headers["content-disposition"]
     wb = load_workbook(io.BytesIO(resp.content))
-    assert wb.sheetnames == ["Overall", "Per device", "Per job", "Per day"]
+    assert wb.sheetnames == ["Overall", "Per station", "Per job", "Per day"]
     assert [c.value for c in wb["Overall"][2]] == ["Counted, 2026-09-29 to 2026-09-30", 130, 13, 143, round(13 / 143, 4)]
     assert wb["Overall"]["A3"].value == "Left out: excluded readings"
     assert [c.value for c in wb["Per job"][3]][:5] == ["Cam1", "B", 40, 3, 43]
@@ -148,6 +148,7 @@ def test_poller_records_production_state(client):
     did = client.post("/api/devices", json={
         "name": "Sim", "host": "sim", "port": 0, "protocol": "simulator",
         "protocol_config": {"jobs": ["J"], "parts_per_poll": 10, "reset_every": 0, "job_change_every": 0},
+        "create_station": True,
     }).json()["id"]
     client.post(f"/api/devices/{did}/poll")  # first sample: baseline, no pass increase yet
     client.post(f"/api/devices/{did}/poll")  # pass went up: in production

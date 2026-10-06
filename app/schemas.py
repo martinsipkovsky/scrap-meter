@@ -41,10 +41,9 @@ class DeviceCreate(BaseModel):
     protocol_config: dict = {}
     poll_interval: int = 5
     enabled: bool = True
-    # minutes without a pass increase before the camera counts as not in production
-    idle_timeout_min: int = Field(default=30, ge=1, le=10080)
-    # whether the device's readings count in the overall statistics
-    stats_default: Literal["include", "exclude"] = "include"
+    # also make a station counting this device's pass / fail / total / job
+    # (OPC UA: only when the config names pass or fail nodes)
+    create_station: bool = False
 
 
 class DeviceUpdate(BaseModel):
@@ -55,8 +54,6 @@ class DeviceUpdate(BaseModel):
     protocol_config: Optional[dict] = None
     poll_interval: Optional[int] = None
     enabled: Optional[bool] = None
-    idle_timeout_min: Optional[int] = Field(default=None, ge=1, le=10080)
-    stats_default: Optional[Literal["include", "exclude"]] = None
 
 
 class DeviceOut(BaseModel):
@@ -70,18 +67,19 @@ class DeviceOut(BaseModel):
     enabled: bool
     connected: bool
     last_error: Optional[str]
+    last_poll_at: Optional[dt.datetime]
     current_job: Optional[str]
-    idle_timeout_min: int
-    manual_stop: bool
-    production_state: str
-    stats_default: str
-    last_pass_change_at: Optional[dt.datetime]
+    last_values: Optional[dict]
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class DeviceExportItem(BaseModel):
-    """One camera in an export file: configuration only, no counters/history."""
+    """One device in an export file: configuration only, no counters/history.
+
+    Files from 1.4 and older also carry the station settings of the device
+    (idle_timeout_min, stats_default); importing such a file makes a station
+    for each new device."""
 
     name: str = Field(min_length=1, max_length=120)
     host: str = ""
@@ -91,22 +89,76 @@ class DeviceExportItem(BaseModel):
     poll_interval: int = 5
     enabled: bool = True
     idle_timeout_min: int = Field(default=30, ge=1, le=10080)
-    # files exported before this setting existed import as "include"
     stats_default: Literal["include", "exclude"] = "include"
 
 
+# ---- Stations -------------------------------------------------------------
+class StationSource(BaseModel):
+    device_id: int
+    key: str = Field(min_length=1, max_length=500)
+
+
+class StationSources(BaseModel):
+    ok: Optional[StationSource] = None
+    nok: Optional[StationSource] = None
+    count: Optional[StationSource] = None
+    job: Optional[StationSource] = None
+
+
+class StationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    sources: StationSources
+    default_job: str = Field(default="MAIN", min_length=1, max_length=255)
+    # minutes without an OK increase before the station counts as not in production
+    idle_timeout_min: int = Field(default=30, ge=1, le=10080)
+    # whether the station's readings count in the overall statistics
+    stats_default: Literal["include", "exclude"] = "include"
+    # ideal seconds per part (OEE performance); None = unknown
+    ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
+    sort_order: int = 0
+
+
+class StationUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    sources: Optional[StationSources] = None
+    default_job: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    idle_timeout_min: Optional[int] = Field(default=None, ge=1, le=10080)
+    stats_default: Optional[Literal["include", "exclude"]] = None
+    ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
+    sort_order: Optional[int] = None
+
+
+class StationExportSource(BaseModel):
+    device: str  # device name
+    key: str
+
+
+class StationExportItem(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    sources: dict[str, Optional[StationExportSource]] = {}
+    default_job: str = "MAIN"
+    idle_timeout_min: int = Field(default=30, ge=1, le=10080)
+    stats_default: Literal["include", "exclude"] = "include"
+    ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
+    sort_order: int = 0
+
+
 class DeviceImport(BaseModel):
+    """An export file. "cameras" holds the devices (the name of the list in
+    every version); "stations" is there from version 2 (1.5)."""
+
     version: int = 1
     cameras: list[DeviceExportItem]
+    stations: Optional[list[StationExportItem]] = None
 
 
 # ---- Notifications --------------------------------------------------------
 class RuleCreate(BaseModel):
     name: str
-    device_id: Optional[int] = None
+    station_id: Optional[int] = None  # None = all stations
     condition: str
     threshold: float = 0.0
-    # per-camera thresholds for a rule on all cameras: {"<device id>": value}
+    # per-station thresholds for a rule on all stations: {"<station id>": value}
     thresholds: Optional[dict[str, Optional[float]]] = None
     severity: str = "alert"
     # providers that receive it; empty = all enabled providers
@@ -117,7 +169,7 @@ class RuleCreate(BaseModel):
 
 class RuleUpdate(BaseModel):
     name: Optional[str] = None
-    device_id: Optional[int] = None
+    station_id: Optional[int] = None
     condition: Optional[str] = None
     threshold: Optional[float] = None
     thresholds: Optional[dict[str, Optional[float]]] = None

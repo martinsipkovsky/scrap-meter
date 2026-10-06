@@ -178,3 +178,13 @@ pre.snippet { background: var(--bg); border: 1px solid var(--border); border-rad
 .daybar > span { display: block; height: 100%; }
 tr.excluded td { color: var(--text-dim); text-decoration: line-through; }
 tr.excluded td:last-child { text-decoration: none; }
+
+/* ---- Dashboard OEE panel ---- */
+.oee-panel { margin-top: 20px; }
+.oee-row { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+.oee-gauge { width: 170px; text-align: center; }
+.oee-gauge svg { width: 170px; height: 100px; display: block; }
+.oee-label { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; margin-top: -6px; }
+.oee-factors, .oee-totals { display: flex; gap: 26px; flex-wrap: wrap; }
+.oee-totals { margin-left: auto; padding-left: 24px; border-left: 1px solid var(--border); }
+@media (max-width: 800px) { .oee-totals { margin-left: 0; padding-left: 0; border-left: none; } }

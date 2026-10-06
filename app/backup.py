@@ -290,6 +290,10 @@ def restore(path: Path, engine: Engine | None = None) -> dict:
         if table is not None:
             flush()
         reset_sequences(conn)
+    # a backup from 1.4 or older: its devices become stations
+    from .stations import upgrade
+
+    upgrade(engine)
     return restored
 
 

@@ -33,13 +33,13 @@
 <div class="section">
   <div class="toolbar"><h2 style="border:none">Rules</h2><button class="btn small" onclick="newRule()">+ Add rule</button></div>
   <p class="hint" style="margin:-4px 0 10px">A rule decides what is sent (scrap, faults, production changes, system events), how urgent it is, and to which providers.</p>
-  <table><thead><tr><th>Name</th><th>Sends</th><th>Device</th><th>Threshold</th><th>Level</th><th>To</th><th>Cooldown</th><th>Enabled</th><th></th></tr></thead><tbody id="ruleRows"></tbody></table>
+  <table><thead><tr><th>Name</th><th>Sends</th><th>Station</th><th>Threshold</th><th>Level</th><th>To</th><th>Cooldown</th><th>Enabled</th><th></th></tr></thead><tbody id="ruleRows"></tbody></table>
   <div id="ruleEmpty" class="empty" style="display:none">No rules yet.</div>
 </div>
 
 <div class="section">
   <div class="toolbar"><h2 style="border:none">WhatsApp commands</h2><button class="btn small" onclick="newCommand()">+ Add command</button></div>
-  <p class="hint" style="margin:-4px 0 10px">Anyone in an allowed group can send a command, e.g. <code id="c_example">!status</code> or <code>!status Line 1</code> for one device; the linked phone answers in the group.
+  <p class="hint" style="margin:-4px 0 10px">Anyone in an allowed group can send a command, e.g. <code id="c_example">!status</code> or <code>!status Line 1</code> for one station; the linked phone answers in the group.
     <code>!help</code> lists the commands. Only messages that start with the prefix count.</p>
   <div class="row" style="max-width:420px;align-items:end">
     <div><label>Prefix</label><input id="c_prefix" maxlength="3" /></div>
@@ -84,20 +84,20 @@
     <div><label>Keyword</label><input id="c_keyword" placeholder="status" /><div class="hint">Lower case letters, digits, - and _. Sent as <span id="c_kwHint">!status</span>.</div></div>
     <div><label>Enabled</label><select id="c_enabled"><option value="1">Yes</option><option value="0">No</option></select></div>
   </div>
-  <label>Description (shown by help)</label><input id="c_description" placeholder="Scrap of every device" />
+  <label>Description (shown by help)</label><input id="c_description" placeholder="Scrap of every station" />
   <div class="row">
     <div><label>Counts</label><select id="c_period" onchange="onPeriod()"></select></div>
     <div id="c_hoursBox"><label>Hours</label><input id="c_hours" type="number" min="1" value="8" /></div>
   </div>
   <label>Header</label><textarea id="c_header" rows="2" spellcheck="false"></textarea>
-  <label>One line per device</label><textarea id="c_line" rows="3" spellcheck="false"></textarea>
+  <label>One line per station</label><textarea id="c_line" rows="3" spellcheck="false"></textarea>
   <label>Footer</label><textarea id="c_footer" rows="2" spellcheck="false"></textarea>
   <div id="c_placeholders" class="hint" style="margin-top:6px"></div>
   <div class="hint" id="c_tz"></div>
   <label>Answers in</label>
   <div id="c_groups" class="hint"></div>
   <div class="actions" style="margin-top:12px">
-    <input id="c_previewCamera" placeholder="device (optional)" style="max-width:200px" />
+    <input id="c_previewCamera" placeholder="station (optional)" style="max-width:200px" />
     <button class="btn secondary small" onclick="previewCommand()">Preview reply</button>
   </div>
   <pre id="c_preview" style="display:none;white-space:pre-wrap;background:var(--bg-3);padding:10px;border-radius:8px;margin-top:8px;font-size:13px"></pre>
@@ -114,7 +114,7 @@
   <label>Name</label><input id="r_name" placeholder="High scrap alert" />
   <label>Send when</label><select id="r_condition" onchange="onCond(true)"></select>
   <div class="row">
-    <div id="r_deviceBox"><label>Device</label><select id="r_device" onchange="onCond(false)"><option value="">All devices</option></select></div>
+    <div id="r_deviceBox"><label>Station</label><select id="r_device" onchange="onCond(false)"><option value="">All stations</option></select></div>
     <div><label>Level</label><select id="r_severity"></select></div>
   </div>
   <div class="row" id="r_thresholdBox">
@@ -122,7 +122,7 @@
     <div></div>
   </div>
   <div id="r_overrides" style="display:none">
-    <label>Per device (empty = the threshold above)</label>
+    <label>Per station (empty = the threshold above)</label>
     <div id="r_overrideRows" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px"></div>
   </div>
   <label>Send to</label>
@@ -228,7 +228,7 @@ function providerTarget(p) {
 // show the inputs the chosen condition needs
 function onCond(fromCondition) {
   const key = document.getElementById('r_condition').value, c = condOf(key);
-  document.getElementById('r_deviceBox').style.visibility = c.camera ? 'visible' : 'hidden';
+  document.getElementById('r_deviceBox').style.visibility = c.station ? 'visible' : 'hidden';
   document.getElementById('r_thresholdBox').style.display = c.threshold ? '' : 'none';
   document.getElementById('r_thresholdLabel').textContent = isPct(key) ? 'Threshold (%)' : 'Threshold (' + (c.threshold || '') + ')';
   const name = document.getElementById('r_name');
@@ -242,7 +242,7 @@ function onCond(fromCondition) {
     ? 'Sent once each time it happens; a cooldown limits how often.'
     : 'Sent again after this long while the condition still holds.';
   const all = !document.getElementById('r_device').value;
-  document.getElementById('r_overrides').style.display = c.threshold && c.camera && all && DEVICES.length ? '' : 'none';
+  document.getElementById('r_overrides').style.display = c.threshold && c.station && all && DEVICES.length ? '' : 'none';
 }
 
 function fillRuleForm(r) {
@@ -254,7 +254,7 @@ function fillRuleForm(r) {
   name.oninput = () => { name.dataset.auto = ''; };
   const cond = r ? r.condition : 'scrap_rate';
   document.getElementById('r_condition').value = cond;
-  document.getElementById('r_device').value = r && r.device_id ? r.device_id : '';
+  document.getElementById('r_device').value = r && r.station_id ? r.station_id : '';
   onCond(!r);
   if (r) {
     document.getElementById('r_severity').value = r.severity || 'alert';
@@ -288,11 +288,11 @@ async function load() {
   // filled once: refilling every few seconds would reset an open dialog
   if (!KINDS.length) {
     KINDS = await getJSON('/api/notifications/notifier-kinds');
-    DEVICES = await getJSON('/api/devices');
+    DEVICES = await getJSON('/api/stations');  // rules are per station
     const meta = await getJSON('/api/notifications/conditions');
     CONDS = meta.conditions; SEVS = meta.severities;
     document.getElementById('p_kind').innerHTML = KINDS.map(k => `<option value="${k.key}">${k.label}</option>`).join('');
-    document.getElementById('r_device').innerHTML = '<option value="">All devices</option>' + DEVICES.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+    document.getElementById('r_device').innerHTML = '<option value="">All stations</option>' + DEVICES.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
     const groups = [...new Set(CONDS.map(c => c.group))];
     document.getElementById('r_condition').innerHTML = groups.map(g => `<optgroup label="${g}">` +
       CONDS.filter(c => c.group === g).map(c => `<option value="${c.key}">${c.label}</option>`).join('') + '</optgroup>').join('');
@@ -319,14 +319,14 @@ async function load() {
   const sevBadge = { info: 'off', warning: 'warn', alert: 'bad' };
   for (const r of rules) {
     const c = condOf(r.condition);
-    const dev = !c.camera ? '—' : r.device_id ? (DEVICES.find(d => d.id === r.device_id) || {}).name || ('#' + r.device_id) : 'All';
+    const dev = !c.station ? '—' : r.station_id ? (DEVICES.find(d => d.id === r.station_id) || {}).name || ('#' + r.station_id) : 'All';
     const overrides = Object.keys(r.thresholds || {}).length;
     const to = (r.provider_ids || []).length
       ? r.provider_ids.map(id => (PROVIDERS.find(p => p.id === id) || { name: '#' + id + ' (deleted)' }).name).join(', ')
       : 'All providers';
     rr.append(el('tr', {},
       el('td', {}, r.name), el('td', {}, c.label || r.condition), el('td', {}, dev),
-      el('td', {}, c.threshold ? fmtThreshold(r.condition, r.threshold) + (overrides ? ' (+' + overrides + ' per device)' : '') : '—'),
+      el('td', {}, c.threshold ? fmtThreshold(r.condition, r.threshold) + (overrides ? ' (+' + overrides + ' per station)' : '') : '—'),
       el('td', {}, el('span', { class: 'badge ' + (sevBadge[r.severity] || 'off') }, r.severity || 'alert')),
       el('td', { class: 'muted' }, to),
       el('td', {}, r.cooldown + 's'),
@@ -388,7 +388,7 @@ async function saveRule() {
   const err = document.getElementById('ruleError'); err.style.display = 'none';
   try {
     const cond = document.getElementById('r_condition').value, c = condOf(cond);
-    const dev = c.camera ? document.getElementById('r_device').value : '';
+    const dev = c.station ? document.getElementById('r_device').value : '';
     const conv = v => isPct(cond) ? v / 100 : v;
     const thresholds = {};
     if (c.threshold && !dev) document.querySelectorAll('#r_overrideRows input').forEach(i => {
@@ -396,7 +396,7 @@ async function saveRule() {
     });
     const body = {
       name: document.getElementById('r_name').value.trim() || c.label,
-      device_id: dev ? parseInt(dev, 10) : null,
+      station_id: dev ? parseInt(dev, 10) : null,
       condition: cond,
       severity: document.getElementById('r_severity').value,
       threshold: c.threshold ? conv(parseFloat(document.getElementById('r_threshold').value) || 0) : 0,
@@ -471,7 +471,7 @@ async function fillCommandForm(c) {
   document.getElementById('cmdError').style.display = 'none';
   document.getElementById('c_preview').style.display = 'none';
   const d = c || { keyword: '', description: '', period: 'dashboard', hours: 8, enabled: true, group_ids: [],
-    header: '📊 {date} {time}', line: '{device}: {state}, OK {pass} · NOK {fail} · scrap {scrap}', footer: '' };
+    header: '📊 {date} {time}', line: '{station}: {state}, OK {pass} · NOK {fail} · scrap {scrap}', footer: '' };
   document.getElementById('c_keyword').value = d.keyword;
   document.getElementById('c_description').value = d.description || '';
   document.getElementById('c_period').innerHTML = Object.entries(CMD.periods).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');

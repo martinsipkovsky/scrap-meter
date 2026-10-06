@@ -1,21 +1,21 @@
-"""Production state of a camera: running, idle (auto-stopped) or stopped.
+"""Production state of a station: running, idle (auto-stopped) or stopped.
 
-* running  - the pass counter increased within the camera's idle timeout.
+* running  - the OK counter increased within the station's idle timeout.
 * idle     - no pass increase for idle_timeout_min minutes. The line is most
              likely not producing, so NOK counts are treated as false signals
-             (dashboard grays the camera, scrap alerts are suppressed). It goes
+             (dashboard grays the station, scrap alerts are suppressed). It goes
              back to running by itself as soon as the pass counter increases.
 * stopped  - an operator pressed Stop. Stays stopped until Start is pressed,
              even if counts keep arriving.
 
-Start clears a manual stop and restarts the idle clock, so a camera that
+Start clears a manual stop and restarts the idle clock, so a station that
 still does not count will fall back to idle after its timeout.
 """
 from __future__ import annotations
 
 import datetime as dt
 
-from .models import Device, utcnow
+from .models import Station, utcnow
 
 RUNNING = "running"
 IDLE = "idle"
@@ -30,43 +30,43 @@ def _aware(value: dt.datetime | None) -> dt.datetime | None:
     return value
 
 
-def state(device: Device, now: dt.datetime | None = None) -> str:
-    if device.manual_stop:
+def state(station: Station, now: dt.datetime | None = None) -> str:
+    if station.manual_stop:
         return STOPPED
-    last = _aware(device.last_pass_change_at)
+    last = _aware(station.last_pass_change_at)
     if last is None:
         return IDLE
     now = now or utcnow()
-    timeout = max(1, device.idle_timeout_min or DEFAULT_IDLE_TIMEOUT_MIN)
+    timeout = max(1, station.idle_timeout_min or DEFAULT_IDLE_TIMEOUT_MIN)
     if (now - last).total_seconds() >= timeout * 60:
         return IDLE
     return RUNNING
 
 
-def in_production(device: Device, now: dt.datetime | None = None) -> bool:
-    return state(device, now) == RUNNING
+def in_production(station: Station, now: dt.datetime | None = None) -> bool:
+    return state(station, now) == RUNNING
 
 
-def describe(device: Device, now: dt.datetime | None = None) -> dict:
-    """Fields the API returns about a camera's production state."""
+def describe(station: Station, now: dt.datetime | None = None) -> dict:
+    """Fields the API returns about a station's production state."""
     return {
-        "production_state": state(device, now),
-        "in_production": in_production(device, now),
-        "manual_stop": bool(device.manual_stop),
-        "idle_timeout_min": device.idle_timeout_min or DEFAULT_IDLE_TIMEOUT_MIN,
-        "last_pass_change_at": _aware(device.last_pass_change_at),
+        "production_state": state(station, now),
+        "in_production": in_production(station, now),
+        "manual_stop": bool(station.manual_stop),
+        "idle_timeout_min": station.idle_timeout_min or DEFAULT_IDLE_TIMEOUT_MIN,
+        "last_pass_change_at": _aware(station.last_pass_change_at),
     }
 
 
-def note_pass_increase(device: Device, now: dt.datetime | None = None) -> None:
+def note_pass_increase(station: Station, now: dt.datetime | None = None) -> None:
     """Called by the poller whenever the pass counter went up."""
-    device.last_pass_change_at = now or utcnow()
+    station.last_pass_change_at = now or utcnow()
 
 
-def start(device: Device) -> None:
-    device.manual_stop = False
-    device.last_pass_change_at = utcnow()
+def start(station: Station) -> None:
+    station.manual_stop = False
+    station.last_pass_change_at = utcnow()
 
 
-def stop(device: Device) -> None:
-    device.manual_stop = True
+def stop(station: Station) -> None:
+    station.manual_stop = True

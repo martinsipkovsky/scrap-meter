@@ -2,11 +2,11 @@
 {% block title %}Devices · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <div><h1>Devices</h1><p class="lead">Configure each device (camera, PLC, OPC UA server, counter), its protocol and polling.</p></div>
+  <div><h1>Devices</h1><p class="lead">The connections the app reads: cameras, PLCs, OPC UA servers, counters. What is counted is set up under <a href="/stations">Stations</a>.</p></div>
   <div class="actions">
-    <button class="btn secondary" onclick="exportDevices()" title="Download all device settings as a JSON file">Export</button>
+    <button class="btn secondary" onclick="exportDevices()" title="Download all device and station settings as a JSON file">Export</button>
     {% if user.has_permission('manage_devices') %}
-    <button class="btn secondary" onclick="document.getElementById('importFile').click()" title="Add or update devices from an exported JSON file">Import</button>
+    <button class="btn secondary" onclick="document.getElementById('importFile').click()" title="Add or update devices and stations from an exported JSON file">Import</button>
     <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importDevices(this)" />
     <button class="btn" onclick="openForm()">+ Add device</button>
     {% endif %}
@@ -14,7 +14,7 @@
 </div>
 
 <table>
-  <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Protocol</th><th>Job</th><th>Interval</th><th>Production</th><th></th></tr></thead>
+  <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Protocol</th><th>Values</th><th>Interval</th><th>Used by</th><th></th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
 <div id="empty" class="empty" style="display:none">No devices yet.</div>
@@ -57,28 +57,19 @@
         <div class="o_user"><label>Username</label><input id="o_username" autocomplete="off" /></div>
         <div class="o_user"><label>Password</label><input id="o_password" type="password" autocomplete="new-password" /></div>
       </div>
-      <div id="opcNodes"></div>
       <div class="row">
-        <div><label>Job name when no job node is set</label><input id="o_default_job" placeholder="MAIN" /></div>
         <div style="flex:.5"><label>Timeout (s)</label><input id="o_timeout" type="number" min="1" placeholder="5" /></div>
+        <div style="flex:1;align-self:flex-end"><button class="btn secondary" type="button" onclick="openBrowse()">Test and browse the server…</button></div>
       </div>
+      <div class="hint">The device is only the connection. Each station picks the values it needs from the server's nodes.</div>
     </div>
-
-    <label>Production idle timeout (minutes)</label>
-    <input id="f_idle" type="number" value="30" min="1" max="10080" />
-    <div class="hint">If the pass counter does not increase for this long, the device counts as not in production: it is grayed on the dashboard and gets no scrap alerts until passes resume.</div>
-    <label>Statistics</label>
-    <select id="f_stats">
-      <option value="include">Include: count its readings in the overall figures</option>
-      <option value="exclude">Exclude: leave its readings out of the overall figures by default</option>
-    </select>
-    <div class="hint">Overall figures are the totals on Scrap statistics, the Excel export and chat command totals. An excluded device still has its own rows there, marked; single readings or periods can be included again in the Data log and on Scrap statistics.</div>
     <div id="configBox">
       <label>Protocol config (JSON)</label>
       <textarea id="f_config" spellcheck="false"></textarea>
       <div class="hint" id="configFields"></div>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input type="checkbox" id="f_enabled" checked style="width:auto"/> Enabled (poll automatically)</label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:6px" id="stationBox"><input type="checkbox" id="f_station" checked style="width:auto"/> Also add a station that counts this device's pass and fail</label>
     <div class="actions" style="margin-top:20px;justify-content:flex-end">
       <button class="btn secondary" onclick="closeModal('modal')">Cancel</button>
       <button class="btn" id="saveBtn" onclick="save()">Save</button>
@@ -89,7 +80,7 @@
 <div class="modal-back" id="browseModal" style="z-index:60">
   <div class="modal" style="width:640px">
     <h2>Browse OPC UA server</h2>
-    <div class="hint" id="browseFor"></div>
+    <div class="hint">Open folders and objects to see the server's values. Pick them for a station on the Stations tab.</div>
     <div id="browseError" class="error" style="display:none;margin-top:10px"></div>
     <div id="browsePath" class="muted" style="margin:10px 0"></div>
     <div style="max-height:52vh;overflow-y:auto">
@@ -123,11 +114,8 @@ const TEMPLATES = {
   slmp_listen: { mode: 'counter', ...SLMP_TEMPLATE, trigger_device: null, status_device: null, pass_values: [1] },
 };
 const LISTEN_KIND = { udp_listen: 'UDP', slmp_listen: 'SLMP' };
-const OPC_NODES = [['pass_node', 'Pass (OK) counter node'], ['fail_node', 'Fail (NOK) counter node'],
-                   ['count_node', 'Total counter node (optional)'], ['job_node', 'Job / recipe node (optional)']];
 // config keys the OPC UA form edits; any other keys in the config are kept
-const OPC_KEYS = ['endpoint', 'security_mode', 'security_policy', 'username', 'password', 'default_job', 'timeout',
-                  ...OPC_NODES.map(n => n[0])];
+const OPC_KEYS = ['endpoint', 'security_mode', 'security_policy', 'username', 'password', 'timeout'];
 let opcExtra = {};
 
 async function loadProtocols() {
@@ -137,9 +125,16 @@ async function loadProtocols() {
 const isPush = (key) => !!(PROTOCOLS.find(p => p.key === key) || {}).push;
 const protoLabel = (key) => (PROTOCOLS.find(p => p.key === key) || {}).label || key;
 
+function fmtValues(d) {
+  const v = Object.entries(d.last_values || {}).filter(([k]) => k !== '_errors');
+  if (!v.length) return '—';
+  return v.slice(0, 4).map(([k, x]) => (k.length > 18 ? '…' + k.slice(-16) : k) + ' ' + x).join(' · ') + (v.length > 4 ? ' …' : '');
+}
+
 async function load() {
   const rows = document.getElementById('rows');
-  const devices = await getJSON('/api/devices');
+  const [devices, stations] = await Promise.all([getJSON('/api/devices'), getJSON('/api/stations')]);
+  const usedBy = (id) => stations.filter(s => Object.values(s.sources).some(x => x && x.device_id === id)).map(s => s.name);
   rows.innerHTML = '';
   document.getElementById('empty').style.display = devices.length ? 'none' : 'block';
   for (const d of devices) {
@@ -157,32 +152,19 @@ async function load() {
     rows.append(el('tr', {},
       el('td', {}, status),
       el('td', {}, el('strong', {}, d.name),
-        d.stats_default === 'exclude' ? el('span', { class: 'badge off', style: 'margin-left:8px', title: 'Readings are left out of the overall statistics by default' }, 'not in totals') : null,
         d.last_error ? el('div', { class: 'muted' }, d.last_error) : null),
       el('td', {}, address),
       el('td', {}, protoLabel(d.protocol)),
-      el('td', {}, d.current_job || '—'),
+      el('td', { class: 'muted', style: 'max-width:220px' }, fmtValues(d)),
       el('td', {}, push ? 'push' : d.poll_interval + 's'),
-      el('td', {}, el('span', { class: 'badge ' + PROD_BADGE[d.production_state][0] }, PROD_BADGE[d.production_state][1]),
-        el('div', { class: 'muted' }, 'idle after ' + d.idle_timeout_min + ' min')),
+      el('td', {}, usedBy(d.id).join(', ') || el('span', { class: 'muted' }, 'no station')),
       el('td', {}, actions),
     ));
   }
 }
 
 // ---- OPC UA form ---------------------------------------------------------
-function buildOpcNodes() {
-  const box = document.getElementById('opcNodes');
-  if (box.childElementCount) return;
-  for (const [key, label] of OPC_NODES) {
-    box.append(el('label', {}, label),
-      el('div', { style: 'display:flex;gap:8px' },
-        el('input', { id: 'o_' + key, placeholder: key === 'pass_node' ? 'ns=2;s=Line1.Pass' : '', spellcheck: 'false' }),
-        el('button', { class: 'btn secondary small', type: 'button', onclick: () => openBrowse(key, label) }, 'Browse…')));
-  }
-}
 function fillOpc(cfg) {
-  buildOpcNodes();
   opcExtra = Object.fromEntries(Object.entries(cfg || {}).filter(([k]) => !OPC_KEYS.includes(k)));
   const v = (k, dflt = '') => (cfg && cfg[k] != null) ? cfg[k] : dflt;
   document.getElementById('o_endpoint').value = v('endpoint');
@@ -191,9 +173,7 @@ function fillOpc(cfg) {
   document.getElementById('o_auth').value = v('username') ? 'user' : 'anon';
   document.getElementById('o_username').value = v('username');
   document.getElementById('o_password').value = v('password');
-  document.getElementById('o_default_job').value = v('default_job');
   document.getElementById('o_timeout').value = v('timeout');
-  for (const [key] of OPC_NODES) document.getElementById('o_' + key).value = v(key);
   onOpcMode(); onOpcAuth();
 }
 function opcConfig() {
@@ -201,8 +181,6 @@ function opcConfig() {
   const cfg = { ...opcExtra, endpoint: val('o_endpoint'), security_mode: val('o_mode') };
   if (cfg.security_mode !== 'None') cfg.security_policy = val('o_policy');
   if (val('o_auth') === 'user') { cfg.username = val('o_username'); cfg.password = document.getElementById('o_password').value; }
-  for (const [key] of OPC_NODES) cfg[key] = val('o_' + key) || null;
-  if (val('o_default_job')) cfg.default_job = val('o_default_job');
   if (val('o_timeout')) cfg.timeout = parseFloat(val('o_timeout'));
   return cfg;
 }
@@ -216,10 +194,7 @@ function onOpcAuth() {
   document.querySelectorAll('.o_user').forEach(e => e.style.visibility = user ? 'visible' : 'hidden');
 }
 
-let browseTarget = null;
-function openBrowse(key, label) {
-  browseTarget = key;
-  document.getElementById('browseFor').textContent = 'Pick the node for: ' + label + '. Open folders and objects, then choose a variable.';
+function openBrowse() {
   openModal('browseModal');
   browseTo(null, []);
 }
@@ -246,8 +221,7 @@ async function browseTo(nodeId, trail) {
   if (!r.children.length) rows.append(el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'This node has no children.')));
   for (const c of r.children) {
     const isVar = c.node_class === 'Variable';
-    const action = isVar ? el('button', { class: 'btn small', onclick: () => pickNode(c) }, 'Use')
-      : c.has_children ? el('button', { class: 'btn secondary small', onclick: () => browseTo(c.node_id, path) }, 'Open') : null;
+    const action = c.has_children ? el('button', { class: 'btn secondary small', onclick: () => browseTo(c.node_id, path) }, 'Open') : null;
     rows.append(el('tr', {},
       el('td', {}, el('div', {}, c.has_children ? el('a', { href: '#', onclick: (e) => { e.preventDefault(); browseTo(c.node_id, path); } }, c.name || c.node_id) : (c.name || c.node_id)),
         el('div', { class: 'muted' }, c.node_id)),
@@ -255,11 +229,6 @@ async function browseTo(nodeId, trail) {
       el('td', { class: 'muted' }, isVar ? (c.data_type || '') : c.node_class),
       el('td', {}, action)));
   }
-}
-function pickNode(c) {
-  document.getElementById('o_' + browseTarget).value = c.node_id;
-  closeModal('browseModal');
-  toast('Node set: ' + (c.name || c.node_id));
 }
 
 // ---- form ----------------------------------------------------------------
@@ -272,6 +241,8 @@ function onProtocol() {
   document.getElementById('opcuaBox').style.display = opc ? 'block' : 'none';
   document.getElementById('addrRow').style.display = opc ? 'none' : 'flex';
   document.getElementById('configBox').style.display = opc ? 'none' : 'block';
+  // OPC UA devices have no fixed pass / fail values: their stations pick nodes
+  document.getElementById('stationBox').style.display = !document.getElementById('f_id').value && !opc ? 'flex' : 'none';
   document.getElementById('l_host').textContent = push ? 'Accept data from device IP (blank = any)' : 'Host / IP';
   document.getElementById('f_host').placeholder = push ? 'blank = any device' : '10.0.0.42';
   document.getElementById('l_port').textContent = push ? `Listen port (${LISTEN.first}-${LISTEN.last})` : 'Port';
@@ -310,8 +281,7 @@ function openForm(d) {
   document.getElementById('f_host').value = d ? d.host : '';
   document.getElementById('f_port').value = d ? d.port : 23;
   document.getElementById('f_interval').value = d ? d.poll_interval : 5;
-  document.getElementById('f_idle').value = d ? d.idle_timeout_min : 30;
-  document.getElementById('f_stats').value = d ? d.stats_default : 'include';
+  document.getElementById('f_station').checked = true;
   sel.value = d ? d.protocol : (PROTOCOLS[0] && PROTOCOLS[0].key);
   document.getElementById('f_config').value = JSON.stringify(d ? d.protocol_config : {}, null, 2);
   document.getElementById('f_enabled').checked = d ? d.enabled : true;
@@ -328,6 +298,8 @@ async function save() {
     const opc = protocol === 'opcua';
     const config = opc ? opcConfig() : parseJSONField(document.getElementById('f_config').value, {});
     if (opc && !config.endpoint) throw new Error('Enter the endpoint URL of the OPC UA server.');
+    // an OPC UA device has no fixed pass / fail values: its stations pick nodes
+    const withStation = !id && !opc && document.getElementById('f_station').checked;
     const payload = {
       name: document.getElementById('f_name').value.trim(),
       // OPC UA: the server takes host and port from the endpoint URL
@@ -337,23 +309,27 @@ async function save() {
       protocol_config: config,
       poll_interval: parseInt(document.getElementById('f_interval').value, 10),
       enabled: document.getElementById('f_enabled').checked,
-      idle_timeout_min: parseInt(document.getElementById('f_idle').value, 10) || 30,
-      stats_default: document.getElementById('f_stats').value,
     };
     if (id) await patchJSON('/api/devices/' + id, payload);
-    else await postJSON('/api/devices', payload);
+    else await postJSON('/api/devices', { ...payload, create_station: withStation });
     closeModal('modal');
     load();
   } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
 }
 
 async function remove(d) {
-  if (!confirm('Delete device "' + d.name + '" and all its data?')) return;
+  if (!confirm('Delete device "' + d.name + '"? Stations that use it must be changed or deleted first.')) return;
   try { await delJSON('/api/devices/' + d.id); load(); } catch (e) { toast(e.message, true); }
 }
 
 async function pollNow(id) {
-  try { const r = await postJSON('/api/devices/' + id + '/poll'); toast('Read OK · job ' + r.job + ' · pass ' + r.total_pass + ' / fail ' + r.total_fail); load(); }
+  try {
+    const r = await postJSON('/api/devices/' + id + '/poll');
+    const errs = Object.values(r.errors || {});
+    toast(errs.length ? 'Read with problems: ' + errs.join('; ') : 'Read OK · ' + (fmtValues({ last_values: r.values }) || 'connected') +
+      (r.stations.length ? ' · ' + r.stations.length + ' station(s) updated' : ''), errs.length > 0);
+    load();
+  }
   catch (e) { toast(e.message, true); load(); }
 }
 
@@ -362,7 +338,7 @@ async function exportDevices() {
     const data = await getJSON('/api/devices/export');
     const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
     downloadJSON('scrap-meter-devices-' + stamp + '.json', data);
-    toast('Exported ' + data.cameras.length + ' device(s). Passwords are not exported.');
+    toast('Exported ' + data.cameras.length + ' device(s) and ' + (data.stations || []).length + ' station(s). Passwords are not exported.');
   } catch (e) { toast(e.message, true); }
 }
 
@@ -383,8 +359,9 @@ async function importDevices(input) {
     `${devs.length - upd} new, ${upd} existing (same name) will be updated.
 Counters and history are not touched.`)) return;
   try {
-    const r = await postJSON('/api/devices/import', { version: data.version || 1, cameras: devs });
-    toast(`Imported: ${r.created.length} added, ${r.updated.length} updated`);
+    const r = await postJSON('/api/devices/import', { version: data.version || 1, cameras: devs, stations: data.stations || null });
+    toast(`Imported devices: ${r.created.length} added, ${r.updated.length} updated; stations: ` +
+      `${r.stations_created.length} added, ${r.stations_updated.length} updated`);
     load();
   } catch (e) { toast(e.message, true); }
 }

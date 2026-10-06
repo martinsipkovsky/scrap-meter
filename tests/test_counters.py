@@ -1,11 +1,11 @@
 """Tests for the reset-proof counter accumulation logic."""
 from app.counters import Sample, apply_sample, compute_delta, new_state_for
-from app.models import CounterState, Device
+from app.models import CounterState, Station
 
 
 def _state():
     return CounterState(
-        device_id=1, job_name="J", total_pass=0, total_fail=0, total_count=0,
+        station_id=1, job_name="J", total_pass=0, total_fail=0, total_count=0,
         last_raw_pass=0, last_raw_fail=0, last_raw_count=0, is_active=True,
     )
 
@@ -42,7 +42,7 @@ def test_total_count_derived_from_pass_fail():
 
 
 def test_new_state_baselines_first_sample():
-    dev = Device(id=1)
+    dev = Station(id=1)
     st = new_state_for(dev, Sample("J", raw_pass=50, raw_fail=5))
     # first poll should not double count an already-running camera
     assert st.total_pass == 50
@@ -66,3 +66,13 @@ def test_scrap_rate():
     st = _state()
     apply_sample(st, Sample("J", raw_pass=90, raw_fail=10))
     assert abs(st.scrap_rate - 0.1) < 1e-9
+
+
+def test_unlinked_counters_reset_on_their_own():
+    """OK and NOK from different devices: a reset of one is not a reset of the other."""
+    s = _state()
+    apply_sample(s, Sample("J", raw_pass=100, raw_fail=10), linked=False, own_count=False)
+    assert (s.total_pass, s.total_fail, s.total_count) == (100, 10, 110)
+    # the OK device was reset, the NOK device kept counting
+    apply_sample(s, Sample("J", raw_pass=5, raw_fail=12), linked=False, own_count=False)
+    assert (s.total_pass, s.total_fail, s.total_count) == (105, 12, 117)

@@ -8,6 +8,8 @@ is answered with live figures from the app.
   narrows the reply to the stations whose name contains it.
 * Each command lists the groups it answers in (none = every group the linked
   phone is in). Private chats are never answered.
+* A command can list only the stations that were in production at some point
+  in the last N days (active_days; none = every station).
 * "help" is built in (unless a command with that keyword exists) and lists the
   commands allowed in that group.
 * Every handled command is logged (CommandLog), also when it was refused.
@@ -58,6 +60,7 @@ PLACEHOLDERS = {
     "header / footer": {
         "date": "today's date", "time": "current time", "period": "the period in words",
         "stations": "number of stations in the reply ({devices} and {cameras} work too)",
+        "active_days": "the command's \"active in the last N days\" setting (empty when off)",
         "in_production": "how many are in production",
         "total_pass": "OK parts, stations in the totals", "total_fail": "NOK parts, stations in the totals",
         "total": "all parts in the totals", "total_scrap": "scrap %, stations in the totals",
@@ -133,6 +136,10 @@ def _window_counts(db: Session, station: Station, start: dt.datetime) -> tuple[i
     return ok, nok
 
 
+def _days(n: int) -> str:
+    return "day" if n == 1 else f"{n} days"
+
+
 def _local(t: dt.datetime | None, tz: dt.tzinfo) -> str:
     if t is None:
         return "never"
@@ -144,11 +151,21 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
     now = now or utcnow()
     tz = scrap_stats.zone(cmd.timezone)
     rows = db.query(Station).order_by(Station.sort_order, Station.name).all()
+    days = cmd.active_days or 0
+    if days > 0:
+        since = now - dt.timedelta(days=days)
+        rows = [d for d in rows if production.active_since(d, since, now)]
+        recently = f" in production in the last {_days(days)}"
+    else:
+        recently = ""
     if camera_filter:
         f = camera_filter.lower()
-        rows = [d for d in rows if f in d.name.lower()]
-        if not rows:
-            return f"No station matches '{camera_filter}'."
+        matched = [d for d in rows if f in d.name.lower()]
+        if not matched:
+            return f"No station{recently} matches '{camera_filter}'."
+        rows = matched
+    elif not rows and days > 0:
+        return f"No station was in production in the last {_days(days)}."
     devices = stations.devices_of(db, rows)
 
     if cmd.period == "today":
@@ -195,6 +212,7 @@ def render(db: Session, cmd: ChatCommand, camera_filter: str = "", now: dt.datet
     summary = {
         "date": local_now.strftime("%d.%m.%Y"), "time": local_now.strftime("%H:%M"), "period": period,
         "stations": len(rows), "devices": len(rows), "cameras": len(rows), "in_production": running,
+        "active_days": days or "",
         "total_pass": tot_ok, "total_fail": tot_nok, "total": tot_ok + tot_nok,
         "total_scrap": _pct(tot_nok, tot_ok + tot_nok),
     }

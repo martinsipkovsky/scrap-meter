@@ -54,6 +54,20 @@ def in_production(station: Station, now: dt.datetime | None = None) -> bool:
     return state(station, now) == RUNNING
 
 
+def active_since(station: Station, since: dt.datetime, now: dt.datetime | None = None) -> bool:
+    """Was the station in production at some point since ``since``? Its OK
+    counter last went up while counted (or Start was pressed) at
+    last_pass_change_at, and it stayed in production until the idle timeout
+    after that."""
+    if state(station, now) == RUNNING:
+        return True
+    last = _aware(station.last_pass_change_at)
+    if last is None:
+        return False
+    timeout = max(1, station.idle_timeout_min or DEFAULT_IDLE_TIMEOUT_MIN)
+    return last + dt.timedelta(minutes=timeout) >= _aware(since)
+
+
 def describe(station: Station, now: dt.datetime | None = None) -> dict:
     """Fields the API returns about a station's production state."""
     return {

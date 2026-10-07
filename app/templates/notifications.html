@@ -89,6 +89,12 @@
     <div><label>Counts</label><select id="c_period" onchange="onPeriod()"></select></div>
     <div id="c_hoursBox"><label>Hours</label><input id="c_hours" type="number" min="1" value="8" /></div>
   </div>
+  <div class="row">
+    <div><label>Stations</label><select id="c_activeOnly" onchange="onActiveOnly()">
+      <option value="0">All stations</option><option value="1">Only stations active recently</option></select></div>
+    <div id="c_activeBox"><label>In production in the last … days</label><input id="c_activeDays" type="number" min="1" max="3650" value="7" /></div>
+  </div>
+  <div class="hint" id="c_activeHint" style="margin-top:-4px">Stations that were not in production at any point in that time are left out of the reply, also from the totals.</div>
   <label>Header</label><textarea id="c_header" rows="2" spellcheck="false"></textarea>
   <label>One line per station</label><textarea id="c_line" rows="3" spellcheck="false"></textarea>
   <label>Footer</label><textarea id="c_footer" rows="2" spellcheck="false"></textarea>
@@ -432,7 +438,8 @@ async function loadCommands() {
   document.getElementById('cmdEmpty').style.display = CMD.commands.length ? 'none' : 'block';
   for (const c of CMD.commands) rows.append(el('tr', {},
     el('td', {}, el('code', {}, CMD.prefix + c.keyword), c.description ? el('div', { class: 'hint' }, c.description) : null),
-    el('td', { class: 'muted' }, c.period === 'hours' ? 'last ' + c.hours + ' h' : c.period === 'today' ? 'today' : 'dashboard counters'),
+    el('td', { class: 'muted' }, c.period === 'hours' ? 'last ' + c.hours + ' h' : c.period === 'today' ? 'today' : 'dashboard counters',
+      c.active_days ? el('div', { class: 'hint' }, 'stations active in the last ' + (c.active_days === 1 ? 'day' : c.active_days + ' days')) : null),
     el('td', { class: 'muted' }, (c.group_ids || []).length ? c.group_ids.map(groupName).join(', ') : 'All groups'),
     el('td', {}, el('span', { class: 'badge ' + (c.enabled ? 'ok' : 'off') }, c.enabled ? 'on' : 'off')),
     el('td', {}, el('div', { class: 'actions' },
@@ -461,6 +468,11 @@ async function savePrefix() {
   loadCommands();
 }
 
+function onActiveOnly() {
+  const on = document.getElementById('c_activeOnly').value === '1';
+  document.getElementById('c_activeBox').style.visibility = on ? 'visible' : 'hidden';
+  document.getElementById('c_activeHint').style.display = on ? 'block' : 'none';
+}
 function onPeriod() {
   document.getElementById('c_hoursBox').style.visibility = document.getElementById('c_period').value === 'hours' ? 'visible' : 'hidden';
 }
@@ -477,6 +489,9 @@ async function fillCommandForm(c) {
   document.getElementById('c_period').innerHTML = Object.entries(CMD.periods).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   document.getElementById('c_period').value = d.period;
   document.getElementById('c_hours').value = d.hours || 8;
+  document.getElementById('c_activeOnly').value = d.active_days ? '1' : '0';
+  document.getElementById('c_activeDays').value = d.active_days || 7;
+  onActiveOnly();
   document.getElementById('c_enabled').value = d.enabled ? '1' : '0';
   document.getElementById('c_header').value = d.header || '';
   document.getElementById('c_line').value = d.line || '';
@@ -509,6 +524,8 @@ function commandBody() {
     description: document.getElementById('c_description').value.trim(),
     period: document.getElementById('c_period').value,
     hours: parseInt(document.getElementById('c_hours').value, 10) || 8,
+    active_days: document.getElementById('c_activeOnly').value === '1'
+      ? (parseInt(document.getElementById('c_activeDays').value, 10) || 7) : null,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     header: document.getElementById('c_header').value,
     line: document.getElementById('c_line').value,

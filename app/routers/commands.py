@@ -28,6 +28,8 @@ class CommandIn(BaseModel):
     header: str = ""
     line: str = ""
     footer: str = ""
+    # only stations in production in the last N days; None = every station
+    active_days: Optional[int] = Field(default=None, ge=1, le=3650)
     group_ids: list[str] = []
     enabled: bool = True
 
@@ -41,6 +43,7 @@ class CommandPatch(BaseModel):
     header: Optional[str] = None
     line: Optional[str] = None
     footer: Optional[str] = None
+    active_days: Optional[int] = Field(default=None, ge=1, le=3650)  # null clears it
     group_ids: Optional[list[str]] = None
     enabled: Optional[bool] = None
 

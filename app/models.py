@@ -522,6 +522,8 @@ class ChatCommand(Base):
     header: Mapped[str] = mapped_column(Text, default="")
     line: Mapped[str] = mapped_column(Text, default="")
     footer: Mapped[str] = mapped_column(Text, default="")
+    # only stations in production at some point in the last N days; null = all
+    active_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # group ids ("…@g.us") where the command answers; empty = every group
     group_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

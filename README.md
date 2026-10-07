@@ -65,7 +65,8 @@ versions keep working.
   WhatsApp sent from your own number (linked device, unofficial), Telegram
   bots, webhooks, Green API or Meta Cloud API.
 - **WhatsApp group commands:** `!status` (or your own commands) in a group
-  answers with live production state, OK / NOK and scrap per station.
+  answers with live production state, OK / NOK and scrap per station;
+  each command can list only the stations active in the last N days.
 - **Users and permissions:** login required, with granular permissions per user.
 - **Raw data tab** for admins: every table page by page with search, filters
   and sorting, type-aware inline editing, a change log with undo, and a

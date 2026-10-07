@@ -161,3 +161,60 @@ def test_old_camera_placeholders_still_work(client):
         assert commands.render(db, cmd).splitlines()[:2] == ["1 cams", "Line 1|Line 1"]
     finally:
         db.close()
+
+
+def test_active_days_lists_only_recently_active_stations(client):
+    import datetime as dt
+
+    from app.models import Station, utcnow
+
+    login(client)
+    _camera(client, "Line 1")
+    _camera(client, "Line 2")
+    _camera(client, "Line 3")
+    db = SessionLocal()
+    try:
+        now = utcnow()
+        st = {s.name: s for s in db.query(Station)}
+        # Line 1 runs now; Line 2 last counted 3 days ago; Line 3 never counted
+        st["Line 2"].last_pass_change_at = now - dt.timedelta(days=3)
+        st["Line 3"].last_pass_change_at = None
+        db.commit()
+
+        everyone = commands.render(db, _status(db, keyword="all"), now=now)
+        assert all(f"Line {n}:" in everyone for n in (1, 2, 3))
+
+        week = _status(db, keyword="week", active_days=7, header="{stations} of {active_days} d")
+        reply = commands.render(db, week, now=now)
+        assert reply.startswith("2 of 7 d")
+        assert "Line 1:" in reply and "Line 2:" in reply and "Line 3:" not in reply
+        # the totals only count the listed stations
+        per_station = [int(a) + int(b) for a, b in re.findall(r"OK (\d+) · NOK (\d+) · scrap", reply)]
+        assert per_station[-1] == sum(per_station[:-1])
+
+        day = _status(db, keyword="day", active_days=1)
+        reply = commands.render(db, day, now=now)
+        assert "Line 1:" in reply and "Line 2:" not in reply
+        assert commands.render(db, day, "line 2", now=now) == "No station in production in the last day matches 'line 2'."
+
+        # nothing active: says so instead of an empty list
+        st["Line 1"].last_pass_change_at = st["Line 2"].last_pass_change_at = now - dt.timedelta(days=10)
+        db.commit()
+        assert commands.render(db, day, now=now) == "No station was in production in the last day."
+        assert commands.answer(db, {"chat": GROUP, "text": "!week"}, "!")[2] == "No station was in production in the last 7 days."
+    finally:
+        db.close()
+
+
+def test_api_active_days(client):
+    login(client)
+    body = {"keyword": "recent", "line": "{station}", "active_days": 5}
+    r = client.post("/api/notifications/commands", json=body)
+    assert r.status_code == 201 and r.json()["active_days"] == 5
+    cid = r.json()["id"]
+    assert client.post("/api/notifications/commands", json={**body, "keyword": "bad", "active_days": 0}).status_code == 422
+    assert client.patch(f"/api/notifications/commands/{cid}", json={"active_days": None}).json()["active_days"] is None
+    assert client.patch(f"/api/notifications/commands/{cid}", json={"active_days": 2}).json()["active_days"] == 2
+    # without the field, a command lists every station as before
+    r = client.post("/api/notifications/commands", json={"keyword": "all", "line": "{station}"})
+    assert r.json()["active_days"] is None

@@ -116,6 +116,14 @@ tab. A `status` command is there from the start.
 - **Counts**: *dashboard counters* (current job, since the last reset, as on
   the dashboard), *today* (production time only, the same figures as Scrap
   statistics) or *the last N hours*.
+- **Stations**: *All stations*, or *Only stations active recently* with a
+  number of days. Then the reply lists only the stations that were in
+  production at some point in that many days (running now, or their OK counter
+  last went up while in production within that time); the others are left
+  out, also from the totals and `{stations}`. When none qualifies, the reply
+  says "No station was in production in the last N days." `!status line 1`
+  for a station outside that time answers that no such station matches.
+  `{active_days}` shows the setting in the header or footer.
 - **Header, one line per station, footer**: the reply text. `{placeholders}`
   are filled in; the dialog lists them (`{station}`, `{state}`, `{job}`,
   `{pass}`, `{fail}`, `{scrap}`, `{total_scrap}`, `{date}`, `{time}`, …).

@@ -119,6 +119,90 @@ FROM readings r
 LEFT JOIN stations s ON s.id = r.station_id
 """,
     ),
+    "powerbi_daily_stations": (
+        "Every day per station: OK / NOK, scrap, parts left out, production time, availability, "
+        "performance, quality and OEE (days in the time zone chosen on the Database tab)",
+        """
+SELECT
+    d.day AS day,
+    d.station_id AS station_id,
+    d.station_name AS station_name,
+    d.ok AS ok_count,
+    d.nok AS nok_count,
+    d.ok + d.nok AS total_count,
+    ROUND(CAST(100.0 * (d.nok) / NULLIF(d.ok + d.nok, 0) AS NUMERIC), 2) AS scrap_pct,
+    d.manual_ok AS manual_ok,
+    d.manual_nok AS manual_nok,
+    d.excluded_ok AS excluded_ok,
+    d.excluded_nok AS excluded_nok,
+    d.idle_ok AS not_in_production_ok,
+    d.idle_nok AS not_in_production_nok,
+    ROUND(CAST(d.production_s / 60.0 AS NUMERIC), 1) AS production_min,
+    ROUND(CAST(d.window_s / 60.0 AS NUMERIC), 1) AS day_min,
+    ROUND(CAST(100.0 * (d.production_s) / NULLIF(d.window_s, 0) AS NUMERIC), 2) AS availability_pct,
+    ROUND(CAST(100.0 * (d.ideal_s) / NULLIF(d.timed_production_s, 0) AS NUMERIC), 2) AS performance_pct,
+    ROUND(CAST(100.0 * (d.ok) / NULLIF(d.ok + d.nok, 0) AS NUMERIC), 2) AS quality_pct,
+    ROUND(CAST(100.0 * (d.production_s) / NULLIF(d.window_s, 0) * (d.ideal_s) / NULLIF(d.timed_production_s, 0) * (d.ok) / NULLIF(d.ok + d.nok, 0) AS NUMERIC), 2) AS oee_pct,
+    d.jobs AS jobs,
+    d.readings AS readings,
+    d.comments AS comments,
+    d.in_totals AS in_statistics,
+    d.first_reading_at AS first_reading_at_utc,
+    d.last_reading_at AS last_reading_at_utc,
+    d.complete AS day_complete,
+    d.timezone AS timezone,
+    d.updated_at AS updated_at_utc
+FROM daily_stations d
+""",
+    ),
+    "powerbi_daily_jobs": (
+        "Every day per station and job: OK / NOK, scrap, production time and performance",
+        """
+SELECT
+    j.day AS day,
+    j.station_id AS station_id,
+    j.station_name AS station_name,
+    j.job AS job,
+    j.ok AS ok_count,
+    j.nok AS nok_count,
+    j.ok + j.nok AS total_count,
+    ROUND(CAST(100.0 * (j.nok) / NULLIF(j.ok + j.nok, 0) AS NUMERIC), 2) AS scrap_pct,
+    j.manual_ok AS manual_ok,
+    j.manual_nok AS manual_nok,
+    ROUND(CAST(j.production_s / 60.0 AS NUMERIC), 1) AS production_min,
+    j.ideal_cycle_s AS ideal_cycle_s,
+    CASE WHEN j.ideal_cycle_s IS NULL THEN NULL ELSE ROUND(CAST(100.0 * (j.ideal_s) / NULLIF(j.production_s, 0) AS NUMERIC), 2) END AS performance_pct,
+    j.updated_at AS updated_at_utc
+FROM daily_jobs j
+""",
+    ),
+    "powerbi_daily_overall": (
+        "Every day, all stations in the statistics together: OK / NOK, scrap, availability, performance, "
+        "quality and OEE",
+        """
+SELECT
+    t.day AS day,
+    t.stations AS stations,
+    t.ok AS ok_count,
+    t.nok AS nok_count,
+    t.ok + t.nok AS total_count,
+    ROUND(CAST(100.0 * (t.nok) / NULLIF(t.ok + t.nok, 0) AS NUMERIC), 2) AS scrap_pct,
+    ROUND(CAST(t.production_s / 60.0 AS NUMERIC), 1) AS production_min,
+    ROUND(CAST(100.0 * (t.production_s) / NULLIF(t.window_s, 0) AS NUMERIC), 2) AS availability_pct,
+    ROUND(CAST(100.0 * (t.ideal_s) / NULLIF(t.timed_production_s, 0) AS NUMERIC), 2) AS performance_pct,
+    ROUND(CAST(100.0 * (t.ok) / NULLIF(t.ok + t.nok, 0) AS NUMERIC), 2) AS quality_pct,
+    ROUND(CAST(100.0 * (t.production_s) / NULLIF(t.window_s, 0) * (t.ideal_s) / NULLIF(t.timed_production_s, 0) * (t.ok) / NULLIF(t.ok + t.nok, 0) AS NUMERIC), 2) AS oee_pct,
+    t.comments AS comments
+FROM (
+    SELECT day, COUNT(*) AS stations, SUM(ok) AS ok, SUM(nok) AS nok, SUM(production_s) AS production_s,
+           SUM(window_s) AS window_s, SUM(ideal_s) AS ideal_s, SUM(timed_production_s) AS timed_production_s,
+           SUM(comments) AS comments
+    FROM daily_stations
+    WHERE in_totals
+    GROUP BY day
+) t
+""",
+    ),
     "powerbi_devices": (
         "The devices (connections), without their login settings",
         """

@@ -30,7 +30,7 @@ import threading
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import DateTime, func, select, text
+from sqlalchemy import Date, DateTime, func, select, text
 from sqlalchemy.engine import Connection, Engine
 
 from . import database
@@ -229,6 +229,10 @@ def _converter(column):
         def conv(v):
             return dt.datetime.fromisoformat(v) if isinstance(v, str) else v
         return conv
+    if isinstance(column.type, Date):
+        def conv_day(v):
+            return dt.date.fromisoformat(v) if isinstance(v, str) else v
+        return conv_day
     return None
 
 

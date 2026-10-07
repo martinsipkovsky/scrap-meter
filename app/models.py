@@ -41,6 +41,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -436,6 +437,73 @@ class StationComment(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
+
+
+# --------------------------------------------------------------------------- #
+# Daily data (app.daily): one row per station and day, and per station, job
+# and day, filled in by the app. Reports read them through the powerbi_daily_*
+# views. The rows keep the station name, so they outlive the station.
+# --------------------------------------------------------------------------- #
+
+
+class DailyStation(Base):
+    __tablename__ = "daily_stations"
+    __table_args__ = (UniqueConstraint("day", "station_id", name="uq_daily_station"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # calendar day in the time zone of the daily data (DAILY_TZ setting)
+    day: Mapped[dt.date] = mapped_column(Date, index=True)
+    station_id: Mapped[int] = mapped_column(Integer, index=True)
+    station_name: Mapped[str] = mapped_column(String(120))
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    # seconds of the day covered: the whole day, or up to now for today
+    window_s: Mapped[int] = mapped_column(Integer, default=0)
+    # time in production (as the OEE meter counts it), and the part of it on
+    # jobs with an ideal cycle time
+    production_s: Mapped[int] = mapped_column(Integer, default=0)
+    timed_production_s: Mapped[int] = mapped_column(Integer, default=0)
+    ideal_s: Mapped[float] = mapped_column(default=0.0)
+    # counted parts (like Scrap statistics), manual entries included
+    ok: Mapped[int] = mapped_column(Integer, default=0)
+    nok: Mapped[int] = mapped_column(Integer, default=0)
+    manual_ok: Mapped[int] = mapped_column(Integer, default=0)
+    manual_nok: Mapped[int] = mapped_column(Integer, default=0)
+    # parts left out: readings excluded by a user, made while not in production
+    excluded_ok: Mapped[int] = mapped_column(Integer, default=0)
+    excluded_nok: Mapped[int] = mapped_column(Integer, default=0)
+    idle_ok: Mapped[int] = mapped_column(Integer, default=0)
+    idle_nok: Mapped[int] = mapped_column(Integer, default=0)
+    # the station is in the statistics' totals (Station.stats_default)
+    in_totals: Mapped[bool] = mapped_column(Boolean, default=True)
+    readings: Mapped[int] = mapped_column(Integer, default=0)
+    comments: Mapped[int] = mapped_column(Integer, default=0)
+    jobs: Mapped[str] = mapped_column(Text, default="")
+    first_reading_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_reading_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # the day was over when it was computed (today's row is refreshed)
+    complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DailyJob(Base):
+    __tablename__ = "daily_jobs"
+    __table_args__ = (UniqueConstraint("day", "station_id", "job", name="uq_daily_job"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[dt.date] = mapped_column(Date, index=True)
+    station_id: Mapped[int] = mapped_column(Integer, index=True)
+    station_name: Mapped[str] = mapped_column(String(120))
+    job: Mapped[str] = mapped_column(String(255))
+    ok: Mapped[int] = mapped_column(Integer, default=0)
+    nok: Mapped[int] = mapped_column(Integer, default=0)
+    manual_ok: Mapped[int] = mapped_column(Integer, default=0)
+    manual_nok: Mapped[int] = mapped_column(Integer, default=0)
+    production_s: Mapped[int] = mapped_column(Integer, default=0)
+    # the job's ideal cycle time when computed (None = not set) and the ideal
+    # time of the parts made
+    ideal_cycle_s: Mapped[Optional[float]] = mapped_column(nullable=True)
+    ideal_s: Mapped[float] = mapped_column(default=0.0)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 # --------------------------------------------------------------------------- #

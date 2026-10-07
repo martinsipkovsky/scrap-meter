@@ -53,8 +53,10 @@ versions keep working.
   is saved with the time, the author, the current job and the OK / NOK / scrap
   at that moment; the latest one shows on the station's dashboard block.
 - **Power BI and Excel:** read-only `powerbi_*` database views with all
-  counted data and the comments, an optional read-only login, and a manual on
-  the Database tab.
+  counted data and the comments, daily data filled in by the app (per station,
+  job and day: OK / NOK, scrap, production time, OEE), and a read-only login
+  switched on from the Database tab (no change on the server), with a manual
+  there.
 - **Scrap statistics:** pass, fail and scrap % for any date range, overall,
   per station, per job and per day, with an Excel export. Time out of
   production, readings a user excluded and stations set to *Exclude* (such as
@@ -119,9 +121,10 @@ small simulation server (see [Protocols](docs/protocols.md#opc-ua-client-opcua))
   it behind HTTPS (a reverse proxy) and restrict access.
 - The listener ports (5100-5119 by default) accept data from any sender unless
   you set the device's *Host* field to its IP.
-- Publishing the database for Power BI (optional) opens its port on the
-  server: allow it in the firewall only from the Power BI or gateway PC. The
-  read-only login can read the `powerbi_*` views only.
+- Power BI access (optional, Database tab) opens one listener port for the
+  read-only login: allow it in the firewall only from the Power BI or gateway
+  PC. Only that login gets through the port, and it can read the `powerbi_*`
+  views only.
 - OPC UA passwords are stored in the app's database (readable by its
   administrators and in backups) but are never sent back to the browser or
   written to device export files.

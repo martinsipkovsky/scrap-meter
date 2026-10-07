@@ -7,6 +7,7 @@ routers, HTML pages and static assets.
 """
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -14,10 +15,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from . import __version__, commands, jobs, reporting, settings_store, stations
+from . import __version__, commands, daily, jobs, powerbi_access, reporting, settings_store, stations
 from .notifications import startup_notice
 from .config import settings
-from .database import Base, SessionLocal, engine, migrate_schema
+from .database import Base, SessionLocal, active_url, engine, migrate_schema
 from .dependencies import RedirectToLogin
 from .backup_ftp import scheduler as backup_scheduler
 from .notifiers.whatsapp_linked import link as whatsapp_link
@@ -28,6 +29,8 @@ from .routers import (account, auth_routes, backup_admin, commands as commands_a
 from .seed import seed_admin
 from .templating import templates
 
+log = logging.getLogger("cognex.main")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,6 +40,10 @@ async def lifespan(app: FastAPI):
     stations.upgrade(engine)  # 1.4 databases: every device becomes a station
     jobs.upgrade(engine)  # 1.6 databases: station cycle times move to the jobs
     reporting.ensure_views(engine)  # read-only views for Power BI and other reports
+    if powerbi_access.load().get("enabled"):
+        error = powerbi_access.apply(engine, active_url)  # the Power BI port, switched on on the Database tab
+        if error:
+            log.warning("Power BI access: %s", error)
     db = SessionLocal()
     try:
         seed_admin(db)
@@ -50,12 +57,15 @@ async def lifespan(app: FastAPI):
         if previous != __version__:
             settings_store.save("app_version", __version__)
         startup_notice(__version__, previous)
+        daily.scheduler.start()  # daily data for reports
     backup_scheduler.start()
     whatsapp_link.on_message = commands.handle_message  # "!status" in a WhatsApp group
     if settings.whatsapp_enabled:
         whatsapp_link.start()  # reconnects a linked phone; exits at once if none
     yield
     whatsapp_link.stop()
+    daily.scheduler.stop()
+    powerbi_access.forwarder.stop()
     backup_scheduler.stop()
     listener.stop()
     poller.stop()

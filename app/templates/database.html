@@ -20,6 +20,28 @@
   <h2>Reading the data (Power BI, Excel, SQL)</h2>
   <p class="muted" style="margin-top:0">Reports read the data straight from the database with a read-only login. They use the <code>powerbi_*</code> views below: together they hold all counted data with the station names filled in, keep their columns when the app is updated, and leave out passwords and tokens.</p>
   <div id="rdNote"></div>
+  <div class="card" style="margin-bottom:12px">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <strong>Power BI access</strong>
+      <span class="badge" id="pbState">—</span>
+      <span style="flex:1"></span>
+      <label class="muted" style="margin:0">Port</label>
+      <input id="pbPort" type="number" style="width:100px" />
+      <button class="btn small" id="pbToggle" onclick="toggleAccess()">Turn on</button>
+      <button class="btn secondary small" id="pbNewPw" onclick="newReaderPassword()" style="display:none">New password</button>
+    </div>
+    <div class="hint" id="pbHint" style="margin-top:6px"></div>
+  </div>
+  <div class="card" style="margin-bottom:12px">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <strong>Daily data</strong>
+      <span class="muted" id="dyInfo">—</span>
+      <span style="flex:1"></span>
+      <button class="btn secondary small" id="dyTz" onclick="useBrowserTz()" style="display:none"></button>
+      <button class="btn secondary small" onclick="rebuildDaily()">Compute again</button>
+    </div>
+    <div class="hint" style="margin-top:6px">The app fills in one row per station and day (<code>powerbi_daily_stations</code>), per station, job and day (<code>powerbi_daily_jobs</code>) and per day for all stations together (<code>powerbi_daily_overall</code>): OK / NOK, scrap, parts left out, production time, availability, performance, quality, OEE, comments. Today's rows are updated every 5 minutes; past days stay. <em>Compute again</em> redoes every day, e.g. after readings were excluded or entered later than a week back.</div>
+  </div>
   <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))">
     <div class="card"><div class="muted">Server</div><div class="stat small" id="rdHost">—</div><div class="muted" id="rdHostNote"></div></div>
     <div class="card"><div class="muted">Port</div><div class="stat small" id="rdPort">—</div><div class="muted" id="rdPortNote"></div></div>
@@ -39,7 +61,7 @@
       <li>Server: <code id="rdPbiServer">host:port</code>, Database: <code id="rdPbiDb">—</code>. Pick Import (or DirectQuery for live data) &rarr; OK.</li>
       <li>Sign in on the <strong>Database</strong> tab with the read-only user and password above.</li>
       <li>If Power BI says the connection isn't encrypted: the app's database has no TLS. Click OK to connect without encryption (or in File &rarr; Options and settings &rarr; Data source settings &rarr; this source &rarr; Edit permissions, clear <em>Encrypt connections</em>).</li>
-      <li>Tick the <code>powerbi_*</code> views you need (comments: <code>powerbi_station_comments</code>) &rarr; Load.</li>
+      <li>Tick the <code>powerbi_*</code> views you need (one row per station and day: <code>powerbi_daily_stations</code>; comments: <code>powerbi_station_comments</code>) &rarr; Load.</li>
       <li>Scheduled refresh in the Power BI service: install the on-premises data gateway on a PC in the plant network that reaches this server, add a PostgreSQL data source to it with the same server, database, user and password, and pick that gateway in the semantic model's settings.</li>
     </ol>
   </details>
@@ -458,6 +480,10 @@ async function runImport() {
 
 // Example queries for the "Reading the data" section (docs/reporting.md has the same ones)
 const READ_QUERIES = [
+  ['OK / NOK, scrap and OEE per station and day, last 30 days', `SELECT day, station_name, ok_count, nok_count, scrap_pct, production_min, oee_pct
+FROM powerbi_daily_stations
+WHERE day > current_date - 30
+ORDER BY day DESC, station_name;`],
   ['Comments of the last 7 days', `SELECT commented_at_utc, station_name, job, ok_count, nok_count, scrap_pct, comment, author
 FROM powerbi_station_comments
 WHERE commented_at_utc > now() - interval '7 days'
@@ -501,10 +527,7 @@ async function loadReading() {
   document.getElementById('rdPbiDb').textContent = r.database || '—';
   const steps = [];
   if (!r.postgres) steps.push('The app uses a local SQLite file, which reports cannot reach. Use PostgreSQL (the Docker setup does).');
-  else if (!r.reader || (r.bundled && !r.port)) {
-    steps.push('Not set up yet. On the server, put docker-compose.powerbi.yml (from the deploy folder) next to docker-compose.yml, renamed to docker-compose.override.yml, add POWERBI_PASSWORD=<a strong password> and POWERBI_DB_PORT=5432 to the .env, and run docker compose up -d.');
-    steps.push('That opens the database port on the server: allow it in the firewall only from the PC that runs Power BI or the gateway.');
-  }
+  renderAccess(r);
   const note = document.getElementById('rdNote'); note.innerHTML = '';
   if (steps.length) note.append(el('div', { class: 'warnbox' }, ...steps.map(t => el('div', {}, t))));
   const tb = document.getElementById('rdViews'); tb.innerHTML = '';
@@ -515,6 +538,54 @@ async function loadReading() {
       el('button', { class: 'btn secondary small', onclick: () => copySnippet('rq' + i) }, 'Copy')));
     q.append(el('pre', { class: 'snippet', id: 'rq' + i }, sql));
   });
+}
+
+let READING = null;
+function renderAccess(r) {
+  READING = r;
+  const a = r.access, on = a.enabled;
+  const state = document.getElementById('pbState');
+  state.textContent = !on ? 'off' : a.running ? 'on, port ' + a.port : 'error';
+  state.className = 'badge ' + (!on ? 'off' : a.running ? 'ok' : 'bad');
+  const port = document.getElementById('pbPort');
+  if (document.activeElement !== port) port.value = a.port;
+  port.min = a.first_port; port.max = a.last_port; port.disabled = on;
+  document.getElementById('pbToggle').textContent = on ? 'Turn off' : 'Turn on';
+  document.getElementById('pbToggle').className = 'btn small' + (on ? ' danger' : '');
+  document.getElementById('pbNewPw').style.display = on && !a.env ? '' : 'none';
+  document.getElementById('pbHint').textContent = !r.postgres ? 'Needs PostgreSQL.'
+    : on ? (a.error ? a.error + ' ' : '') + `Power BI connects to this server on port ${a.port}; the app passes the connection on to the database. Allow that port in the server's firewall only from the PC that runs Power BI or the gateway.`
+    : `Turning it on makes the read-only login and opens one of the listener ports (${a.first_port}-${a.last_port}, already published by the server's compose file) for Power BI. Nothing on the server has to change, and it stays on after restarts and updates.`;
+  const d = r.daily, bz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  document.getElementById('dyInfo').textContent = (d.first_day ? `${d.first_day} to ${d.last_day}, ${d.rows} station days` : 'nothing yet')
+    + ` · days in ${d.timezone}` + (d.last_run ? ' · updated ' + new Date(d.last_run).toLocaleTimeString() : '');
+  const tzBtn = document.getElementById('dyTz');
+  tzBtn.style.display = bz !== d.timezone ? '' : 'none';
+  tzBtn.textContent = 'Use ' + bz;
+}
+async function toggleAccess() {
+  const on = !READING.access.enabled;
+  if (on && !confirm('Open port ' + document.getElementById('pbPort').value + ' for Power BI with a read-only login?')) return;
+  try {
+    await api('PUT', '/api/database/reading/access', { enabled: on, port: parseInt(document.getElementById('pbPort').value, 10) || null });
+    await loadReading();
+    toast(on ? 'Power BI access is on' : 'Power BI access is off');
+  } catch (e) { toast(e.message, true); }
+}
+async function newReaderPassword() {
+  if (!confirm('Make a new password? Power BI and the gateway then need the new one.')) return;
+  try { await api('PUT', '/api/database/reading/access', { enabled: true, new_password: true }); toast('New password made'); await loadReading(); }
+  catch (e) { toast(e.message, true); }
+}
+async function useBrowserTz() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  if (!confirm('Count days in ' + tz + '? Every day is computed again.')) return;
+  try { await api('PUT', '/api/database/reading/daily', { timezone: tz }); toast('Days are now in ' + tz); await loadReading(); }
+  catch (e) { toast(e.message, true); }
+}
+async function rebuildDaily() {
+  try { const r = await postJSON('/api/database/reading/daily/rebuild'); toast(`Computed ${r.days} days again`); await loadReading(); }
+  catch (e) { toast(e.message, true); }
 }
 
 async function showReaderPassword() {

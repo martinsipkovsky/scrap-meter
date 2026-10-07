@@ -17,13 +17,14 @@ working directory.
 | `LISTEN_PORTS` | `5100-5119` | Port range, TCP and UDP, for devices that push data |
 | `DATA_DIR` | `./data` (`/srv/data` in Docker) | Where the Database tab saves its settings (database choice, FTP backup settings, backups taken before an import), and the OPC UA client certificate (`opcua/`) |
 | `WHATSAPP_ENABLED` | `true` | Reconnect a linked WhatsApp phone when the app starts (see [Notifications](notifications.md#linked-send-from-your-own-number-no-extra-service)) |
-| `POWERBI_PASSWORD` | empty | When set (PostgreSQL only), the app creates a read-only database login with this password on startup, for Power BI and other reports. See [Reports](reporting.md). |
+| `POWERBI_PASSWORD` | empty | Older Power BI setup (since 1.11 it is switched on on the Database tab instead): when set (PostgreSQL only), the read-only login gets this password. See [Reports](reporting.md). |
 | `POWERBI_USER` | `powerbi` | Name of that login |
 | `POWERBI_DB_PORT` | none | Port the database is published on for reports; shown on the Database tab |
 
-The three `POWERBI_*` variables reach the app through
+Since 1.11 Power BI access is switched on on the Database tab and needs none
+of these. The `POWERBI_*` variables only matter for the older setup with
 `deploy/docker-compose.powerbi.yml` (used as `docker-compose.override.yml`),
-which also publishes the database port. See [Reports](reporting.md#setting-it-up-on-the-server).
+which still works. See [Reports](reporting.md#setting-it-up-on-the-server).
 
 Login sessions last 12 hours.
 

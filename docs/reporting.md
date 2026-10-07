@@ -19,6 +19,9 @@ tokens (device logins, user passwords, notification settings).
 | `powerbi_jobs` | Every job the stations have counted, with its ideal cycle time |
 | `powerbi_job_totals` | OK / NOK per station and job since counting started (device counts plus manual entries) |
 | `powerbi_readings` | Every reading and manual entry (the history behind the chart and the statistics) |
+| `powerbi_daily_stations` | Every day per station: OK / NOK, scrap, parts left out, production time, availability, performance, quality, OEE, comments |
+| `powerbi_daily_jobs` | Every day per station and job: OK / NOK, scrap, production time, performance |
+| `powerbi_daily_overall` | Every day, all stations in the statistics together: OK / NOK, scrap, availability, performance, quality, OEE |
 | `powerbi_devices` | The devices (connections), without their login settings |
 
 All times are UTC (the `…_utc` columns).
@@ -40,6 +43,49 @@ job (`total_*`), and since 1.8 the pieces it counted (`ok_added` /
 `ok_added` is empty and the parts made between two readings are the
 difference of the totals (see the hourly query below). A manual entry holds
 the parts entered in `raw_ok` / `raw_nok`.
+
+### Daily data
+
+The app fills in the `powerbi_daily_*` views itself: one row per station and
+day, per station, job and day, and per day for all stations together. Today's
+rows are updated every 5 minutes, a day's rows are final once it is over, and
+the last 7 days are computed again each night (manual entries or readings
+excluded later). After the update to 1.11 every past day is computed once in
+the background. **Compute again** on the Database tab redoes every day.
+
+Days are calendar days in the time zone shown on the Database tab (the one
+of the FTP backup settings, or UTC, until **Use <your time zone>** is
+clicked; changing it computes every day again). Parts are counted like Scrap
+statistics, production time and the OEE figures like the dashboard's OEE
+meter. A station set to *Exclude* from the statistics has its rows with
+`in_statistics` false and stays out of `powerbi_daily_overall`. Rows of a
+deleted station stay (with its name) until every day is computed again.
+
+**`powerbi_daily_stations`**: `day`, `station_id`, `station_name`,
+`ok_count`, `nok_count`, `total_count`, `scrap_pct`, `manual_ok`,
+`manual_nok` (manual entries, already in `ok_count` / `nok_count`),
+`excluded_ok`, `excluded_nok` (readings a user excluded),
+`not_in_production_ok`, `not_in_production_nok` (counted while idle or
+stopped), `production_min`, `day_min` (minutes of the day, up to now for
+today), `availability_pct`, `performance_pct` (empty without ideal cycle
+times), `quality_pct`, `oee_pct`, `jobs`, `readings`, `comments`,
+`in_statistics`, `first_reading_at_utc`, `last_reading_at_utc`,
+`day_complete` (false for today), `timezone`, `updated_at_utc`. All
+percentages are 0-100.
+
+**`powerbi_daily_jobs`**: `day`, `station_id`, `station_name`, `job`,
+`ok_count`, `nok_count`, `total_count`, `scrap_pct`, `manual_ok`,
+`manual_nok`, `production_min`, `ideal_cycle_s`, `performance_pct`,
+`updated_at_utc`.
+
+**`powerbi_daily_overall`**: `day`, `stations`, `ok_count`, `nok_count`,
+`total_count`, `scrap_pct`, `production_min`, `availability_pct`,
+`performance_pct`, `quality_pct`, `oee_pct`, `comments`.
+
+The tables behind them (`daily_stations`, `daily_jobs`) are read-only on the
+Raw data tab and are part of backups.
+
+### The other views
 
 **`powerbi_job_totals`**: `station_id`, `station_name`, `job`, `ok_count`,
 `nok_count`, `manual_ok`, `manual_nok`, `is_current_job`, `started_at_utc`,
@@ -65,64 +111,70 @@ versions; reports should use the views.
 
 ## Setting it up on the server
 
-The bundled database is only reachable inside Docker. To let Power BI reach it
-and create the read-only login:
+On the **Database** tab, under *Power BI access*, click **Turn on**. Nothing on
+the server has to change:
 
-1. Copy `deploy/docker-compose.powerbi.yml` next to the server's
-   `docker-compose.yml`, renamed to **`docker-compose.override.yml`** (compose
-   reads it automatically; the main compose file stays unchanged).
-2. Add to the `.env` in the same folder:
+- the app creates the read-only login `powerbi` with a generated password
+  (**Show** on the Database tab; **New password** makes another one), and
+- it opens one of the listener ports for it (`5119`, the last of
+  `LISTEN_PORTS`, by default; pick another one before turning it on). The
+  compose file already publishes those ports. The app passes connections on
+  that port on to the database.
 
-   ```bash
-   POWERBI_PASSWORD=<a strong password>
-   POWERBI_DB_PORT=5432
-   ```
+Power BI then connects to `<server IP>:5119`. It stays on after restarts and
+image updates until **Turn off**, which closes the port and takes the login's
+right to sign in away. While it is on, no device can use that port.
 
-3. `docker compose up -d`.
+Only the read-only login gets through that port: any other user (such as the
+app's own database login) is refused. The login may read the `powerbi_*`
+views and nothing else.
 
-On startup the app creates the login `powerbi` (or `POWERBI_USER`) with that
-password, or updates its password, and lets it read the `powerbi_*` views and
-nothing else. The database is then published on `POWERBI_DB_PORT` of the
-server.
-
-**Firewall:** the database port is open on the server from then on. Allow it
-only from the PC that runs Power BI Desktop or the gateway, for example:
+**Firewall:** allow the port only from the PC that runs Power BI Desktop or the
+gateway, for example:
 
 ```bash
-sudo ufw allow from 192.168.1.50 to any port 5432 proto tcp
+sudo ufw allow from 192.168.1.50 to any port 5119 proto tcp
 ```
 
-The bundled database has no TLS, so the connection is not encrypted; keep it
+The connection is not encrypted (the bundled database has no TLS); keep it
 inside the plant network.
 
-To turn it off again, delete `docker-compose.override.yml` and run
-`docker compose up -d`; the port is closed and the login can no longer reach
-the database from outside.
+### Older setup with docker-compose.powerbi.yml
 
-**Database on another server** (chosen on the Database tab): the app creates
-the read-only login there too when `POWERBI_PASSWORD` reaches the app (the
-override file passes it) and its database user may create roles; otherwise
-the log says why and an administrator of that server creates it with:
+Servers set up before 1.11 with `deploy/docker-compose.powerbi.yml` as
+`docker-compose.override.yml` and `POWERBI_PASSWORD` / `POWERBI_DB_PORT` in
+the `.env` keep working: that publishes the database itself on
+`POWERBI_DB_PORT`, and the login gets `POWERBI_PASSWORD`. To move to the new
+way, delete `docker-compose.override.yml` and the two lines in the `.env`, run
+`docker compose up -d`, and turn Power BI access on on the Database tab (the
+login gets a new password, and Power BI the new port).
+
+**Database on another server** (chosen on the Database tab): Power BI can
+connect to that server directly. The app creates the read-only login there
+when its database user may create roles (*Turn on* says why when it can't);
+otherwise an administrator of that server creates it with:
 
 ```sql
 CREATE ROLE powerbi LOGIN PASSWORD '…';
 GRANT CONNECT ON DATABASE cognex TO powerbi;
 GRANT USAGE ON SCHEMA public TO powerbi;
-GRANT SELECT ON powerbi_station_comments, powerbi_stations, powerbi_job_totals,
-                powerbi_readings, powerbi_devices TO powerbi;
+GRANT SELECT ON powerbi_station_comments, powerbi_stations, powerbi_jobs,
+                powerbi_job_totals, powerbi_readings, powerbi_daily_stations,
+                powerbi_daily_jobs, powerbi_daily_overall, powerbi_devices TO powerbi;
 ```
 
 ## Power BI Desktop
 
 1. Home → Get data → More… → **PostgreSQL database** → Connect.
-2. Server: `<server IP>:5432` (the `POWERBI_DB_PORT`), Database: `cognex`
-   (`POSTGRES_DB`). Pick **Import**, or DirectQuery for live data → OK.
+2. Server: `<server IP>:5119` (the port shown on the Database tab), Database:
+   `cognex` (`POSTGRES_DB`). Pick **Import**, or DirectQuery for live data → OK.
 3. Sign in on the **Database** tab of the sign-in window with `powerbi` and the
    password (an administrator can show it on the Database tab).
 4. If Power BI says the connection isn't encrypted, click OK to connect
    without encryption (or in File → Options and settings → Data source
    settings → this source → Edit permissions, clear *Encrypt connections*).
-5. Tick the views you need (comments: `powerbi_station_comments`) → Load.
+5. Tick the views you need (one row per station and day:
+   `powerbi_daily_stations`; comments: `powerbi_station_comments`) → Load.
 
 Join views on `station_id` (for example comments with job totals) in the
 model view.
@@ -152,6 +204,15 @@ Allow the database port in the server's firewall from the gateway PC.
    Load. Data → Refresh All reads the latest data.
 
 ## Example SQL queries
+
+OK / NOK, scrap and OEE per station and day, last 30 days:
+
+```sql
+SELECT day, station_name, ok_count, nok_count, scrap_pct, production_min, oee_pct
+FROM powerbi_daily_stations
+WHERE day > current_date - 30
+ORDER BY day DESC, station_name;
+```
 
 Comments of the last 7 days:
 

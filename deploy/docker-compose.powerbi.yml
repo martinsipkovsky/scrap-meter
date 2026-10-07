@@ -1,4 +1,7 @@
-# Optional: read the data with Power BI, Excel or another SQL client.
+# Older way to read the data with Power BI, Excel or another SQL client.
+# Since 1.11 this file isn't needed: turn on "Power BI access" on the
+# Database tab instead (it uses one of the listener ports). Servers that use
+# this file keep working.
 # Put this file next to docker-compose.yml, renamed to docker-compose.override.yml
 # (docker compose reads it automatically), set these in the .env:
 #   POWERBI_PASSWORD=<a strong password>   read-only login "powerbi", made on startup

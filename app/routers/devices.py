@@ -94,6 +94,10 @@ def _check_listen_port(db: Session, protocol: str, port: int, device_id: int | N
             f"Listen port must be between {lo} and {hi} (the ports published in "
             f"docker-compose, LISTEN_PORTS). Got {port}.",
         )
+    from ..powerbi_access import reserved_port
+
+    if port == reserved_port():
+        raise HTTPException(409, f"Port {port} is used for Power BI (Database tab). Pick another one.")
     clash = (
         db.query(Device)
         .filter(

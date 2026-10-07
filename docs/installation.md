@@ -93,12 +93,19 @@ If a saved database server is not reachable when the app starts, it retries
 for about a minute before falling back to the bundled database (the Database
 tab then says so). `GET /healthz` shows the running version.
 
+### Updating to 1.11 (Power BI from the Database tab, daily data)
+
+Nothing has to be done: the compose file does not change. The daily data is
+computed for every past day shortly after the first start (in the background).
+Power BI access is now switched on on the Database tab; a server that uses
+`docker-compose.powerbi.yml` keeps working as before (see
+[Reports](reporting.md#setting-it-up-on-the-server)).
+
 ### Updating to 1.6 (comments, Power BI)
 
 Nothing has to be done: the compose file does not change, and the new
 comments table and the `powerbi_*` views are made on the first start. To read
-the data with Power BI, add the optional `docker-compose.powerbi.yml` as
-described in [Reports](reporting.md#setting-it-up-on-the-server).
+the data with Power BI, see [Reports](reporting.md#setting-it-up-on-the-server).
 
 ### Updating to 1.5 (stations)
 
@@ -140,7 +147,8 @@ and are kept from then on.
 |---|---|---|
 | `8000` (`WEB_PORT`) | TCP | Web UI and API |
 | `5100-5119` (`LISTEN_PORTS`) | TCP and UDP | Devices that push data: TCP listener, UDP listener, SLMP server. One port per device. |
-| `5432` (`POWERBI_DB_PORT`) | TCP | Optional, only with `docker-compose.powerbi.yml`: the database, for Power BI / Excel. Allow it only from the Power BI or gateway PC. |
+| `5119` (one of `LISTEN_PORTS`, chosen on the Database tab) | TCP | Optional, while Power BI access is on: the read-only login for Power BI / Excel. Allow it only from the Power BI or gateway PC. |
+| `5432` (`POWERBI_DB_PORT`) | TCP | Only with the older `docker-compose.powerbi.yml`: the database, for Power BI / Excel. |
 
 Compose publishes the whole listener range on both TCP and UDP. Open it in the
 host firewall too, for example:

@@ -37,7 +37,7 @@ SECRET_KEYS = {"password", "bot_token", "token", "api_key", "secret"}
 # tables where rows can't be added here (they need a secret, or are the log)
 NO_INSERT = {"users": "Add users on the Users tab", "notification_providers": "Add providers on the Notifications tab",
              DbAuditLog.__tablename__: "The audit log is read-only"}
-READ_ONLY = {DbAuditLog.__tablename__}
+READ_ONLY = {DbAuditLog.__tablename__, "daily_stations", "daily_jobs"}  # daily: made by app.daily
 PAGE_SIZES = (25, 50, 100, 200)
 MAX_SQL_ROWS = 500
 OPS = ("=", "!=", "<", "<=", ">", ">=", "contains", "starts", "empty", "not_empty")

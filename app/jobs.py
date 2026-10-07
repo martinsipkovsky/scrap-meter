@@ -21,7 +21,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .models import CounterState, Job, Meta, Station, utcnow
+from . import pieces
+from .models import CounterState, Job, Meta, SourceState, Station, utcnow
 
 log = logging.getLogger("cognex.jobs")
 
@@ -66,10 +67,19 @@ def listing(db: Session) -> list[dict]:
             ran.setdefault(job, []).append(station_names[sid])
         if updated and (job not in last or aware(updated) > last[job]):
             last[job] = aware(updated)
+    # pictures of pieces not judged yet, per job (piece rules)
+    open_pieces: dict[str, list[dict]] = {}
+    for sid, src_id, job, piece in db.query(SourceState.station_id, SourceState.source_id, SourceState.job,
+                                             SourceState.open_piece):
+        if piece and (piece.get("ok") or piece.get("nok")) and sid in station_names:
+            open_pieces.setdefault(job, []).append({"station": station_names[sid], **piece})
     out = [{
         "id": j.id,
         "name": j.name,
         "ideal_cycle_s": j.ideal_cycle_s,
+        "piece_rule": j.piece_rule,
+        "piece_rule_text": pieces.describe(j.piece_rule),
+        "open_pieces": open_pieces.get(j.name, []),
         "running_on": current.get(j.name, []),
         "stations": sorted(set(ran.get(j.name, []))),
         "last_counted_at": last.get(j.name),
@@ -81,6 +91,15 @@ def listing(db: Session) -> list[dict]:
 
 def aware(t: dt.datetime) -> dt.datetime:
     return t.replace(tzinfo=dt.timezone.utc) if t.tzinfo is None else t
+
+
+def set_piece_rule(db: Session, name: str, rule: dict | None) -> Job:
+    job = db.query(Job).filter(Job.name == name).first()
+    if job is None:
+        job = Job(name=name)
+        db.add(job)
+    job.piece_rule = rule
+    return job
 
 
 def set_cycle(db: Session, name: str, seconds: float | None) -> Job:

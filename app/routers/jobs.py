@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import jobs
+from .. import jobs, pieces
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import CounterState, Job, User
@@ -18,6 +18,8 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 class JobUpdate(BaseModel):
     # ideal seconds per piece; None clears it
     ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
+    # how camera pictures make pieces (app.pieces); None = 1 picture, 1 piece
+    piece_rule: Optional[dict] = None
 
 
 @router.get("")
@@ -36,9 +38,17 @@ def update_job(
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(404, "Job not found")
-    job.ideal_cycle_s = payload.ideal_cycle_s
+    data = payload.model_dump(exclude_unset=True)
+    if "ideal_cycle_s" in data:
+        job.ideal_cycle_s = data["ideal_cycle_s"]
+    if "piece_rule" in data:
+        try:
+            job.piece_rule = pieces.normalize(data["piece_rule"])
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
     db.commit()
-    return {"id": job.id, "name": job.name, "ideal_cycle_s": job.ideal_cycle_s}
+    return {"id": job.id, "name": job.name, "ideal_cycle_s": job.ideal_cycle_s, "piece_rule": job.piece_rule,
+            "piece_rule_text": pieces.describe(job.piece_rule)}
 
 
 @router.delete("/{job_id}", status_code=204)

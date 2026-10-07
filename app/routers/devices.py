@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import jobs, protocols, stations
+from .. import jobs, pieces, protocols, stations
 from ..config import settings
 from ..database import get_db
 from ..dependencies import require_api_user, require_permission
@@ -171,7 +171,8 @@ def export_devices(db: Session = Depends(get_db), _: User = Depends(require_perm
                    for src in st.source_list()]
         out_stations.append({**{f: getattr(st, f) for f in STATION_FIELDS}, "sources": sources})
     jobs.sync(db)
-    out_jobs = [{"name": j.name, "ideal_cycle_s": j.ideal_cycle_s} for j in db.query(Job).order_by(Job.name)]
+    out_jobs = [{"name": j.name, "ideal_cycle_s": j.ideal_cycle_s, "piece_rule": j.piece_rule}
+                for j in db.query(Job).order_by(Job.name)]
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M")
     return JSONResponse(
         {"version": 4, "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -295,6 +296,11 @@ def import_devices(
             if item.ideal_cycle_s:
                 jobs.set_cycle(db, item.name.strip(), item.ideal_cycle_s)
                 jobs_set.append(item.name)
+            if item.piece_rule:
+                try:
+                    jobs.set_piece_rule(db, item.name.strip(), pieces.normalize(item.piece_rule))
+                except (ValueError, TypeError) as exc:
+                    errors.append(f"job {item.name}: {exc}")
     elif legacy_cycles and not errors:
         db.flush()
         epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)

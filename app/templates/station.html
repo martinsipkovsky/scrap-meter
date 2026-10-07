@@ -182,7 +182,9 @@ function renderSources(d) {
     tb.append(el('tr', { class: s.active ? '' : 'source-idle' },
       el('td', {}, el('strong', {}, s.device || 'deleted device')),
       el('td', {}, state),
-      el('td', {}, s.current_job || '—'),
+      el('td', {}, s.current_job || '—',
+        s.open_piece && (s.open_piece.ok || s.open_piece.nok)
+          ? el('div', { class: 'muted' }, 'open piece: ' + s.open_piece.ok + ' OK, ' + s.open_piece.nok + ' NOK picture(s)') : null),
       el('td', { class: 'muted' }, Object.keys(LABELS).filter(r => s[r]).map(r => LABELS[r] + ': ' + s[r]).join(' · ')),
       el('td', { class: 'muted' }, s.ok ? s.start_count + ' OK within ' + s.start_window_s + ' s' : 'follows the station')));
   }

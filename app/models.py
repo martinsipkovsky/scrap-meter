@@ -253,6 +253,9 @@ class SourceState(Base):
     last_ok_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # pieces seen while not in production: [[unix time, ok, nok, total], ...]
     pending: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    # pictures of a piece not judged yet, with a piece rule (app.pieces):
+    # {"ok": n, "nok": n, "since": unix time of its first picture, "id": piece id}
+    open_piece: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -267,6 +270,8 @@ class Job(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     # ideal seconds per piece at full speed (None = not set)
     ideal_cycle_s: Mapped[Optional[float]] = mapped_column(nullable=True)
+    # how pictures make pieces (app.pieces.normalize); None = 1 picture, 1 piece
+    piece_rule: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

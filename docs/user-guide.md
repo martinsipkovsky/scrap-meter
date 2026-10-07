@@ -68,6 +68,44 @@ The list shows each device's latest values and the stations that use it.
 which is the quickest way to check a new configuration. A device that a
 station uses can't be deleted until the station is changed or deleted.
 
+### Pictures and pieces
+
+When a camera takes several pictures of one real piece (both sides, several
+cavities, a re-check), its OK / NOK counters count pictures, not pieces. The
+**Jobs: pictures and pieces** list under the devices sets, per job, how
+pictures make a piece (**Set rule**; the same button is in the Jobs list on
+the Stations tab). From then on the dashboard, statistics, OEE, notifications,
+chat commands and Power BI count real pieces. The Data log keeps the camera's
+own picture counters next to the pieces counted (*Counted*). Past data isn't
+changed. Without a rule every picture is a piece, as before.
+
+| Setting | Meaning | Example |
+|---|---|---|
+| Pictures per piece | N pictures make one piece | 2: OK, NOK → NOK +1; OK, OK → OK +1 |
+| A piece is OK when | *all its pictures are OK* (default), or *at least K pictures are OK* | 3 pictures, at least 2: NOK, OK, OK → OK +1; NOK, NOK, OK → NOK +1 |
+| A NOK picture ends the piece at once | "Next cavity when NOK": as soon as the piece is NOK it is counted, and the next picture starts a new piece | 3 pictures: OK, NOK → NOK +1, then OK, OK, OK → OK +1 |
+| Timer (seconds) | A piece that hasn't got all its pictures this long after its first one is judged anyway | 2 pictures, 10 s: OK, then nothing for 10 s → judged by the next setting |
+| When pictures are missing | At the timer, a job change, a production stop or a new piece id: *the piece is NOK* (default), *judge only the pictures taken* (OK unless more NOK pictures than allowed), or *don't count the piece* | 2 pictures, only OK came: NOK +1 / OK +1 / nothing |
+| Piece id value | A value the device sends with each picture (for example a piece or cavity number). Pictures with the same id are one piece, up to N; a new id ends the open piece | id 7: OK, OK; id 8: OK, NOK → OK +1, NOK +1 |
+
+The dialog shows these examples for the rule being edited. A piece that is
+still waiting for pictures is shown under the rule (*Open: …*) and on the
+station view.
+
+**Exact or estimated:** a listener in *event* mode (one record per picture),
+or any device read after every picture, gives the pictures in order, so the
+pieces are exact. When a polled counter rose by several pictures between two
+reads, the order of the OK and NOK pictures is unknown: the app then assumes
+the worst, every NOK picture spoiling a piece of its own (2 OK and 2 NOK
+pictures with 2 per piece → NOK +2). Those counts are an estimate; poll as
+often as the line makes pictures, or use event mode, for exact pieces.
+
+The timer is checked whenever the device is read: on every poll for polled
+devices, and with the next record for listeners (a piece judged by the timer
+is counted when the next picture arrives). Stopping production drops an
+unfinished piece; changing job ends it under the old job by the *missing*
+setting. Piece rules are part of the device export and of backups.
+
 ### OPC UA devices
 
 An OPC UA device is only the connection to the server:

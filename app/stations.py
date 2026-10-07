@@ -49,9 +49,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from . import production
+from . import pieces, production
 from .counters import SAMPLE_KEYS, deltas
-from .models import CounterState, Device, Meta, Reading, SourceState, Station, utcnow
+from .models import CounterState, Device, Job, Meta, Reading, SourceState, Station, utcnow
 
 log = logging.getLogger("cognex.stations")
 
@@ -289,6 +289,8 @@ class _Read:
     raw: tuple[int, int, int]
     added: list[int] = field(default_factory=lambda: [0, 0, 0])  # ok, nok, total
     job_changed_from: str | None = None
+    # pieces of the previous job's open piece, closed by the job change
+    closed_old: list[int] | None = None
     # the start rule fired: other sources' pending pieces that count with it,
     # each under its own job: (source, its state, [ok, nok, total])
     flushed: list[tuple[dict, SourceState, list[int]]] = field(default_factory=list)
@@ -323,7 +325,25 @@ def _process(db: Session, station: Station, src: dict, devices: dict[int, Device
         d_ok = d_nok = d_count = 0  # the first read is the baseline (see sample_values)
     st.last_pass, st.last_fail, st.last_count, st.baselined = ok or 0, nok or 0, count or 0, True
 
+    # piece rule of the job: pictures become pieces (app.pieces)
     state = production.state(station, now)
+    if read.job_changed_from and st.open_piece:
+        a, b = pieces.close_open(_piece_rule(db, read.job_changed_from), st.open_piece)
+        st.open_piece = None
+        if (a or b) and state == production.RUNNING:
+            read.closed_old = [a, b, a + b]
+    rule = _piece_rule(db, job)
+    if state == production.STOPPED:
+        st.open_piece = None  # nothing counts while stopped
+    elif rule:
+        piece_id = None
+        if rule.get("group_key"):
+            piece_id = (devices[src["device_id"]].last_values or {}).get(rule["group_key"])
+            piece_id = None if piece_id in (None, "") else str(piece_id)
+        d_ok, d_nok, st.open_piece = pieces.apply(rule, st.open_piece, d_ok, d_nok, now.timestamp(), piece_id)
+        d_count = d_ok + d_nok
+    elif st.open_piece:
+        st.open_piece = None  # the rule was removed
     if state == production.RUNNING:
         st.pending = []
         read.added = [d_ok, d_nok, d_count]
@@ -348,13 +368,19 @@ def _process(db: Session, station: Station, src: dict, devices: dict[int, Device
             for other in states.values():
                 if other is st:
                     continue
-                pieces = [sum(p[i] for p in other.pending or [] if t - p[0] <= window) for i in (1, 2, 3)]
+                held = [sum(p[i] for p in other.pending or [] if t - p[0] <= window) for i in (1, 2, 3)]
                 other.pending = []
-                if any(pieces) and other.source_id in by_id and other.job:
-                    read.flushed.append((by_id[other.source_id], other, pieces))
+                if any(held) and other.source_id in by_id and other.job:
+                    read.flushed.append((by_id[other.source_id], other, held))
     else:  # stopped by an operator: nothing counts
         st.pending = []
     return read
+
+
+def _piece_rule(db: Session, job: str | None) -> dict | None:
+    if not job:
+        return None
+    return db.query(Job.piece_rule).filter(Job.name == job).scalar()
 
 
 def _set_active_jobs(db: Session, station: Station, states: dict[str, SourceState]) -> None:
@@ -438,6 +464,8 @@ def record_device(db: Session, station: Station, device: Device, devices: dict[i
         readings.append(reading)
 
     for read in reads:
+        if read.closed_old:  # the last piece of the previous job
+            log(read.src, read.job_changed_from, read.raw, read.closed_old)
         log(read.src, read.job, read.raw, read.added)
         for src, other, pieces in read.flushed:  # counted with the start, under their own job
             log(src, other.job, (other.last_pass, other.last_fail, other.last_count), pieces)
@@ -555,6 +583,7 @@ def sources_view(db: Session, station: Station, devices: dict[int, Device], now:
             "current_job": st.job if st else None,  # "job" is the value it reads it from
             "active": is_active(station, src, st, devices, now),
             "last_ok_at": _aware(st.last_ok_at) if st else None,
+            "open_piece": st.open_piece if st else None,
         })
     active = list(dict.fromkeys(r["device"] for r in rows if r["active"] and r["device"]))
     last = None

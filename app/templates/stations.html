@@ -20,7 +20,7 @@
   <div><h2 style="margin:0">Jobs</h2><p class="lead">Every job the stations have counted appears here by itself. The ideal cycle time is the seconds one piece of the job takes at full speed: the OEE performance factor. Pieces of a job without one are left out of performance, and the OEE panel names the job.</p></div>
 </div>
 <table>
-  <thead><tr><th>Job</th><th>Ideal cycle time</th><th>Running on</th><th>Counted on</th><th>Last counted</th><th></th></tr></thead>
+  <thead><tr><th>Job</th><th>Ideal cycle time</th><th>Pieces</th><th>Running on</th><th>Counted on</th><th>Last counted</th><th></th></tr></thead>
   <tbody id="jobRows"></tbody>
 </table>
 <div id="jobsEmpty" class="empty" style="display:none">No jobs yet: a job appears when a station first counts it (from a device or a manual entry).</div>
@@ -299,6 +299,7 @@ async function loadJobs() {
     tb.append(el('tr', {},
       el('td', {}, el('strong', {}, j.name)),
       el('td', {}, cell),
+      el('td', { style: 'max-width:260px' }, pieceRuleCell(j, CAN_MANAGE, loadJobs)),
       el('td', {}, j.running_on.length ? j.running_on.join(', ') : el('span', { class: 'muted' }, '—')),
       el('td', { class: 'muted' }, j.stations.join(', ') || '—'),
       el('td', { class: 'muted' }, j.last_counted_at ? fmtAgo(j.last_counted_at) : '—'),

@@ -179,3 +179,114 @@ function commentsPanel(stationId, opts = {}) {
   load();
   return el('div', {}, el('div', { class: 'comment-form' }, ta, add), list);
 }
+
+// ---- piece rules (pictures -> pieces per job, app.pieces) ---------------------
+function pieceRuleText(r) {
+  if (!r) return '1 picture = 1 piece';
+  const n = r.pictures, parts = [];
+  parts.push(r.group_key ? `pictures with the same '${r.group_key}' are one piece (up to ${n})` : `${n} pictures = 1 piece`);
+  parts.push(r.verdict === 'min_ok' && r.min_ok < n ? `OK with at least ${r.min_ok} OK pictures` : 'OK only if all pictures are OK');
+  if (r.nok_closes) parts.push('a NOK ends the piece');
+  if (r.timeout_s) parts.push(`judged after ${r.timeout_s} s`);
+  parts.push({ nok: 'missing pictures make it NOK', judge: 'missing pictures are left out', discard: 'incomplete pieces are not counted' }[r.missing]);
+  return parts.join(', ');
+}
+function openPieceText(p) {
+  const n = (p.ok || 0) + (p.nok || 0);
+  return `${p.station}: ${n} picture${n === 1 ? '' : 's'} so far (${p.ok} OK, ${p.nok} NOK)` + (p.id != null ? `, piece ${p.id}` : '')
+    + (p.since ? ', since ' + fmtAgo(new Date(p.since * 1000).toISOString()) : '');
+}
+function _pieceModal() {
+  let m = document.getElementById('pieceModal');
+  if (m) return m;
+  const field = (label, input, hint) => el('div', {}, el('label', {}, label), input, hint ? el('div', { class: 'hint' }, hint) : null);
+  m = el('div', { class: 'modal-back', id: 'pieceModal' }, el('div', { class: 'modal', style: 'max-width:620px' },
+    el('h2', { id: 'pr_title' }, 'Pieces'),
+    el('div', { id: 'pr_error', class: 'error', style: 'display:none' }),
+    el('p', { class: 'muted', style: 'margin-top:0' }, 'When the camera takes several pictures of one piece, the app can count real pieces: the dashboard, statistics, OEE, notifications and reports then count pieces. The Data log keeps the camera\'s own picture counters.'),
+    el('div', { class: 'row' },
+      field('Pictures per piece', el('input', { id: 'pr_n', type: 'number', min: '1', max: '64', value: '1', oninput: () => _pieceExample() }), '1 = every picture is a piece (no rule).'),
+      field('A piece is OK when', el('select', { id: 'pr_verdict', onchange: () => _pieceExample() },
+        el('option', { value: 'all_ok' }, 'all its pictures are OK'), el('option', { value: 'min_ok' }, 'at least K pictures are OK')))),
+    el('div', { class: 'row', id: 'pr_kRow' },
+      field('K: OK pictures needed', el('input', { id: 'pr_k', type: 'number', min: '1', value: '1', oninput: () => _pieceExample() }), 'e.g. 2 of 3: one NOK picture is tolerated.')),
+    el('label', { style: 'display:flex;gap:8px;align-items:center;font-weight:normal;margin-top:10px' },
+      el('input', { type: 'checkbox', id: 'pr_close', style: 'width:auto;margin:0', onchange: () => _pieceExample() }),
+      'A NOK picture ends the piece at once (next cavity when NOK)'),
+    el('div', { class: 'hint' }, 'Use it when the machine moves on to the next piece after a NOK picture, so the piece never gets its other pictures.'),
+    el('div', { class: 'row' },
+      field('Timer (seconds)', el('input', { id: 'pr_timeout', type: 'number', min: '0', step: 'any', placeholder: 'no timer', oninput: () => _pieceExample() }),
+        'A piece that hasn\'t got all its pictures this long after its first one is judged anyway.'),
+      field('When pictures are missing', el('select', { id: 'pr_missing', onchange: () => _pieceExample() },
+        el('option', { value: 'nok' }, 'the piece is NOK'), el('option', { value: 'judge' }, 'judge only the pictures taken'),
+        el('option', { value: 'discard' }, 'don\'t count the piece')),
+        'Applies at the timer, a job change, a production stop and a new piece id.')),
+    field('Piece id value (optional)', el('input', { id: 'pr_key', placeholder: 'e.g. piece_id or cavity', oninput: () => _pieceExample() }),
+      'A value the device sends with each picture. Pictures with the same id are one piece; a new id ends the open piece. Leave empty to group by count.'),
+    el('div', { id: 'pr_example', class: 'warnbox', style: 'margin-top:12px' }),
+    el('div', { class: 'hint' }, 'Counted from now on; past data isn\'t changed. With one picture per read (listeners, events) the grouping is exact. When a polled counter rose by several pictures between two reads, the order is unknown and every NOK picture is taken to spoil a piece of its own: those counts are an estimate.'),
+    el('div', { class: 'actions', style: 'margin-top:16px;justify-content:space-between' },
+      el('button', { class: 'btn danger small', id: 'pr_remove', onclick: () => _savePieceRule(null) }, 'No rule'),
+      el('div', { class: 'actions' },
+        el('button', { class: 'btn secondary', onclick: () => closeModal('pieceModal') }, 'Cancel'),
+        el('button', { class: 'btn', onclick: () => _savePieceRule(_pieceForm()) }, 'Save')))));
+  document.body.append(m);
+  return m;
+}
+let _pieceJob = null, _pieceDone = null;
+function _pieceForm() {
+  const v = (id) => document.getElementById(id).value.trim();
+  const n = parseInt(v('pr_n'), 10) || 1;
+  return { pictures: n, verdict: v('pr_verdict'), min_ok: Math.min(parseInt(v('pr_k'), 10) || n, n),
+    nok_closes: document.getElementById('pr_close').checked, timeout_s: v('pr_timeout') === '' ? null : parseFloat(v('pr_timeout')),
+    missing: v('pr_missing'), group_key: v('pr_key') || null };
+}
+function _pieceExample() {
+  const r = _pieceForm();
+  document.getElementById('pr_kRow').style.display = r.verdict === 'min_ok' ? '' : 'none';
+  const box = document.getElementById('pr_example');
+  if (r.pictures <= 1 && !r.group_key) { box.textContent = 'No rule: every OK / NOK picture counts as one piece.'; return; }
+  const n = r.pictures, k = r.verdict === 'min_ok' ? r.min_ok : n, allowed = n - k;
+  const pics = (nok, ok) => [...Array(nok).fill('NOK'), ...Array(ok).fill('OK')].join(', ');
+  const ex = [pics(0, n) + ' → OK +1'];
+  if (allowed > 0) ex.push(pics(allowed, n - allowed) + ' → OK +1');
+  if (r.nok_closes && allowed + 1 < n) ex.push(pics(allowed + 1, 0) + ' → NOK +1 at once; the next picture starts a new piece');
+  else ex.push(pics(allowed + 1, n - allowed - 1) + ' → NOK +1');
+  const miss = { nok: 'NOK +1', judge: allowed ? 'judged on the pictures taken' : 'OK +1 if they were all OK, else NOK +1', discard: 'not counted' }[r.missing];
+  if (n > 1) ex.push(`only ${n - 1} of ${n} pictures came (${pics(0, n - 1)})` + (r.timeout_s ? ` within ${r.timeout_s} s` : ' before a job change or stop') + ` → ${miss}`);
+  box.innerHTML = '';
+  box.append(el('strong', {}, pieceRuleText(r)), ...ex.map(t => el('div', {}, t)));
+}
+function openPieceRule(job, onDone) {
+  _pieceModal();
+  _pieceJob = job; _pieceDone = onDone;
+  const r = job.piece_rule || {};
+  document.getElementById('pr_title').textContent = 'Pieces of job ' + job.name;
+  document.getElementById('pr_error').style.display = 'none';
+  document.getElementById('pr_n').value = r.pictures || 1;
+  document.getElementById('pr_verdict').value = r.verdict || 'all_ok';
+  document.getElementById('pr_k').value = r.min_ok || r.pictures || 1;
+  document.getElementById('pr_close').checked = !!r.nok_closes;
+  document.getElementById('pr_timeout').value = r.timeout_s || '';
+  document.getElementById('pr_missing').value = r.missing || 'nok';
+  document.getElementById('pr_key').value = r.group_key || '';
+  document.getElementById('pr_remove').style.display = job.piece_rule ? '' : 'none';
+  _pieceExample();
+  openModal('pieceModal');
+}
+async function _savePieceRule(rule) {
+  const err = document.getElementById('pr_error');
+  try {
+    const r = await patchJSON('/api/jobs/' + _pieceJob.id, { piece_rule: rule });
+    closeModal('pieceModal');
+    toast(_pieceJob.name + ': ' + r.piece_rule_text);
+    if (_pieceDone) _pieceDone();
+  } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+// the "Pieces" cell of a jobs table: the rule, the open pieces, and the button
+function pieceRuleCell(j, canManage, onDone) {
+  return el('div', {},
+    el('span', { class: j.piece_rule ? '' : 'muted' }, j.piece_rule_text || pieceRuleText(j.piece_rule)),
+    ...(j.open_pieces || []).map(p => el('div', { class: 'hint' }, 'Open: ' + openPieceText(p))),
+    canManage ? el('div', {}, el('button', { class: 'btn secondary small', style: 'margin-top:4px', onclick: () => openPieceRule(j, onDone) }, j.piece_rule ? 'Edit rule' : 'Set rule')) : null);
+}

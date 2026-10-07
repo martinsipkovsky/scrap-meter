@@ -181,6 +181,8 @@ class StationExportItem(BaseModel):
 class JobExportItem(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
+    # since 1.12: how camera pictures make pieces (app.pieces)
+    piece_rule: Optional[dict] = None
 
 
 class DeviceImport(BaseModel):

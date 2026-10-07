@@ -35,6 +35,9 @@ versions keep working.
   cameras each running their own job, or OK from an OPC UA PLC and NOK from a
   reject counter that pushes over TCP. The dashboard shows which devices are
   active. Parts counted by hand are added as manual entries on the station.
+- **Pictures and pieces:** per job, how many camera pictures make one real
+  piece and when it is OK (all OK, at least K OK, a NOK ends the piece, a
+  timer, a piece id value), so all figures count real pieces.
 - **OEE meter:** availability, performance and quality over the last 24 hours,
   with total OK and NOK, at the bottom of the dashboard. Ideal cycle times are
   set per job, so a station that changes job is weighed correctly.

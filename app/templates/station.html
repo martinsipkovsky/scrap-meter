@@ -10,6 +10,8 @@
   <div class="actions" id="controls"></div>
 </div>
 
+<div class="warnbox mute-note" id="muteNote" style="display:none"></div>
+
 <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom:16px">
   <div class="card"><div class="muted">Production</div><div id="prodState" class="stat small">—</div><div class="muted" id="prodNote"></div></div>
   <div class="card"><div class="muted">Current job</div><div id="job" class="stat small">—</div><div class="muted" id="conn"></div></div>
@@ -62,6 +64,7 @@
 const STATION_ID = {{ station_id }};
 const CAN_CONTROL = {{ 'true' if user.has_permission('control_connections') else 'false' }};
 const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
+const CAN_MUTE = {{ 'true' if user.has_permission('manage_devices') else 'false' }};
 let HOURS = 8;
 let lastState = null;
 
@@ -80,9 +83,17 @@ function fmtTime(iso, bucket) {
 
 function renderControls(d) {
   const c = document.getElementById('controls');
-  if (lastState === d.production_state && c.childElementCount) return;
-  lastState = d.production_state;
+  const key = d.production_state + '|' + d.alerts_muted;
+  if (lastState === key && c.childElementCount) return;
+  lastState = key;
   c.innerHTML = '';
+  if (CAN_MUTE) {
+    const on = !d.alerts_muted;
+    c.append(el('button', { class: 'switch' + (on ? ' on' : ''), role: 'switch', 'aria-checked': String(on),
+      title: on ? "Scrap warnings are on: this station's alerts are sent. Click to mute them until you turn them on again."
+                : "This station's alerts are muted. Click to turn them on again.",
+      onclick: () => setAlerts(!on) }, el('span', { class: 'knob' }), on ? 'Scrap warnings on' : 'Scrap warnings off'));
+  }
   if (!CAN_CONTROL) return;
   if (d.production_state === 'stopped' || d.production_state === 'idle') {
     c.append(el('button', { class: 'btn ok', onclick: () => setProduction('start') }, '▶ Start production'));
@@ -91,6 +102,20 @@ function renderControls(d) {
     c.append(el('button', { class: 'btn danger', onclick: () => setProduction('stop') }, '■ Stop production'));
   }
   c.append(el('button', { class: 'btn secondary', onclick: resetCounters }, '↺ Reset counters'));
+}
+
+async function setAlerts(on) {
+  try { await api('PUT', '/api/stations/' + STATION_ID + '/alerts', { on }); lastState = null; toast(on ? 'Alerts are on' : 'Alerts muted'); load(); }
+  catch (e) { toast(e.message, true); }
+}
+function renderMute(d) {
+  const n = document.getElementById('muteNote');
+  n.style.display = d.alerts_muted ? 'block' : 'none';
+  if (!d.alerts_muted) return;
+  n.textContent = '🔇 Alerts of this station are muted' + (d.muted_by ? ' by ' + d.muted_by : '') +
+    (d.muted_at ? ' since ' + fmtDateTime(d.muted_at) : '') +
+    (d.muted_until_job_change ? ', until its job changes.' : ', until someone turns Scrap warnings on again.') +
+    ' No scrap, fail, disconnect, production or job change alerts are sent for it.';
 }
 
 async function resetCounters() {
@@ -346,6 +371,7 @@ async function load() {
   document.getElementById('corrLegend').style.display = h.corr_ok || h.corr_nok ? '' : 'none';
   document.getElementById('bucketLabel').textContent = 'one bar = ' + fmtBucket(h.bucket_seconds);
   renderControls(d);
+  renderMute(d);
   renderChart(h);
 }
 

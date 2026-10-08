@@ -86,6 +86,10 @@ versions keep working.
 - **WhatsApp group commands:** `!status` (or your own commands) in a group
   answers with live production state, OK / NOK and scrap per station;
   each command can list only the stations active in the last N days.
+  `!mute <station>` silences a station's alerts until its job changes, like
+  the Scrap warnings switch on the station view.
+- **Changelog:** the version at the bottom of the menu opens the list of
+  changes in every release ([CHANGELOG.md](CHANGELOG.md)).
 - **Users and permissions:** login required, with granular permissions per user.
 - **Raw data tab** for admins: every table page by page with search, filters
   and sorting, type-aware inline editing, a change log with undo, and a

@@ -52,6 +52,9 @@ async function load() {
     const job = d.active_job;
     const body = [];
     body.push(el('h3', {}, el('span', { class: 'dot ' + dot }), d.name,
+      d.alerts_muted ? el('span', { class: 'muted-icon', role: 'img', 'aria-label': 'Alerts muted',
+        title: 'Alerts muted' + (d.muted_by ? ' by ' + d.muted_by : '') + (d.muted_at ? ' since ' + fmtDateTime(d.muted_at) : '') +
+          (d.muted_until_job_change ? ', until the job changes' : '') }, '🔇') : null,
       el('span', { class: 'badge ' + PROD_BADGE[d.production_state][0], style: 'margin-left:auto' }, PROD_BADGE[d.production_state][1])));
     const jobs = d.current_jobs.length ? d.current_jobs.join(' + ') : d.current_job;
     body.push(el('div', { class: 'muted' }, (d.devices.join(' + ') || 'manual entries') + (jobs ? ' · job ' + jobs : '') +

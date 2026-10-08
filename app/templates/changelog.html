@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Changelog · Scrap Meter{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div><h1>Changelog</h1><p class="lead">What changed in each release of Scrap Meter. This server runs version <strong style="color:var(--text)">{{ app_version }}</strong>.</p></div>
+</div>
+{% if not releases %}
+<div class="empty">The list of changes is not available in this installation.</div>
+{% endif %}
+<div class="changelog">
+{% for r in releases %}
+  <section class="card release{{ ' current' if r.version == app_version }}">
+    <div class="release-head">
+      <h2>{{ r.version }}</h2>
+      {% if r.version == app_version %}<span class="badge ok">running now</span>{% endif %}
+      <span class="muted">{{ r.date }}</span>
+    </div>
+    <ul>
+    {% for item in r['items'] %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </section>
+{% endfor %}
+</div>
+{% endblock %}

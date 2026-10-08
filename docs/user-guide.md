@@ -26,6 +26,10 @@ The **‹** button at the top of the menu hides it down to a strip of icons
 the choice. On a narrow screen, such as a phone, the menu is always the icon
 strip; **›** opens it over the page, and a tap next to it closes it again.
 
+The bottom of the menu shows the version the server runs (**Version 1.17.0**,
+or **v1.17** in the icon strip). Clicking it opens the **Changelog**: every
+release, newest first, with its date and what changed.
+
 ## Dashboard
 
 One block per station with its connection state, its devices, current job,
@@ -297,6 +301,16 @@ values and its start rule), an OK/NOK chart over 1 hour, 8 hours, 24 hours or
   the time. Nothing is sent to the devices, and the job totals in the Data log,
   the chart, the readings history and the scrap statistics stay as they were.
   Scrap and fail-count alerts follow the reset counters.
+- **Scrap warnings on / off** (needs the *manage_devices* permission, like
+  editing the station) mutes the station's alerts: no scrap rate, fail count,
+  disconnect, production change or job change notifications are sent for it.
+  Turned off here, they stay off until someone turns the switch on again.
+  `!mute <station>` in a WhatsApp group does the same until the station's job
+  changes, and `!unmute <station>` turns them on again (see
+  [Notifications](notifications.md#commands-in-whatsapp-groups)). While the
+  alerts are muted, the station view says who muted them, since when and
+  until what, and the dashboard block shows 🔇. Every mute and unmute is
+  listed in the Data log.
 
 With the `manual_entry` permission the station view also has an **Add entry**
 form, see [Manual entries](#manual-entries). Every user who sees the
@@ -452,6 +466,10 @@ statistics:
 Users with the `exclude_readings` permission get an **Exclude** button on each
 counted reading, and **Include** on a left-out one. Choose **Excluded readings
 only** to find them again.
+
+**Alerts muted and turned on** lists every time a station's alerts were
+muted or turned on again: when, by whom, and from where (the station view's
+switch, a WhatsApp command, or the job change that ended a `!mute`).
 
 ## Scrap statistics
 

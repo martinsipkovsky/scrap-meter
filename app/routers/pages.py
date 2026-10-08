@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from .. import changelog
 from ..database import get_db
 from ..dependencies import require_page_permission, require_user
 from ..models import PERMISSIONS, User
@@ -87,6 +88,12 @@ def rawdb_page(request: Request, user: User = Depends(require_user)):
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Only administrators can see the raw data")
     return templates.TemplateResponse(request, "rawdb.html", _ctx(request, user, page="rawdb"))
+
+
+@router.get("/changelog", response_class=HTMLResponse)
+def changelog_page(request: Request, user: User = Depends(require_user)):
+    return templates.TemplateResponse(request, "changelog.html",
+                                      _ctx(request, user, page="changelog", releases=changelog.releases()))
 
 
 @router.get("/account", response_class=HTMLResponse)

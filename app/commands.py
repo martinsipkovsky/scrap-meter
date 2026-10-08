@@ -11,7 +11,8 @@ is answered with live figures from the app.
 * A command can list only the stations that were in production at some point
   in the last N days (active_days; none = every station).
 * "help" is built in (unless a command with that keyword exists) and lists the
-  commands allowed in that group.
+  commands allowed in that group. So are "mute <station>" and "unmute
+  <station>" (app.mute), in the groups where any command is allowed.
 * Every handled command is logged (CommandLog), also when it was refused.
 
 A reply is the command's header, one line per station and its footer. Their
@@ -27,7 +28,7 @@ import time
 
 from sqlalchemy.orm import Session
 
-from . import production, scrap_stats, settings_store, stations
+from . import mute, production, scrap_stats, settings_store, stations
 from .scrap_stats import PART_COLUMNS, parts
 from .models import ChatCommand, CommandLog, Reading, Station, utcnow
 
@@ -266,7 +267,14 @@ def answer(db: Session, msg: dict, prefix: str | None = None) -> tuple[str, str 
             return "not_allowed", keyword, None
         listing = "\n".join(f"{p}{c.keyword}" + (f" – {c.description}" if c.description else "")
                             for c in sorted(here, key=lambda c: c.keyword))
+        builtin = [f"{p}{k} <station> – {text}" for k, text in BUILTIN_MUTE.items()
+                   if not any(c.keyword == k for c in commands)]
+        listing = "\n".join([listing, *builtin])
         return "answered", keyword, f"Commands (add a station name to see only that station):\n{listing}"
+    if cmd is None and keyword in BUILTIN_MUTE:
+        if not here:
+            return "not_allowed", keyword, None
+        return "answered", keyword, mute_reply(db, keyword, arg, msg, p)
     if cmd is None:
         if not here:
             return "not_allowed", keyword, None
@@ -274,6 +282,34 @@ def answer(db: Session, msg: dict, prefix: str | None = None) -> tuple[str, str 
     if not allowed_in(cmd, chat):
         return "not_allowed", keyword, None
     return "answered", keyword, render(db, cmd, arg)
+
+
+BUILTIN_MUTE = {
+    "mute": "mute the station's alerts until its job changes",
+    "unmute": "turn the station's alerts on again",
+}
+
+
+def mute_reply(db: Session, keyword: str, arg: str, msg: dict, p: str) -> str:
+    """!mute / !unmute <station>: the station's alerts off until its job
+    changes, or on again (app.mute)."""
+    station = mute.find_station(db, arg)
+    if station is None:
+        names = ", ".join(s.name for s in db.query(Station).order_by(Station.sort_order, Station.name)) or "none"
+        first = f"No single station matches '{arg}'." if arg else "Which station?"
+        return f"{first} Send {p}{keyword} <station>. Stations: {names}"
+    who = msg.get("sender_name") or msg.get("sender")
+    if keyword == "mute":
+        if station.alerts_muted:
+            return (f"🔇 Alerts of '{station.name}' are already muted"
+                    + (f" (by {station.muted_by})" if station.muted_by else "") + ".")
+        mute.mute(db, station, who, "chat", until_job_change=True)
+        return (f"🔇 Alerts of '{station.name}' are muted until its job changes. "
+                f"Send {p}unmute {station.name} to turn them on sooner.")
+    if not station.alerts_muted:
+        return f"🔔 Alerts of '{station.name}' are on."
+    mute.unmute(db, station, who, "chat")
+    return f"🔔 Alerts of '{station.name}' are on again."
 
 
 def _too_fast(chat: str) -> bool:

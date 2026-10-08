@@ -205,6 +205,14 @@ class Station(Base):
     # (height in pixels, null = the default). See app.hmi.
     hmi_windows: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
+    # since 1.17: the station's alerts are muted (app.mute): by whom, since
+    # when, and whether until the next job change ("!mute" in a chat) or until
+    # someone turns them on again (the switch on the station view)
+    alerts_muted: Mapped[bool] = mapped_column(Boolean, default=False)
+    muted_by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    muted_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    muted_until_job_change: Mapped[bool] = mapped_column(Boolean, default=False)
+
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -631,6 +639,23 @@ class CommandLog(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
+
+
+class StationEvent(Base):
+    """Something done to a station outside its readings, listed in the Data
+    log: alerts muted ("mute") or turned on again ("unmute")."""
+
+    __tablename__ = "station_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    # who did it (a web user, or the sender in a chat); None = the app
+    by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    # "web" | "chat" | "job change"
+    source: Mapped[str] = mapped_column(String(16))
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 # --------------------------------------------------------------------------- #

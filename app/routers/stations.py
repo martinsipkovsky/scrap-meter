@@ -12,10 +12,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import hmi, production, scrap_stats, stations
+from .. import hmi, mute, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
-from ..models import CounterState, NotificationRule, Station, User, utcnow
+from ..models import CounterState, NotificationRule, Station, StationEvent, User, utcnow
 from ..schemas import StationCreate, StationUpdate
 
 router = APIRouter(prefix="/api/stations", tags=["stations"])
@@ -110,6 +110,7 @@ def delete_station(
     """Delete a station with its counters and readings; its alert rules go too."""
     st = _get(db, station_id)
     db.query(NotificationRule).filter(NotificationRule.station_id == st.id).delete()
+    db.query(StationEvent).filter(StationEvent.station_id == st.id).delete()
     db.delete(st)
     db.commit()
 
@@ -164,6 +165,27 @@ def production_stop(
 ):
     """Mark the station as not in production until Start is pressed."""
     return _set_production(db, station_id, False)
+
+
+class AlertsIn(BaseModel):
+    on: bool
+
+
+@router.put("/{station_id}/alerts")
+def set_alerts(
+    station_id: int,
+    payload: AlertsIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("manage_devices")),
+):
+    """The Scrap warnings switch: off mutes the station's alerts until it is
+    turned on again (also ends a "!mute" from a chat). See app.mute."""
+    st = _get(db, station_id)
+    if payload.on:
+        mute.unmute(db, st, user.username, "web")
+    elif not st.alerts_muted or st.muted_until_job_change:
+        mute.mute(db, st, user.username, "web", until_job_change=False)
+    return mute.describe(st)
 
 
 @router.post("/{station_id}/counters/reset")

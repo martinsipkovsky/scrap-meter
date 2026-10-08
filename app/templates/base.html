@@ -65,10 +65,12 @@
           <div style="color:var(--text); font-weight:600;">{{ user.username }}</div>
           <div>{{ 'Administrator' if user.is_admin else 'User' }}</div>
           <div style="margin-top:8px;"><a href="/account">Account</a> · <a href="/logout">Sign out</a></div>
+          <a class="version" href="/changelog" title="What changed in each release">Version {{ app_version }}</a>
         </div>
         <div class="compact">
           <a href="/account" title="Account: {{ user.username }}">{{ icon('account') }}</a>
           <a href="/logout" title="Sign out">{{ icon('signout') }}</a>
+          <a class="version-tag" href="/changelog" title="Version {{ app_version }}: what changed">v{{ app_version.rsplit('.', 1)[0] if app_version.endswith('.0') else app_version }}</a>
         </div>
       </div>
     </aside>

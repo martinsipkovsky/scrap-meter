@@ -119,7 +119,8 @@ def test_alerts_and_web_commands_show_in_room(client, wa, monkeypatch):
     try:
         db.add(NotificationProvider(name="WA", kind="whatsapp", config={"transport": "linked", "to": [GROUP, OTHER]}))
         db.commit()
-        db.add(ChatCommand(**commands.DEFAULT_STATUS, group_ids=[]))
+        if not db.query(ChatCommand).count():  # seeded once per test run
+            db.add(ChatCommand(**commands.DEFAULT_STATUS, group_ids=[]))
         db.commit()
         notifications.dispatch(db, "High scrap", severity="alert")
     finally:

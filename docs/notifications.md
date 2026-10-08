@@ -145,6 +145,15 @@ receives is listed in the **Command log** with the group, the sender, the
 reply or the reason it was not answered. Messages older than two minutes
 (delivered after the app was offline) are ignored.
 
+**Muting a station**: `!mute line 1` mutes the alerts of the station called
+"Line 1" (any case; part of the name works when only one station matches)
+until its job changes; `!unmute line 1` turns them on again. Without a name,
+or with one that matches no single station, the reply lists the stations. Both
+work for anyone in a group where any command is allowed, are listed by
+`!help`, and do the same as the Scrap warnings switch on the station view
+(see the [User guide](user-guide.md#station-view)). A command you set up with
+the keyword `mute` or `unmute` replaces the built-in one.
+
 Commands also work when you send them from the linked phone itself, and from
 the [Chat room](user-guide.md#chat-room) tab when the room is a WhatsApp group;
 the app's own replies never trigger a command.

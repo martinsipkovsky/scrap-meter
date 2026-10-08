@@ -26,6 +26,14 @@
   <div id="readingEmpty" class="empty" style="display:none">No readings yet.</div>
 </div>
 
+<div class="section">
+  <h2>Alerts muted and turned on</h2>
+  <p class="hint" style="margin-top:0">A station's alerts are muted with <code>!mute</code> in a WhatsApp group (until its job changes) or the Scrap warnings switch on the station view (until turned on again).</p>
+  <table><thead><tr><th>Time</th><th>Station</th><th>What</th><th>By</th><th>From</th></tr></thead>
+  <tbody id="eventRows"></tbody></table>
+  <div id="eventEmpty" class="empty" style="display:none">No alerts were muted yet.</div>
+</div>
+
 <div class="modal-back" id="entryModal">
   <div class="modal">
     <h2>Edit manual entry</h2>
@@ -88,6 +96,7 @@ async function load() {
   const exFilter = document.getElementById('excludedFilter').value;
   const url = '/api/data/readings?limit=100' + (filter ? '&station_id=' + filter : '') + (exFilter ? '&excluded=' + exFilter : '');
   const readings = await getJSON(url);
+  loadEvents(filter).catch(() => {});
   const rRows = document.getElementById('readingRows'); rRows.innerHTML = '';
   document.getElementById('readingEmpty').style.display = readings.length ? 'none' : 'block';
   for (const r of readings) {
@@ -105,6 +114,21 @@ async function load() {
       el('td', {}, r.manual ? '—' : String(r.total_pass)), el('td', {}, r.manual ? '—' : String(r.total_fail)),
       el('td', {}, readingState(r)),
     ));
+  }
+}
+async function loadEvents(filter) {
+  const rows = await getJSON('/api/data/events?limit=50' + (filter ? '&station_id=' + filter : ''));
+  const tb = document.getElementById('eventRows'); tb.innerHTML = '';
+  document.getElementById('eventEmpty').style.display = rows.length ? 'none' : 'block';
+  const FROM = { web: 'Station view', chat: 'WhatsApp', 'job change': 'Job change' };
+  for (const e of rows) {
+    tb.append(el('tr', {},
+      el('td', { class: 'muted' }, new Date(e.created_at).toLocaleString()),
+      el('td', {}, devName(e.station_id)),
+      el('td', {}, e.kind === 'mute' ? el('span', { class: 'badge warn' }, '🔇 muted') : el('span', { class: 'badge ok' }, '🔔 on again'),
+        e.detail ? el('span', { class: 'muted' }, ' ' + e.detail) : null),
+      el('td', {}, e.by || '—'),
+      el('td', {}, FROM[e.source] || e.source)));
   }
 }
 function isCorrection(r) { return r.manual && (r.raw_pass < 0 || r.raw_fail < 0); }

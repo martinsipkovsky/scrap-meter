@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import hmi, jobs, oee, production, scrap_stats, stations
+from .. import hmi, jobs, mute, oee, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import Device, Reading, Station, User, utcnow
@@ -58,6 +58,8 @@ def _station_summary(db: Session, st: Station, devices: dict, cycles: dict | Non
         "job_shot_s": shot_s,
         "job_pieces_per_shot": per_shot,
         **production.describe(st),
+        # alerts muted with "!mute" or the station view's switch (app.mute)
+        **mute.describe(st),
         "active_job": None
         if active is None
         else {
@@ -161,6 +163,17 @@ def station_view(
             "corr_nok": sum(b["corr_nok"] for b in bars),
         },
     }
+
+
+@router.get("/events")
+def station_events(
+    station_id: int | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("view_data")),
+):
+    """Alerts muted and turned on again, newest first (app.mute)."""
+    return mute.events(db, station_id, min(limit, 1000))
 
 
 @router.get("/readings")

@@ -15,7 +15,8 @@ Two kinds of condition:
   app_started) fire once when the thing happens, through ``emit``.
 
 Rules for all stations can override their threshold per station
-(rule.thresholds = {"<station id>": value}).
+(rule.thresholds = {"<station id>": value}). A station whose alerts are muted
+(app.mute) gets none.
 """
 from __future__ import annotations
 
@@ -182,6 +183,8 @@ def evaluate_station(db: Session, station: Station) -> None:
 
     now = utcnow()
     check_production(db, station)
+    if station.alerts_muted:  # muted with "!mute" or the station view's switch (app.mute)
+        return
     active_state = stations.shown(db, station)
     online = stations.status(station, stations.devices_of(db, [station]))
     for rule in _rules(db, ["scrap_rate", "fail_count", "disconnected"], station):
@@ -191,7 +194,10 @@ def evaluate_station(db: Session, station: Station) -> None:
 
 
 def emit(db: Session, condition: str, message: str, station: Station | None = None) -> None:
-    """An event happened: send it through every enabled rule for it."""
+    """An event happened: send it through every enabled rule for it (not for a
+    station whose alerts are muted)."""
+    if station is not None and station.alerts_muted:
+        return
     now = utcnow()
     for rule in _rules(db, [condition], station):
         if _cooldown_ok(rule, now):

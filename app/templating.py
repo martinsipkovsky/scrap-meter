@@ -8,6 +8,8 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
+from . import __version__
+
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -36,3 +38,5 @@ def static_url(path: str) -> str:
 
 
 templates.env.globals["static_url"] = static_url
+# the running version, at the bottom of the left menu (links to the Changelog)
+templates.env.globals["app_version"] = __version__

@@ -73,6 +73,8 @@ app/
   notifications.py   rule conditions, evaluation, events and routing to providers
   commands.py        WhatsApp group commands ("!status"): parsing, replies, log
   chatroom.py        the Chat room tab: one WhatsApp group or Telegram chat for the web
+  mute.py            muted station alerts (!mute, the Scrap warnings switch), StationEvent
+  changelog.py       the Changelog page, read from CHANGELOG.md
   auth.py            password hashing and signed session cookies
   dependencies.py    login and permission checks
   seed.py            first admin account
@@ -115,3 +117,8 @@ Multi-architecture build and push:
 docker buildx build --platform linux/amd64,linux/arm64 \
   -t <your-registry>/scrap-meter:latest --push .
 ```
+
+Each release bumps `__version__` in `app/__init__.py` and adds an entry at the
+top of `CHANGELOG.md` (`## <version> — <date>` and a few `- ` lines in plain
+language). The Changelog page shows that file, and a test checks that its
+newest entry is the app's version.

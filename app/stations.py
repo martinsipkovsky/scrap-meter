@@ -52,7 +52,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from . import pieces, production
+from . import mute, pieces, production
 from .counters import SAMPLE_KEYS, deltas
 from .models import CounterState, Device, Job, Meta, Reading, SourceState, Station, utcnow
 
@@ -479,6 +479,7 @@ def record_device(db: Session, station: Station, device: Device, devices: dict[i
     several = len(station.source_list()) > 1
     for read in reads:
         if read.job_changed_from:
+            mute.job_changed(db, station, read.job_changed_from, read.job)  # "!mute" lasts until here
             who = f"Station '{station.name}'" + (f" (device '{device.name}')" if several else "")
             notifications.emit(db, "job_change",
                                f"{who} changed job from '{read.job_changed_from}' to '{read.job}'", station)

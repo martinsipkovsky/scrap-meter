@@ -135,7 +135,7 @@ function show(v, col) {
   if (v === null || v === undefined) return el('span', { class: 'raw-null' }, 'NULL');
   if (col.hidden) return el('span', { class: 'muted' }, String(v));
   if (col.kind === 'boolean') return el('span', { class: 'badge ' + (v ? 'ok' : 'off') }, v ? 'true' : 'false');
-  if (col.kind === 'datetime') return el('span', { title: new Date(v).toLocaleString() + ' (your time)' }, v.replace('T', ' ').replace(/(\.\d+)?(\+00:00|Z)$/, '') );
+  if (col.kind === 'datetime') return el('span', { title: fmtFull(v) + ' (your time)' }, v.replace('T', ' ').replace(/(\.\d+)?(\+00:00|Z)$/, '') );
   const s = col.kind === 'json' ? JSON.stringify(v) : String(v);
   const max = col.kind === 'json' ? 40 : 80;
   return el('span', { title: s.length > max ? s : '' }, s.length > max ? s.slice(0, max) + '…' : s);

@@ -88,6 +88,7 @@ app/
   commands.py        WhatsApp group commands ("!status"): parsing, replies, log
   chatroom.py        the Chat room tab: one WhatsApp group or Telegram chat for the web
   mute.py            muted station alerts (!mute, the Scrap warnings switch), StationEvent
+  ui_settings.py     Settings tab: each user's look and behaviour, defaults for everyone
   changelog.py       the Changelog page, read from CHANGELOG.md
   auth.py            password hashing and signed session cookies
   dependencies.py    login and permission checks

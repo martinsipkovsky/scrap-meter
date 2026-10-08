@@ -102,7 +102,7 @@ function parseJSONField(text, fallback) {
 function toast(msg, isErr) {
   const t = el('div', { class: 'error', style:
     'position:fixed;bottom:20px;right:20px;z-index:100;max-width:360px;' +
-    (isErr ? '' : 'background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.4);color:#bbf7d0;') }, msg);
+    (isErr ? '' : 'background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.4);color:var(--ok-text);') }, msg);
   document.body.append(t);
   setTimeout(() => t.remove(), 4000);
 }
@@ -121,10 +121,34 @@ function fmtAgo(iso) {
   if (s < 172800) return Math.round(s / 3600) + ' h ago';
   return Math.round(s / 86400) + ' days ago';
 }
+// ---- dates and times as chosen on the Settings tab (window.SM_UI, see base.html)
+const UI = Object.assign({ date_format: 'dmy', time_format: '24', refresh_s: 5, sound: 'on' }, window.SM_UI || {});
+const pad2 = (n) => String(n).padStart(2, '0');
+// a date: DD.MM.YYYY, YYYY-MM-DD, MM/DD/YYYY or DD/MM/YYYY; { year: false } leaves the year out
+function fmtDate(v, opts = {}) {
+  const d = v instanceof Date ? v : new Date(v);
+  const D = pad2(d.getDate()), M = pad2(d.getMonth() + 1), Y = d.getFullYear(), y = opts.year !== false;
+  switch (UI.date_format) {
+    case 'ymd': return y ? `${Y}-${M}-${D}` : `${M}-${D}`;
+    case 'mdy': return y ? `${M}/${D}/${Y}` : `${M}/${D}`;
+    case 'dmy_slash': return y ? `${D}/${M}/${Y}` : `${D}/${M}`;
+    default: return y ? `${D}.${M}.${Y}` : `${D}.${M}.`;
+  }
+}
+// a time of day, 24 h (14:05) or 12 h (2:05 PM)
+function fmtClock(v, seconds) {
+  const d = v instanceof Date ? v : new Date(v);
+  let h = d.getHours();
+  const rest = pad2(d.getMinutes()) + (seconds ? ':' + pad2(d.getSeconds()) : '');
+  if (UI.time_format === '12') { const ap = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12; return h + ':' + rest + ' ' + ap; }
+  return pad2(h) + ':' + rest;
+}
+// date and time with seconds (tables, hovers)
+function fmtFull(v) { const d = v instanceof Date ? v : new Date(v); return fmtDate(d) + ' ' + fmtClock(d, true); }
 function fmtDateTime(iso) {
   const d = new Date(iso);
-  const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return d.toDateString() === new Date().toDateString() ? t : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + t;
+  const t = fmtClock(d);
+  return d.toDateString() === new Date().toDateString() ? t : fmtDate(d, { year: false }) + ' ' + t;
 }
 function idleText(d) {
   return 'No OK increase for ' + d.idle_timeout_min + ' min (last ' + fmtAgo(d.last_pass_change_at) + ')';
@@ -135,7 +159,7 @@ function activeLine(d) {
     return el('div', { class: 'active-line on' }, '▶ Active: ' + d.active_devices.join(', '));
   }
   if (d.last_active) {
-    return el('div', { class: 'active-line off', title: new Date(d.last_active.at).toLocaleString() },
+    return el('div', { class: 'active-line off', title: fmtFull(d.last_active.at) },
       'Last active: ' + d.last_active.device + ' · ' + fmtDateTime(d.last_active.at));
   }
   return null;
@@ -155,7 +179,7 @@ function commentItem(c, onDelete) {
   return el('div', { class: 'comment' },
     el('div', { class: 'comment-head' },
       el('strong', {}, c.author || '—'),
-      el('span', { title: new Date(c.created_at).toLocaleString() }, fmtDateTime(c.created_at)),
+      el('span', { title: fmtFull(c.created_at) }, fmtDateTime(c.created_at)),
       el('span', {}, '· ' + commentSnapshot(c)),
       onDelete ? el('button', { class: 'btn secondary small', style: 'margin-left:auto', onclick: () => onDelete(c) }, 'Delete') : null),
     el('div', { class: 'comment-text' }, c.text));

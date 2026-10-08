@@ -58,7 +58,7 @@ async function load() {
       d.alerts_muted ? el('span', { class: 'muted-icon', role: 'img', 'aria-label': 'Alerts muted',
         title: 'Alerts muted' + (d.muted_by ? ' by ' + d.muted_by : '') + (d.muted_at ? ' since ' + fmtDateTime(d.muted_at) : '') +
           (d.muted_until_job_change ? ', until the job changes' : '') }, '🔇') : null,
-      el('span', { class: 'badge ' + PROD_BADGE[d.production_state][0], style: 'margin-left:auto' }, PROD_BADGE[d.production_state][1])));
+      statePill(d)));
     const jobs = d.current_jobs.length ? d.current_jobs.join(' + ') : d.current_job;
     body.push(el('div', { class: 'muted' }, (d.devices.join(' + ') || 'manual entries') + (jobs ? ' · job ' + jobs : '') +
       (d.stats_default === 'exclude' ? ' · not in statistics totals' : '')));
@@ -77,14 +77,27 @@ async function load() {
       body.push(el('div', { class: 'muted', style: 'margin-top:8px' }, 'Total parts: ' + total +
         (job.reset_at ? ' · since reset ' + fmtDateTime(job.reset_at) : '')));
     } else {
-      body.push(el('div', { class: 'muted', style: 'margin-top:12px' }, d.last_error ? d.last_error : 'Waiting for the first reading…'));
+      body.push(el('div', { class: 'muted', style: 'margin-top:12px' }, 'Waiting for the first reading…'));
     }
-    if (job && !d.connected && d.last_error) body.push(el('div', { class: 'muted', style: 'margin-top:4px;color:var(--warn)' }, d.last_error));
     if (d.production_state === 'idle') body.push(el('div', { class: 'muted', style: 'margin-top:4px' }, idleText(d)));
     if (figures[d.id]) body.push(oeeMini(figures[d.id]));
     cards.append(el('a', { class: 'card clickable' + (d.in_production ? '' : ' not-producing'), href: '/station/' + d.id }, ...body));
   }
   if (oeeData) showOee(oeeData);
+}
+
+// the production state, or while a source has a problem its code (red for an
+// error, amber while waiting); the messages are on hover and the station view
+function statePill(d) {
+  const probs = d.problems || [];
+  if (!probs.length) {
+    const [cls, label] = PROD_BADGE[d.production_state];
+    return el('span', { class: 'badge ' + cls, style: 'margin-left:auto' }, label);
+  }
+  const first = probs[0];
+  return el('span', { class: 'badge ' + (first.level === 'error' ? 'bad' : 'warn') + ' code', style: 'margin-left:auto',
+    title: probs.map(p => p.code + ': ' + p.message).join('\n') + '\n(' + PROD_BADGE[d.production_state][1] + ')' },
+    first.code + (probs.length > 1 ? ' +' + (probs.length - 1) : ''));
 }
 
 const secs = (x) => x === null || x === undefined ? '—' : (x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2)) + ' s';
@@ -160,12 +173,13 @@ function showOee(r) {
 }
 // ---- Sound on station status changes ----
 // A chime when a station starts or leaves production, or its devices go
-// offline or come back. Off/on is remembered per browser (on unless turned off).
+// offline or come back. Off/on is remembered per browser.
 // Muted stations stay quiet; the first load only records the states, and
-// several changes in one refresh chime once.
+// several changes in one refresh chime once. A browser starts with the
+// Settings tab's choice until the switch is used in it.
 const SOUND_KEY = 'sm.sound';
-let soundOn = true;
-try { soundOn = localStorage.getItem(SOUND_KEY) !== 'off'; } catch (e) {}
+let soundOn = UI.sound !== 'off';
+try { const saved = localStorage.getItem(SOUND_KEY); if (saved) soundOn = saved !== 'off'; } catch (e) {}
 let audioCtx = null, chimeBuf = null, lastChime = 0;
 const prevStatus = {};
 function soundCtx() {
@@ -236,6 +250,6 @@ showSound();
   pad();
 })();
 load();
-setInterval(load, 5000);
+setInterval(load, (UI.refresh_s || 5) * 1000);  // Settings tab
 </script>
 {% endblock %}

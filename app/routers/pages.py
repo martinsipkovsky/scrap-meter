@@ -99,3 +99,8 @@ def changelog_page(request: Request, user: User = Depends(require_user)):
 @router.get("/account", response_class=HTMLResponse)
 def account_page(request: Request, user: User = Depends(require_user)):
     return templates.TemplateResponse(request, "account.html", _ctx(request, user, page="account"))
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, user: User = Depends(require_user)):
+    return templates.TemplateResponse(request, "settings.html", _ctx(request, user, page="settings"))

@@ -1,12 +1,16 @@
 <!doctype html>
-<html lang="en">
+{% set ui = ui_for(user) %}
+<html lang="en" data-mode="{{ ui.mode }}" data-accent="{{ ui.accent }}" data-density="{{ ui.density }}" data-text="{{ ui.text_size }}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Scrap Meter{% endblock %}</title>
   <link rel="stylesheet" href="{{ static_url('style.css') }}" />
-  {# before the first paint, so a hidden menu doesn't flash open #}
-  <script>try { if (localStorage.getItem('sm.nav') === 'collapsed') document.documentElement.classList.add('nav-collapsed'); } catch (e) {}</script>
+  {# the Settings tab's choices, for the page scripts (app.js fmtDate, the dashboard) #}
+  <script>window.SM_UI = {{ ui | tojson }};</script>
+  {# before the first paint, so a hidden menu doesn't flash open; the last switch in this browser wins over the setting #}
+  <script>(function () { let nav = null; try { nav = localStorage.getItem('sm.nav'); } catch (e) {}
+    if (nav === 'collapsed' || (nav === null && SM_UI.menu === 'folded')) document.documentElement.classList.add('nav-collapsed'); })();</script>
 </head>
 <body>
   {% set icons = {
@@ -21,6 +25,7 @@
     'users': '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     'database': '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
     'rawdb': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/>',
+    'settings': '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     'account': '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     'signout': '<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11"/>',
   } %}
@@ -58,6 +63,7 @@
         {{ link('/database', 'database', 'Database') }}
         {{ link('/rawdb', 'rawdb', 'Raw data') }}
         {% endif %}
+        {{ link('/settings', 'settings', 'Settings') }}
       </nav>
       <div class="spacer"></div>
       <div class="userbox">

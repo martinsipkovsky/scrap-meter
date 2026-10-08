@@ -48,6 +48,8 @@ def _station_summary(db: Session, st: Station, devices: dict, cycles: dict | Non
         "sources": view["sources"],
         "connected": online["connected"],
         "last_error": online["problem"],
+        # the same one by one: [{"code", "level" (error / waiting), "message"}]
+        "problems": online["problems"],
         "current_job": st.current_job,
         "current_jobs": active.jobs if active else ([st.current_job] if st.current_job else []),
         "last_poll_at": st.last_reading_at,

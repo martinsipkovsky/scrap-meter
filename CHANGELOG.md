@@ -4,6 +4,10 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.19.0 — 2026-10-08
+- New Settings tab at the end of the menu: dark, light or system mode, five colour schemes, compact density, text size, date and time format, the start page after signing in, the dashboard's refresh and sound, and a folded menu. Each user's choices follow them to every browser; an administrator sets the defaults for everyone.
+- Dashboard blocks no longer show error messages. While a station has a problem, its pill shows a short code instead of the production state, red for an error and amber while it waits (`W01` waiting for the device, `E03` timeout, ...); hover it for the message. The station view shows the code with the full message, and the user guide lists every code.
+
 ## 1.18.1 — 2026-10-08
 - Faster: Scrap statistics open about four to five times faster on a large database, and the dashboard's OEE bar, refreshed every 5 seconds, costs a fifth of what it did or less. The station view's chart loads faster over long periods. Nothing on the screens changes.
 - The database gets an index on each station's readings by time; it is added once at the first start of this version.

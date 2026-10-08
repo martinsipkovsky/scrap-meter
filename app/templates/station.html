@@ -77,8 +77,8 @@ document.querySelectorAll('#range button').forEach(b => b.addEventListener('clic
 function fmtBucket(s) { return s >= 3600 ? (s / 3600) + ' h' : (s / 60) + ' min'; }
 function fmtTime(iso, bucket) {
   const d = new Date(iso);
-  const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return bucket >= 3600 * 3 || HOURS > 24 ? d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + t : t;
+  const t = fmtClock(d);
+  return bucket >= 3600 * 3 || HOURS > 24 ? fmtDate(d, { year: false }) + ' ' + t : t;
 }
 
 function renderControls(d) {
@@ -355,7 +355,7 @@ async function load() {
     : d.production_state === 'idle' ? idleText(d) + '. Starts again when a source makes its start count of OK pieces; nothing is counted until then.'
     : 'Last OK ' + fmtAgo(d.last_pass_change_at) + '; leaves production after ' + d.idle_timeout_min + ' min without OK pieces.';
   document.getElementById('job').textContent = (d.current_jobs.length ? d.current_jobs.join(' + ') : d.current_job) || '—';
-  document.getElementById('conn').textContent = (d.connected ? 'Online' : 'Offline' + (d.last_error ? ': ' + d.last_error : '')) + ' · last data ' + fmtAgo(d.last_poll_at);
+  document.getElementById('conn').textContent = (d.connected ? 'Online' : 'Offline' + ((d.problems || []).length ? ': ' + d.problems.map(p => p.code + ' ' + p.message).join('; ') : '')) + ' · last data ' + fmtAgo(d.last_poll_at);
   const j = d.active_job || { total_pass: 0, total_fail: 0, scrap_rate: 0 };
   document.getElementById('tPass').textContent = j.total_pass;
   document.getElementById('tFail').textContent = j.total_fail;

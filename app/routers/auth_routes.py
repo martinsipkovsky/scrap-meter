@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from .. import ui_settings
 from ..auth import SESSION_COOKIE, authenticate, make_session_token
 from ..database import get_db
 from ..templating import templates
@@ -31,7 +32,8 @@ def login_submit(
         return templates.TemplateResponse(
             request, "login.html", {"error": "Invalid username or password"}, status_code=401
         )
-    resp = RedirectResponse(url="/", status_code=303)
+    # the start page chosen on the Settings tab
+    resp = RedirectResponse(url=ui_settings.start_page(user), status_code=303)
     token = make_session_token(user.id)
     resp.set_cookie(
         SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 12

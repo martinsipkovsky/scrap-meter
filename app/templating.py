@@ -40,3 +40,14 @@ def static_url(path: str) -> str:
 templates.env.globals["static_url"] = static_url
 # the running version, at the bottom of the left menu (links to the Changelog)
 templates.env.globals["app_version"] = __version__
+
+
+
+def _ui_for(user) -> dict:
+    """The signed-in user's Settings tab choices (app.ui_settings)."""
+    from . import ui_settings  # local import: ui_settings imports the models
+
+    return ui_settings.effective(user)
+
+
+templates.env.globals["ui_for"] = _ui_for

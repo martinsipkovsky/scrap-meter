@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Settings · Scrap Meter{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<p class="lead">How the pages look and behave for you. A setting left at <em>Default</em> follows the defaults for everyone{% if user.is_admin %}, which you can set below{% endif %}. Your choices follow you to every browser you sign in on.</p>
+
+<div class="settings-grid">
+  <div class="card">
+    <h3>Your settings</h3>
+    <div id="mine"></div>
+  </div>
+  {% if user.is_admin %}
+  <div class="card">
+    <h3>Defaults for everyone</h3>
+    <div class="muted" style="margin-bottom:6px">Used by every user who leaves a setting at Default.</div>
+    <div id="defaults"></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const VALUE_LABELS = {
+  mode: { dark: 'Dark', light: 'Light', system: 'As the system' },
+  accent: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', teal: 'Teal' },
+  density: { comfortable: 'Comfortable', compact: 'Compact' },
+  text_size: { small: 'Small', normal: 'Normal', large: 'Large' },
+  date_format: { dmy: 'DD.MM.YYYY', ymd: 'YYYY-MM-DD', mdy: 'MM/DD/YYYY', dmy_slash: 'DD/MM/YYYY' },
+  time_format: { '24': '24 hours (14:05)', '12': '12 hours (2:05 PM)' },
+  start_page: { '/': 'Dashboard', '/stations': 'Stations', '/devices': 'Devices', '/jobs': 'Jobs', '/data': 'Data log',
+                '/scrap': 'Scrap statistics', '/chat': 'Chat room' },
+  refresh_s: { 2: 'Every 2 s', 5: 'Every 5 s', 10: 'Every 10 s', 30: 'Every 30 s', 60: 'Every minute' },
+  sound: { on: 'On', off: 'Off' },
+  menu: { open: 'Open', folded: 'Folded' },
+};
+const HINTS = {
+  accent: 'Buttons, links and the selected menu item.',
+  text_size: 'Makes the whole page bigger or smaller.',
+  refresh_s: 'How often the dashboard reads the stations again.',
+  sound: 'Whether a browser starts with the dashboard sound on. The switch on the dashboard is remembered per browser.',
+  menu: 'Whether the left menu starts folded. The menu button is remembered per browser.',
+};
+const SWATCH = { blue: '#3b82f6', green: '#16a34a', purple: '#8b5cf6', orange: '#ea580c', teal: '#0d9488' };
+const label = (key, v) => (VALUE_LABELS[key] || {})[v] || String(v);
+let S = null;
+
+// show a look setting on this page at once (the others apply on the next page)
+function preview(eff) {
+  const h = document.documentElement;
+  h.dataset.mode = eff.mode; h.dataset.accent = eff.accent; h.dataset.density = eff.density; h.dataset.text = eff.text_size;
+}
+
+function form(boxId, values, fallback, fallbackName, save) {
+  const box = document.getElementById(boxId); box.innerHTML = '';
+  for (const [key, c] of Object.entries(S.choices)) {
+    const sel = el('select', { id: boxId + '-' + key, onchange: () => save() });
+    sel.append(el('option', { value: '' }, fallbackName + ' (' + label(key, fallback[key]) + ')'));
+    for (const v of c.values) {
+      const o = el('option', { value: String(v) }, label(key, v));
+      if (values[key] !== undefined && String(values[key]) === String(v)) o.selected = true;
+      sel.append(o);
+    }
+    const row = el('div', { class: 'setting' }, el('label', { for: sel.id }, c.label), sel);
+    if (key === 'accent') {
+      const sw = el('div', { class: 'swatches' });
+      for (const v of c.values) sw.append(el('button', { type: 'button', class: 'swatch' + (String(values[key]) === v ? ' on' : ''),
+        style: 'background:' + SWATCH[v], title: label(key, v), 'aria-label': label(key, v),
+        onclick: () => { sel.value = v; save(); } }));
+      row.append(el('span'), sw);
+    }
+    if (HINTS[key]) row.append(el('div', { class: 'hint' }, HINTS[key]));
+    box.append(row);
+  }
+}
+function read(boxId) {
+  const out = {};
+  for (const key of Object.keys(S.choices)) {
+    const v = document.getElementById(boxId + '-' + key).value;
+    if (v !== '') out[key] = v;
+  }
+  return out;
+}
+
+async function saveMine() {
+  try {
+    const r = await api('PUT', '/api/ui-settings/mine', read('mine'));
+    S.mine = r.mine; S.effective = r.effective;
+    preview(r.effective); window.SM_UI = r.effective; Object.assign(UI, r.effective);
+    // the menu and sound defaults are what a browser starts with: let this one follow the new choice
+    try { localStorage.removeItem('sm.nav'); localStorage.removeItem('sm.sound'); } catch (e) {}
+    document.documentElement.classList.toggle('nav-collapsed', r.effective.menu === 'folded');
+    render(); toast('Saved');
+  } catch (e) { toast(e.message, true); }
+}
+async function saveDefaults() {
+  try {
+    const r = await api('PUT', '/api/ui-settings/defaults', read('defaults'));
+    S.admin_defaults = r.admin_defaults; S.defaults = r.defaults;
+    S.effective = Object.assign({}, r.defaults, S.mine); preview(S.effective);
+    render(); toast('Defaults saved');
+  } catch (e) { toast(e.message, true); }
+}
+function render() {
+  form('mine', S.mine, S.defaults, 'Default', saveMine);
+  if (S.can_set_defaults) form('defaults', S.admin_defaults, S.builtin, 'Built-in', saveDefaults);
+}
+(async () => {
+  try { S = await getJSON('/api/ui-settings'); render(); }
+  catch (e) { document.getElementById('mine').append(el('div', { class: 'error' }, e.message)); }
+})();
+</script>
+{% endblock %}

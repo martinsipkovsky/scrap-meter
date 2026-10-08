@@ -90,6 +90,8 @@ class User(Base):
 
     # list[str] of permission keys; ignored when is_admin is True
     permissions: Mapped[list] = mapped_column(JSON, default=list)
+    # since 1.19: the user's own choices on the Settings tab (app.ui_settings)
+    ui_settings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     def has_permission(self, key: str) -> bool:
         if self.is_admin:

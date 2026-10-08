@@ -692,30 +692,78 @@ def delete_entry(db: Session, reading: Reading) -> None:
 # --------------------------------------------------------------------------- #
 
 
+# Short, stable codes for a station's problems: the dashboard shows the code
+# (W: waiting, nothing failed; E: an error), the station view the code and
+# the message. docs/user-guide.md lists them; never reuse a code.
+PROBLEM_CODES = {
+    "W01": "Waiting for the device to connect or send its first data",
+    "W02": "Waiting for the first value of a counter or job from the device",
+    "W03": "A source's device is switched off (disabled)",
+    "E01": "A source's device was deleted",
+    "E02": "Cannot connect to the device (refused, unreachable or unknown address)",
+    "E03": "The device did not answer in time (timeout)",
+    "E04": "The connection to the device was lost or closed",
+    "E05": "The device's settings are wrong or incomplete",
+    "E06": "A value could not be read from the device (address, node or register)",
+    "E07": "The listening port is taken by another program",
+    "E09": "Another error of the device",
+}
+
+# (code, words in the lower-cased message), first match wins
+_PATTERNS = (
+    ("W01", ("waiting for the device to connect", "waiting for the first datagram")),
+    ("E01", ("was deleted",)),
+    ("E07", ("address already in use", "address in use")),
+    ("E03", ("timed out", "timeout")),
+    ("E02", ("could not connect", "refused", "unreachable", "no route", "name or service", "getaddrinfo",
+             "could not resolve", "nodename")),
+    ("E04", ("closed", "reset by peer", "broken pipe", "disconnected", "connection lost", "offline")),
+    ("E05", ("set the ", "set at least", "must look like", "unknown protocol", "unknown security", "bad slmp device",
+             "unknown slmp device", "not installed")),
+    ("E06", ("not found", "not a number", "could not read", "read error", "read failed", "error reading",
+             "error end code", "expected", "truncated", "not an slmp")),
+)
+
+
+def problem_code(message: str) -> str:
+    """The code of one problem message (see PROBLEM_CODES)."""
+    low = message.lower()
+    for code, words in _PATTERNS:
+        if any(w in low for w in words):
+            return code
+    return "E09"
+
+
 def status(station: Station, devices: dict[int, Device]) -> dict:
     """Online when every source device is; the problem otherwise. A station
-    without devices (manual entries only) is always online."""
+    without devices (manual entries only) is always online. ``problems``
+    lists them one by one with their code (errors first)."""
     srcs = station.source_list()
     if not srcs:
-        return {"connected": True, "problem": None}
-    problems = []
+        return {"connected": True, "problem": None, "problems": []}
+    problems: dict[str, str] = {}  # message -> code
     for src in srcs:
         device = devices.get(src["device_id"])
         if device is None:
-            problems.append("A source's device was deleted")
+            problems.setdefault("A source's device was deleted", "E01")
         elif not device.enabled:
-            problems.append(f"Device '{device.name}' is disabled")
+            problems.setdefault(f"Device '{device.name}' is disabled", "W03")
         elif not device.connected:
-            problems.append(f"Device '{device.name}': {device.last_error or 'offline'}")
+            error = device.last_error or "offline"
+            problems.setdefault(f"Device '{device.name}': {error}", problem_code(error))
         else:
             for role in ROLES:
                 if src[role]:
                     try:
                         _value(device, src[role])
                     except MissingValue as exc:
-                        problems.append(f"{ROLE_LABELS[role]}: {exc}")
-    problems = list(dict.fromkeys(problems))  # one line per device problem
-    return {"connected": not problems, "problem": "; ".join(problems) or None}
+                        # "no value ... yet" is waiting; a read error of the value is an error
+                        msg = str(exc)
+                        problems.setdefault(f"{ROLE_LABELS[role]}: {msg}",
+                                            "W02" if msg.startswith("no value") else problem_code(msg))
+    listed = sorted(({"code": c, "level": "error" if c.startswith("E") else "waiting", "message": m}
+                     for m, c in problems.items()), key=lambda p: p["level"] != "error")
+    return {"connected": not problems, "problem": "; ".join(problems) or None, "problems": listed}
 
 
 def devices_of(db: Session, stations: list[Station]) -> dict[int, Device]:

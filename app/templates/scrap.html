@@ -124,7 +124,13 @@ function rangeQuery() {
   return 'from=' + f + '&to=' + t + '&tz=' + encodeURIComponent(TZ);
 }
 const num = (n) => n.toLocaleString();
-const day = (iso, opts) => new Date(iso + 'T00:00:00').toLocaleDateString([], opts || { day: 'numeric', month: 'numeric' });
+// a day as set on the Settings tab; with month names (opts.month long / short) as the browser writes them
+const day = (iso, opts) => {
+  const d = new Date(iso + 'T00:00:00');
+  if (!opts) return fmtDate(d, { year: false });
+  if (opts.month === 'long' || opts.month === 'short') return d.toLocaleDateString([], opts);
+  return (opts.weekday ? d.toLocaleDateString([], { weekday: opts.weekday }) + ' ' : '') + fmtDate(d, { year: !!opts.year });
+};
 function rangeText(from, to) { return from === to ? day(from, { day: 'numeric', month: 'short' }) : day(from) + '–' + day(to, { day: 'numeric', month: 'numeric', year: 'numeric' }); }
 
 // ---- the change against the period before: an arrow, the change and whether that is good
@@ -265,8 +271,8 @@ function drawTrend() {
   const pw = W - L - R, ph = H - T - B, n = pts.length;
   const x = i => L + (n === 1 ? pw / 2 : (i / (n - 1)) * pw);
   const y = v => T + ph - (Math.min(v, top) / top) * ph;
-  const label = (r) => hourly ? new Date(r.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : day(r.day);
-  const long = (r) => hourly ? new Date(r.hour).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const label = (r) => hourly ? fmtClock(r.hour) : day(r.day);
+  const long = (r) => hourly ? new Date(r.hour).toLocaleDateString([], { weekday: 'short' }) + ' ' + fmtDate(r.hour, { year: false }) + ' ' + fmtClock(r.hour)
                              : day(r.day, { weekday: 'short', day: 'numeric', month: 'long' });
   let out = '';
   for (let v = 0; v <= top + 1e-9; v += step) {
@@ -408,7 +414,7 @@ async function excludePeriod(excluded) {
   if (!f || !t) { toast('Pick the start and end of the period.', true); return; }
   const sel = document.getElementById('exDevice');
   const who = sel.value ? sel.selectedOptions[0].textContent : 'all stations';
-  const when = new Date(f).toLocaleString() + ' to ' + new Date(t).toLocaleString();
+  const when = fmtFull(f) + ' to ' + fmtFull(t);
   if (excluded && !confirm('Exclude every reading of ' + who + ' from ' + when + ' from the scrap statistics?')) return;
   try {
     const r = await postJSON('/api/data/readings/exclude', {

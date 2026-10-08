@@ -348,7 +348,7 @@ async function load() {
   const lr = document.getElementById('logRows'); lr.innerHTML = '';
   document.getElementById('logEmpty').style.display = logs.length ? 'none' : 'block';
   for (const l of logs) lr.append(el('tr', {},
-    el('td', { class: 'muted' }, new Date(l.created_at).toLocaleString()),
+    el('td', { class: 'muted' }, fmtFull(l.created_at)),
     el('td', {}, l.message),
     el('td', {}, el('span', { class: 'badge ' + (l.delivered ? 'ok' : 'bad') }, l.delivered ? 'yes' : 'no')),
     el('td', { class: 'muted' }, l.detail || ''),
@@ -453,7 +453,7 @@ async function loadCommands() {
   for (const l of logs) {
     const [cls, text] = OUTCOME[l.outcome] || ['off', l.outcome];
     lr.append(el('tr', {},
-      el('td', { class: 'muted' }, new Date(l.created_at).toLocaleString()),
+      el('td', { class: 'muted' }, fmtFull(l.created_at)),
       el('td', {}, l.chat_name || l.chat), el('td', { class: 'muted' }, l.sender || ''),
       el('td', {}, el('code', {}, l.text)),
       el('td', {}, el('span', { class: 'badge ' + cls }, text)),

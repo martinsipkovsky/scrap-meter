@@ -64,7 +64,7 @@ function dayText(d) {
   const today = new Date(), y = new Date(); y.setDate(today.getDate() - 1);
   if (d.toDateString() === today.toDateString()) return 'Today';
   if (d.toDateString() === y.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString([], { weekday: 'long' }) + ', ' + fmtDate(d);
 }
 function bubble(m) {
   const t = new Date(m.created_at);

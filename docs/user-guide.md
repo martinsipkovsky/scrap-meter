@@ -23,7 +23,8 @@ into one source per device, see [Upgrading to 1.8](#upgrading-to-18).
 
 The **‹** button at the top of the menu hides it down to a strip of icons
 (hover an icon for its name), and **›** brings it back. The browser remembers
-the choice. On a narrow screen, such as a phone, the menu is always the icon
+the choice (until then the menu starts as set on the [Settings tab](#settings-tab)).
+**Settings**, at the end of the menu, is there for every user. On a narrow screen, such as a phone, the menu is always the icon
 strip; **›** opens it over the page, and a tap next to it closes it again.
 
 The bottom of the menu shows the version the server runs (**Version 1.17.0**,
@@ -42,6 +43,33 @@ and adds up their counters.
 the block shows the device that was active last, grayed, with the time it
 stopped. Stations that are not in production (see below) are shown **grayed
 out**. Click a station to open its station view.
+
+The pill at the top right of a block shows the production state (**In
+production**, **Not in production**, **Stopped**). While a source of the
+station has a problem, the pill shows the problem's [code](#problem-codes)
+instead: red for an error, amber while the station only waits for a device
+or a first value. With several problems it shows the first (errors first)
+and how many more (`E03 +1`). Hover the pill for the messages; the station
+view shows the code with the full message.
+
+### Problem codes
+
+| Code | Meaning |
+|---|---|
+| W01 | Waiting for the device to connect or send its first data (a listener waits on its port) |
+| W02 | Waiting for the first value of a counter or job from the device |
+| W03 | A source's device is switched off (disabled on the Devices tab) |
+| E01 | A source's device was deleted |
+| E02 | Cannot connect to the device: refused, unreachable or unknown address |
+| E03 | The device did not answer in time (timeout) |
+| E04 | The connection to the device was lost or closed |
+| E05 | The device's settings are wrong or incomplete (e.g. no endpoint URL) |
+| E06 | A value could not be read: wrong address, node or register |
+| E07 | The listening port is taken by another program |
+| E09 | Another error of the device; the message says which |
+
+W codes are amber (nothing has failed), E codes red. The codes stay the
+same in later versions.
 
 Below the counters each block shows the station's **availability**,
 **performance** and **quality** over the last 24 hours (the same figures and
@@ -644,6 +672,30 @@ imported; their devices become stations as on an update. See
 The tab's **Reading the data** section is a short manual for reading all data
 from the database with Power BI, Excel or SQL: connection details, the
 read-only login, the views and example queries. See [Reports](reporting.md).
+
+## Settings tab
+
+Every user can set how the pages look and behave for them. The choices are
+saved with the user, so they follow them to every browser they sign in on.
+
+| Setting | Choices (built-in default first) |
+|---|---|
+| Mode | Dark, Light, As the system (follows the computer's or phone's light / dark setting) |
+| Colour scheme | Blue, Green, Purple, Orange, Teal: buttons, links and the selected menu item |
+| Density | Comfortable, Compact (less space around cards and table rows) |
+| Text size | Normal, Small, Large (the whole page) |
+| Date format | DD.MM.YYYY, YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY |
+| Time format | 24 hours (14:05), 12 hours (2:05 PM) |
+| Start page | The page shown after signing in: Dashboard, Stations, Devices, Jobs, Data log, Scrap statistics or Chat room (one the user can open) |
+| Dashboard refresh | Every 5 s, or 2 s, 10 s, 30 s, a minute |
+| Dashboard sound | On, Off: what a browser starts with; the dashboard's Sound switch is then remembered per browser |
+| Menu | Open, Folded: what a browser starts with; the menu button is then remembered per browser |
+
+A setting left at **Default** follows the **Defaults for everyone**, which an
+administrator sets in the second card of the tab; a default left at
+**Built-in** uses the built-in one above. Mode, colour scheme, density and
+text size change the page at once; dates, times and the dashboard settings
+apply on the next page.
 
 ## Raw data tab
 

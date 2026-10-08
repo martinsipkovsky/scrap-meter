@@ -101,7 +101,7 @@ async function load() {
   document.getElementById('readingEmpty').style.display = readings.length ? 'none' : 'block';
   for (const r of readings) {
     rRows.append(el('tr', { class: leftOut(r) ? 'excluded' : '' },
-      el('td', { class: 'muted' }, new Date(r.created_at).toLocaleString()),
+      el('td', { class: 'muted' }, fmtFull(r.created_at)),
       el('td', {}, devName(r.station_id),
         r.manual ? el('div', { class: 'muted' }, el('span', { class: 'badge warn' }, 'manual'),
           isCorrection(r) ? el('span', { class: 'badge bad', style: 'margin-left:4px', title: 'Negative parts: takes back parts counted by mistake' }, 'correction') : null,
@@ -123,7 +123,7 @@ async function loadEvents(filter) {
   const FROM = { web: 'Station view', chat: 'WhatsApp', 'job change': 'Job change' };
   for (const e of rows) {
     tb.append(el('tr', {},
-      el('td', { class: 'muted' }, new Date(e.created_at).toLocaleString()),
+      el('td', { class: 'muted' }, fmtFull(e.created_at)),
       el('td', {}, devName(e.station_id)),
       el('td', {}, e.kind === 'mute' ? el('span', { class: 'badge warn' }, '🔇 muted') : el('span', { class: 'badge ok' }, '🔔 on again'),
         e.detail ? el('span', { class: 'muted' }, ' ' + e.detail) : null),

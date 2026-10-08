@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from . import __version__, chatroom, commands, daily, jobs, messengers, powerbi_access, reporting, settings_store, stations
+from . import __version__, chatroom, commands, daily, dev_options, jobs, messengers, powerbi_access, reporting, settings_store, stations
 from .notifications import startup_notice
 from .config import settings
 from .database import Base, SessionLocal, active_url, engine, migrate_schema
@@ -42,6 +42,8 @@ async def lifespan(app: FastAPI):
     jobs.upgrade(engine)  # 1.6 databases: station cycle times move to the jobs
     reporting.ensure_views(engine)  # read-only views for Power BI and other reports
     chatroom.upgrade(engine)  # users from before the Chat room get its permission
+    with SessionLocal() as db:
+        dev_options.upgrade(db)  # 1.21: servers that used WhatsApp linking / Signal keep them on
     if powerbi_access.load().get("enabled"):
         error = powerbi_access.apply(engine, active_url)  # the Power BI port, switched on on the Database tab
         if error:
@@ -63,7 +65,7 @@ async def lifespan(app: FastAPI):
         messengers.reader.start()  # Discord channels and Signal groups: commands and the Chat room
     backup_scheduler.start()
     chatroom.install()  # the Chat room keeps its chat's messages and hands "!status" to the commands
-    if settings.whatsapp_enabled:
+    if settings.whatsapp_enabled and dev_options.enabled("whatsapp_linked"):
         whatsapp_link.start()  # reconnects a linked phone; exits at once if none
     yield
     whatsapp_link.stop()

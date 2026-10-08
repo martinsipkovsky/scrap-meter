@@ -47,7 +47,8 @@ versions keep working.
   each dashboard block next to the actual and set cycle time.
 - **Settings tab:** dark, light or system mode, colour schemes, density,
   text size, date and time format, start page and dashboard refresh, per user,
-  with defaults for everyone set by an administrator.
+  with defaults for everyone set by an administrator, and Developer options
+  for the unofficial WhatsApp virtual client and Signal.
 - **Sound:** the dashboard chimes when a station starts or leaves production
   or its devices go offline or come back, with a Sound switch per browser.
 - **Jobs tab:** every job's settings in one place, and jobs can be added

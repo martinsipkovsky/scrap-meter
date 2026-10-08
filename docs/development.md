@@ -90,6 +90,7 @@ app/
   mute.py            muted station alerts (!mute, the Scrap warnings switch), StationEvent
   messengers.py      reads Discord channels and Signal groups (commands, Chat room)
   ui_settings.py     Settings tab: each user's look and behaviour, defaults for everyone
+  dev_options.py     Developer options (WhatsApp virtual client, Signal), on for servers that used them
   changelog.py       the Changelog page, read from CHANGELOG.md
   auth.py            password hashing and signed session cookies
   dependencies.py    login and permission checks

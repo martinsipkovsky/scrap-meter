@@ -61,6 +61,10 @@ The WhatsApp provider (`app/notifiers/whatsapp.py`) has four transports. Use
 
 ### `linked`: send from your own number (no extra service)
 
+> Since 1.21 this is the **WhatsApp virtual client** in Settings → Developer
+> options (administrators); it is off on a new install. While it is off the
+> WhatsApp phone card is hidden and `linked` providers don't send.
+
 > **Unofficial.** The app logs in to WhatsApp as a *linked device* of your
 > phone, the same way WhatsApp Web does, using the open-source
 > [neonize](https://github.com/krypton-byte/neonize) / whatsmeow library.
@@ -263,6 +267,10 @@ runs next to it as its own container and is linked to a phone as a secondary
 device, like Signal Desktop. Alerts are sent from that phone's number, and
 the app reads the groups the phone is in for chat commands and the Chat room.
 A spare number is a good idea, as with WhatsApp.
+
+Signal is a Developer option (Settings → Developer options → **Signal
+(signal-cli)**, administrators): turn it on first; while it is off the app
+doesn't use the Signal service and the Signal card is hidden.
 
 Setup on the server, once:
 

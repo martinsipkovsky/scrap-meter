@@ -38,6 +38,11 @@ def recipients(value) -> list[str]:
 
 
 def base_url() -> str:
+    """The service's address; empty while Signal is off in the Developer options."""
+    from .. import dev_options
+
+    if not dev_options.enabled("signal"):
+        return ""
     return (settings.signal_api_url or "").strip().rstrip("/")
 
 
@@ -45,6 +50,10 @@ def _request(method: str, path: str, body: dict | None = None, params: dict | No
              timeout: float = _TIMEOUT) -> httpx.Response:
     url = base_url()
     if not url:
+        from .. import dev_options
+
+        if not dev_options.enabled("signal"):
+            raise NotifierError("Signal is off (Settings → Developer options)")
         raise NotifierError("Signal is not set up: run the signal-cli-rest-api service and set SIGNAL_API_URL "
                             "(see deploy/docker-compose.signal.yml)")
     try:
@@ -83,7 +92,11 @@ def number(refresh: bool = False) -> str | None:
 
 
 def status() -> dict:
-    """{"state": not_set_up | unreachable | not_linked | linked, "number", "error"}"""
+    """{"state": off | not_set_up | unreachable | not_linked | linked, "number", "error"}"""
+    from .. import dev_options
+
+    if not dev_options.enabled("signal"):
+        return {"state": "off", "number": None, "error": None}
     if not base_url():
         return {"state": "not_set_up", "number": None, "error": None}
     try:

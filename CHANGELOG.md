@@ -4,6 +4,10 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.21.0 — 2026-10-08
+- Settings has one compact table: your setting next to the default for everyone (administrators), and **Reset to default**.
+- New **Developer options** for administrators: the WhatsApp virtual client (QR login) and Signal (signal-cli) are off unless turned on. Turning one off stops and hides it without deleting the linked phone or the history. A server that already used them keeps them on after the update.
+
 ## 1.20.0 — 2026-10-08
 - Discord as a provider: a bot sends alerts into channels and reads them, so `!status`, `!mute` and the other chat commands work there and a channel can be the Chat room. A webhook mode only sends.
 - Signal as a provider, through signal-cli in its own optional container (`deploy/docker-compose.signal.yml`): link a phone with a QR code on the Notifications tab, then send alerts to its groups, answer chat commands there and use a group as the Chat room.

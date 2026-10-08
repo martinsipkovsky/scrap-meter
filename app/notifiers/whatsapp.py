@@ -86,6 +86,10 @@ class WhatsAppNotifier(Notifier):
             raise NotifierError(f"Unknown WhatsApp transport: {transport}")
 
     def _send_linked(self, message: str) -> None:
+        from .. import dev_options
+
+        if not dev_options.enabled("whatsapp_linked"):
+            raise NotifierError("the WhatsApp virtual client is off (Settings → Developer options)")
         to = self.config.get("to")
         targets = to if isinstance(to, (list, tuple)) else [to]
         if not any(str(t or "").strip() for t in targets):

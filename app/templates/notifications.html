@@ -4,6 +4,7 @@
 <h1>Notifications</h1>
 <p class="lead">Send alerts to WhatsApp, Telegram, Discord, Signal (or any webhook) on high scrap, fail counts or disconnects.</p>
 
+{% if dev_option('whatsapp_linked') %}
 <div class="section">
   <div class="toolbar"><h2 style="border:none">WhatsApp phone</h2><div class="actions" id="waActions"></div></div>
   <div class="card" id="waCard">
@@ -23,6 +24,9 @@
   </div>
 </div>
 
+{% endif %}
+
+{% if dev_option('signal') %}
 <div class="section" id="sigSection">
   <div class="toolbar"><h2 style="border:none">Signal phone</h2><div class="actions" id="sigActions"></div></div>
   <div class="card">
@@ -41,6 +45,8 @@
       It runs as its own container, see <code>deploy/docker-compose.signal.yml</code>.</p>
   </div>
 </div>
+
+{% endif %}
 
 <div class="section">
   <div class="toolbar"><h2 style="border:none">Providers</h2><button class="btn small" onclick="newProvider()">+ Add provider</button></div>
@@ -182,6 +188,7 @@ function onKind() {
 // ---- linked WhatsApp phone ----
 let waTimer = null;
 async function waLoad() {
+  if (!document.getElementById('waCard')) return;  // the virtual client is off (Developer options)
   let s;
   try { s = await getJSON('/api/notifications/whatsapp'); } catch (e) { return; }
   const state = document.getElementById('waState'), acts = document.getElementById('waActions');
@@ -242,6 +249,7 @@ async function waUseGroup(g) {
 // ---- linked Signal phone ----
 let sigTimer = null, sigQrShown = false;
 async function sigLoad() {
+  if (!document.getElementById('sigSection')) return;  // Signal is off (Developer options)
   let s;
   try { s = await getJSON('/api/notifications/signal'); } catch (e) { return; }
   const state = document.getElementById('sigState'), acts = document.getElementById('sigActions');

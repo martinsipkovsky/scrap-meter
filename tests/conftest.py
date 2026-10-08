@@ -36,6 +36,16 @@ def _reset_simulator_state():
     sim._STATE.clear()
 
 
+@pytest.fixture(autouse=True)
+def _dev_options_on():
+    # most tests use the WhatsApp virtual client and Signal: on, as on a
+    # server that used them before 1.21 (test_dev_options checks them off)
+    from app import dev_options
+
+    dev_options.save({"whatsapp_linked": True, "signal": True})
+    yield
+
+
 @pytest.fixture()
 def client():
     # fresh schema per test

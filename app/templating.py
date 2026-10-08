@@ -51,3 +51,14 @@ def _ui_for(user) -> dict:
 
 
 templates.env.globals["ui_for"] = _ui_for
+
+
+
+def _dev_option(name: str) -> bool:
+    """A Developer option is on (app.dev_options)."""
+    from . import dev_options
+
+    return dev_options.enabled(name)
+
+
+templates.env.globals["dev_option"] = _dev_option

@@ -470,11 +470,13 @@ html.hmi-max-open body { overflow: hidden; }
 .seg { flex-wrap: wrap; max-width: 100%; }
 
 /* ---- Settings tab ---- */
-.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; align-items: start; max-width: 1100px; }
-.setting { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 6px 12px; align-items: center; padding: 6px 0; }
-.setting label { margin: 0; }
-.setting select { width: 100%; }
-.setting .hint { grid-column: 2; margin-top: -4px; }
+.settings-wrap { max-width: 980px; }
+.settings-table td { vertical-align: top; }
+.settings-table td:first-child { width: 34%; }
+.settings-table select { width: 100%; max-width: 280px; }
+.dev-option { padding: 8px 0; border-top: 1px solid var(--border); }
+.dev-option:first-child { border-top: none; }
+.dev-option .hint { margin-top: 4px; }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
 .swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg-2) inset; }

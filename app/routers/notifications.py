@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from .. import notifications, notifiers
+from .. import dev_options, notifications, notifiers
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import NotificationLog, NotificationProvider, NotificationRule, User
@@ -18,7 +18,8 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 @router.get("/notifier-kinds")
 def notifier_kinds(_: User = Depends(require_permission("manage_notifications"))):
-    return notifiers.describe()
+    # Signal only while it is on in the Developer options
+    return [k for k in notifiers.describe() if k["key"] != "signal" or dev_options.enabled("signal")]
 
 
 # ---- rules ----------------------------------------------------------------
@@ -161,6 +162,8 @@ def whatsapp_status(_: User = Depends(require_permission("manage_notifications")
 @router.post("/whatsapp/link")
 def whatsapp_start_link(_: User = Depends(require_permission("manage_notifications"))):
     """Start the client; without a linked phone it shows a QR code to scan."""
+    if not dev_options.enabled("whatsapp_linked"):
+        raise HTTPException(409, "The WhatsApp virtual client is off (Settings → Developer options)")
     whatsapp_link.start(pair=True)
     return whatsapp_link.status()
 

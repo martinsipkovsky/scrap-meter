@@ -695,11 +695,32 @@ saved with the user, so they follow them to every browser they sign in on.
 | Dashboard sound | On, Off: what a browser starts with; the dashboard's Sound switch is then remembered per browser |
 | Menu | Open, Folded: what a browser starts with; the menu button is then remembered per browser |
 
-A setting left at **Default** follows the **Defaults for everyone**, which an
-administrator sets in the second card of the tab; a default left at
-**Built-in** uses the built-in one above. Mode, colour scheme, density and
-text size change the page at once; dates, times and the dashboard settings
-apply on the next page.
+All settings are in one table: the **Yours** column holds the user's own
+choice, and a setting left at **Default** follows the default for everyone.
+Administrators see a second column, **Default for everyone**; a default left
+at **Built-in** uses the built-in one above. **Reset to default** sets all of
+the user's own choices back to Default. Mode, colour scheme, density and text
+size change the page at once; dates, times and the dashboard settings apply
+on the next page.
+
+### Developer options
+
+Administrators also see **Developer options**: unofficial ways into
+messengers, off unless someone turns them on.
+
+| Option | What it does |
+|---|---|
+| WhatsApp virtual client (QR login) | The app logs in as a linked device of a phone (the *WhatsApp phone* card on the Notifications tab) and sends from its number; its groups can get alerts, answer chat commands and be the Chat room. WhatsApp does not allow unofficial clients. |
+| Signal (signal-cli) | Signal through the signal-cli service next to the app (see [Notifications](notifications.md#signal)): the *Signal phone* card, the Signal provider, commands and the Chat room in Signal groups. |
+
+Turning an option off stops it and hides it: its card on the Notifications
+tab, its groups in the Chat room and the command lists, and its provider
+kind. Its providers stop sending (the alert log says the option is off).
+Nothing is deleted: the linked phone stays linked and the history stays, so
+turning it on again carries on where it was. A server updated from before
+1.21 has an option on when it already used it (a linked WhatsApp phone,
+WhatsApp providers or Chat room on it; Signal set up), so its alerts keep
+going out; a new install starts with both off.
 
 ## Raw data tab
 

@@ -21,6 +21,10 @@ row are its parts that are in the overall figures.
 
 ``station_parts`` walks one station's readings; app.oee uses it too.
 
+``report`` adds what the page shows on top: the previous period of the same
+length (the change of each figure) and the scrap alert thresholds (the days
+above them are marked).
+
 Days are calendar days in the viewer's time zone; the range is inclusive.
 """
 from __future__ import annotations
@@ -139,6 +143,17 @@ def compute(db: Session, first_day: dt.date, last_day: dt.date, tz: dt.tzinfo) -
     left_out = {"excluded": _row(readings=0), "not_in_production": _row(), "excluded_stations": _row()}
     per_station: dict[int, dict] = {}
     per_job: dict[tuple[int, str], dict] = {}
+    # each station's own parts per day (also for a station excluded by default)
+    station_days: dict[int, dict[dt.date, list[int]]] = {}
+    # a range of up to two days is also counted per hour, for the trend
+    # (every hour, so hours without production show as gaps)
+    hours = None
+    if (last_day - first_day).days < 2:
+        hours, t = {}, start
+        while t < end:
+            hour = t.astimezone(tz).replace(minute=0, second=0, microsecond=0).isoformat()
+            hours.setdefault(hour, _row(hour=hour))
+            t += dt.timedelta(hours=1)
 
     for st in db.query(Station).order_by(Station.sort_order, Station.name).all():
         by_default = st.excluded_by_default
@@ -157,10 +172,17 @@ def compute(db: Session, first_day: dt.date, last_day: dt.date, tz: dt.tzinfo) -
                 job = r["job"] or "—"
                 jrow = per_job.setdefault(
                     (st.id, job), _row(station=st.name, job=job, excluded_by_default=by_default))
+                local = t.astimezone(tz)
+                cell = station_days.setdefault(st.id, {}).setdefault(local.date(), [0, 0])
+                cell[0] += d_ok
+                cell[1] += d_nok
                 if by_default and not r["included"]:
                     targets = (srow, jrow, left_out["excluded_stations"])
                 else:
-                    targets = (overall, srow, jrow, days[t.astimezone(tz).date()])
+                    targets = (overall, srow, jrow, days[local.date()])
+                    if hours is not None:
+                        hour = local.replace(minute=0, second=0, microsecond=0).isoformat()
+                        targets += (hours.setdefault(hour, _row(hour=hour)),)
                     srow["counted_pass"] += d_ok
                     srow["counted_fail"] += d_nok
             for target in targets:
@@ -179,12 +201,62 @@ def compute(db: Session, first_day: dt.date, last_day: dt.date, tz: dt.tzinfo) -
         "per_station": _finish(list(per_station.values())),
         "per_job": _finish(sorted(per_job.values(), key=lambda r: (r["station"], r["job"]))),
         "per_day": _finish(list(days.values())),
+        # per station: [[pass, fail] for each day of per_day]
+        "station_days": {str(sid): [cells.get(d, [0, 0]) for d in days] for sid, cells in station_days.items()},
+        "per_hour": _finish(sorted(hours.values(), key=lambda r: r["hour"])) if hours is not None else None,
         "left_out": {
             "excluded": {**_finish([left_out["excluded"]])[0], "readings": excluded_readings},
             "not_in_production": _finish([left_out["not_in_production"]])[0],
             "excluded_stations": _finish([left_out["excluded_stations"]])[0],
         },
     }
+
+
+# the scrap rate the page marks as high when no scrap alert rule is set (the
+# red level of the scrap badges)
+DEFAULT_ALERT = 0.05
+
+
+def alert_thresholds(db: Session) -> dict:
+    """The scrap rates the enabled "Scrap rate" alert rules fire at: the
+    lowest one for all stations ("overall", for the per-day figures) and per
+    station (its own rules and its overrides of the rules for all stations).
+    Without such rules the page uses DEFAULT_ALERT."""
+    from .models import NotificationRule
+    from .notifications import threshold_for
+
+    rules = (db.query(NotificationRule)
+             .filter(NotificationRule.enabled.is_(True), NotificationRule.condition == "scrap_rate").all())
+    if not rules:
+        return {"source": "default", "overall": DEFAULT_ALERT, "per_station": {}}
+    general = [r.threshold for r in rules if r.station_id is None]
+    per_station = {}
+    for st in db.query(Station).all():
+        values = [threshold_for(r, st) for r in rules if r.station_id in (None, st.id)]
+        if values:
+            per_station[str(st.id)] = min(values)
+    overall = min(general) if general else min(r.threshold for r in rules)
+    return {"source": "rules", "overall": overall, "per_station": per_station}
+
+
+def report(db: Session, first_day: dt.date, last_day: dt.date, tz: dt.tzinfo) -> dict:
+    """``compute`` for the page: with the previous period of the same length
+    (for the change of each figure) and the alert thresholds."""
+    stats = compute(db, first_day, last_day, tz)
+    n = (last_day - first_day).days + 1
+    prev = compute(db, first_day - dt.timedelta(days=n), first_day - dt.timedelta(days=1), tz)
+    stats["previous"] = {
+        "from": prev["from"], "to": prev["to"], "overall": prev["overall"],
+        "per_station": {str(r["station_id"]): {k: r[k] for k in ("pass", "fail", "total", "scrap_rate")}
+                        for r in prev["per_station"]},
+        "per_job": [{k: r[k] for k in ("station", "job", "pass", "fail", "total", "scrap_rate")}
+                    for r in prev["per_job"]],
+    }
+    alert = alert_thresholds(db)
+    alert["days_above"] = [r["day"] for r in stats["per_day"]
+                           if r["total"] > 0 and r["scrap_rate"] >= alert["overall"]]
+    stats["alert"] = alert
+    return stats
 
 
 def to_xlsx(stats: dict) -> bytes:
@@ -211,19 +283,22 @@ def to_xlsx(stats: dict) -> bytes:
         ws = wb.active if i == 0 else wb.create_sheet()
         ws.title = title
         marked = "station" in keys  # station rows say whether they are in the totals
-        ws.append(heads + ["Pass", "Fail", "Total", "Scrap %"] + (["In totals"] if marked else []))
+        above = set((stats.get("alert") or {}).get("days_above") or []) if keys == ["day"] else None
+        ws.append(heads + ["Pass", "Fail", "Total", "Scrap %"] + (["In totals"] if marked else [])
+                  + (["Above scrap alert"] if above is not None and "alert" in stats else []))
         for c in ws[1]:
             c.font = Font(bold=True)
         for r in rows:
             day = [dt.date.fromisoformat(r["day"])] if keys == ["day"] else []
             ws.append(day + [r[k] for k in keys if k != "day"] + [r["pass"], r["fail"], r["total"], r["scrap_rate"]]
-                      + (["No (excluded by default)" if r.get("excluded_by_default") else "Yes"] if marked else []))
+                      + (["No (excluded by default)" if r.get("excluded_by_default") else "Yes"] if marked else [])
+                      + (["Yes" if r["day"] in above else ""] if above is not None and "alert" in stats else []))
         n = len(keys)
         for row in ws.iter_rows(min_row=2):
             row[n + 3].number_format = "0.00%"
             if keys == ["day"]:
                 row[0].number_format = "yyyy-mm-dd"
-        for col, width in zip("ABCDEFGH", [36 if keys == ["what"] else 24] * n + [12, 12, 12, 10, 24]):
+        for col, width in zip("ABCDEFGH", [36 if keys == ["what"] else 24] * n + [12, 12, 12, 10, 24, 18]):
             ws.column_dimensions[col].width = width
         ws.freeze_panes = "A2"
     buf = io.BytesIO()

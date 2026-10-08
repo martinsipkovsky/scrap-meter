@@ -72,6 +72,7 @@ PERMISSIONS = {
     "exclude_readings": "Exclude readings from the scrap statistics",
     "manual_entry": "Enter data manually (OK / NOK entries per station)",
     "manage_notifications": "Configure notification rules and providers",
+    "chat_room": "Read and write in the Chat room",
     "manage_users": "Create users and edit their permissions",
 }
 
@@ -627,6 +628,36 @@ class CommandLog(Base):
     # "answered" | "not_allowed" | "unknown" | "failed" | "too_fast"
     outcome: Mapped[str] = mapped_column(String(16))
     reply: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Chat room (one messenger chat shown on the Chat room tab, see app.chatroom)
+# --------------------------------------------------------------------------- #
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # "whatsapp" | "telegram" and the chat id ("…@g.us", or a Telegram chat id)
+    kind: Mapped[str] = mapped_column(String(16))
+    chat: Mapped[str] = mapped_column(String(120), index=True)
+    # "in": written in the chat; "out": sent by the app (from the web, an alert
+    # or a command reply)
+    direction: Mapped[str] = mapped_column(String(8))
+    # who wrote it: the web user, the messenger name of the sender, or None for
+    # the app itself
+    author: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    text: Mapped[str] = mapped_column(Text)
+    # "received" | "sent" | "failed"
+    status: Mapped[str] = mapped_column(String(16), default="received")
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # the messenger's id of the message (incoming ones are stored once)
+    external_id: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, index=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )

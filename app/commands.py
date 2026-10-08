@@ -286,11 +286,18 @@ def _too_fast(chat: str) -> bool:
 
 
 def handle_message(msg: dict) -> None:
-    """Called by the WhatsApp client (on its own thread) for each group message
-    that may be a command: answer it in the group and log it."""
+    """Called for each WhatsApp group message (on the client's own thread, via
+    app.chatroom): answer a command in the group and log it."""
     from .database import SessionLocal
     from .notifiers.whatsapp_linked import link
 
+    from .notifiers.whatsapp_linked import MESSAGE_MAX_AGE
+
+    if msg.get("media"):
+        return
+    # a message delivered late (after a reconnect) is not answered any more
+    if msg.get("ts") and time.time() - msg["ts"] > MESSAGE_MAX_AGE:
+        return
     prefix = get_prefix()
     if parse(msg.get("text", ""), prefix) is None:
         return

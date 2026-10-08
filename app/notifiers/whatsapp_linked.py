@@ -22,14 +22,17 @@ commands over a multiprocessing pipe:
     child -> parent   {"id": 1, "ok": true, "result": ...} or {"id": 1, "ok": false, "error": "..."}
                       {"event": "qr", "code": "..."}  /  {"event": "connected", "phone": ..., "name": ...}
                       {"event": "logged_out", "reason": "..."}  /  {"event": "not_linked"}  / ...
-                      {"event": "message", "chat": "…@g.us", "chat_name": ..., "sender": ...,
-                       "sender_name": ..., "from_me": ..., "text": "!status"}
+                      {"event": "message", "id": ..., "ts": ..., "chat": "…@g.us", "chat_name": ...,
+                       "sender": ..., "sender_name": ..., "from_me": ..., "text": "!status",
+                       "media": false}
 
-Incoming messages: only group text messages that start with a punctuation
-character (a possible command prefix such as "!") and are less than two
-minutes old are passed to the parent, which hands them to ``on_message``
-(app.commands). Messages the app sent itself are never passed on, so a reply
-can not trigger another command.
+Incoming messages: every group message with text (a photo, video or file
+without a caption comes as "[photo]" and the like, with media true) is passed
+to the parent, which hands it to ``on_message`` (app.chatroom: the Chat room
+keeps the messages of its chat, and app.commands answers the ones that start
+with the command prefix and are less than two minutes old). Messages the app
+sent itself are never passed on, so a reply can not trigger another command;
+the parent reports each message it sends to ``on_sent`` instead.
 
 The login (the session keys) is stored by whatsmeow in the environment
 database (its own whatsmeow_* tables in the Postgres container, which is
@@ -59,7 +62,8 @@ CLIENT_ID = "cognex-monitor"
 DEVICE_NAME = "Scrap Meter"  # shown in the phone's list of linked devices
 PAIR_TIMEOUT = 170  # seconds WhatsApp keeps offering QR codes for one login
 REQUEST_TIMEOUT = 30
-MESSAGE_MAX_AGE = 120  # seconds; older messages (delivered after a reconnect) are ignored
+MESSAGE_MAX_AGE = 120  # seconds; older messages (delivered after a reconnect) are no commands
+MESSAGE_MAX_LEN = 4000
 RESTART_DELAY = 20  # seconds before a linked client that stopped is started again,
 RESTART_DELAY_MAX = 600  # doubling after each failure up to this
 
@@ -94,6 +98,26 @@ def _jid(to: str):
     if not digits:
         raise ValueError(f"'{to}' is neither a group id (…@g.us) nor a phone number")
     return build_jid(digits)
+
+
+_MEDIA = (("imageMessage", "photo"), ("videoMessage", "video"), ("documentMessage", "file"),
+          ("audioMessage", "voice message"), ("stickerMessage", "sticker"))
+
+
+def _message_text(m) -> tuple[str, bool]:
+    """(text, media) of a WhatsApp message: its text, a caption, or "[photo]"
+    and the like for media without a caption; "" for anything else."""
+    text = (m.conversation or m.extendedTextMessage.text or "").strip()
+    if text:
+        return text, False
+    for field, label in _MEDIA:
+        try:
+            if m.HasField(field):
+                caption = (getattr(getattr(m, field), "caption", "") or "").strip()
+                return f"[{label}] {caption}".strip(), True
+        except ValueError:  # a field this version of the protobuf does not have
+            continue
+    return "", False
 
 
 def _child(conn, store: str, pair: bool) -> None:  # pragma: no cover - needs WhatsApp
@@ -193,17 +217,15 @@ def _child(conn, store: str, pair: bool) -> None:  # pragma: no cover - needs Wh
             src = ev.Info.MessageSource
             if not src.IsGroup or ev.Info.ID in sent_ids:
                 return
-            m = ev.Message
-            text = (m.conversation or m.extendedTextMessage.text or "").strip()
-            if not text or text[0].isalnum() or len(text) > 500:
-                return
+            text, media = _message_text(ev.Message)
+            if not text:
+                return  # reactions, edits, deletions, polls...
             ts = ev.Info.Timestamp
             ts = ts / 1000 if ts > 10**11 else ts  # seconds or milliseconds
-            if ts and time.time() - ts > MESSAGE_MAX_AGE:
-                return
             chat = JIDToNonAD(src.Chat)
-            info = {"event": "message", "chat": Jid2String(chat), "sender": src.Sender.User or None,
-                    "sender_name": ev.Info.Pushname or None, "from_me": bool(src.IsFromMe), "text": text}
+            info = {"event": "message", "id": ev.Info.ID, "ts": ts or time.time(), "chat": Jid2String(chat),
+                    "sender": src.Sender.User or None, "sender_name": ev.Info.Pushname or None,
+                    "from_me": bool(src.IsFromMe), "text": text[:MESSAGE_MAX_LEN], "media": media}
             # looking up the group name is a request to WhatsApp: not on the event thread
             threading.Thread(target=lambda: emit({**info, "chat_name": group_name(chat)}), daemon=True).start()
         except Exception as exc:  # noqa: BLE001
@@ -273,10 +295,12 @@ class WhatsAppLink:
         self.error: str | None = None
         self.pairing = False
         self.since: float | None = None
-        # called with each incoming group message that may be a command
-        # (set by app.main to app.commands.handle_message); runs on its own
-        # thread, one message at a time
+        # called with each incoming group message (set by app.main to
+        # app.chatroom.on_whatsapp_message, which also hands commands to
+        # app.commands); runs on its own thread, one message at a time
         self.on_message = None
+        # called with (to, text) after each message the app sent
+        self.on_sent = None
         self._inbox: "queue.Queue[dict]" = queue.Queue()
         self._worker: threading.Thread | None = None
 
@@ -444,10 +468,17 @@ class WhatsAppLink:
             raise NotifierError(f"WhatsApp: {reply.get('error')}")
         return reply.get("result")
 
-    def send(self, to: str, text: str) -> None:
+    def send(self, to: str, text: str, report: bool = True) -> None:
+        """Send a message; report=False keeps it from on_sent (the Chat room
+        records the messages it sends itself)."""
         if not (to or "").strip():
             raise NotifierError("set 'to' to a group id (…@g.us) or a phone number")
         self.request("send", to=to, text=text)
+        if report and self.on_sent is not None:
+            try:
+                self.on_sent(to, text)
+            except Exception:  # noqa: BLE001 - the message is sent
+                log.exception("recording a sent WhatsApp message failed")
 
     def groups(self) -> list[dict]:
         return self.request("groups")

@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Chat room · Scrap Meter{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div><h1>Chat room</h1><p class="lead" id="roomLine" style="margin-bottom:0">Loading…</p></div>
+  {% if user.is_admin %}<button class="btn secondary" id="chooseBtn" onclick="openChooser()" style="display:none">Change room</button>{% endif %}
+</div>
+<div id="roomProblem" class="warnbox" style="display:none"></div>
+
+<div id="noRoom" class="card" style="display:none">
+  <div id="noMessenger" style="display:none">
+    <h3>No messenger is added</h3>
+    <p class="muted" style="font-size:14px">The chat room uses a messenger the app already sends alerts with: link a WhatsApp phone or add a Telegram provider
+      {% if user.has_permission('manage_notifications') %}on the <a href="/notifications">Notifications</a> page{% else %}(an administrator does it on the Notifications page){% endif %}.</p>
+  </div>
+  <div id="pickHere" style="display:none">
+    <h3>No chat room is chosen yet</h3>
+    {% if user.is_admin %}
+    <p class="muted" style="font-size:14px">Pick the chat every user can read and write in from here.</p>
+    <button class="btn" onclick="openChooser()">Choose the chat room</button>
+    {% else %}
+    <p class="muted" style="font-size:14px">An administrator chooses it on this tab.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div id="chatBox" class="card chat-card" style="display:none">
+  <div class="chat-scroll" id="chatScroll">
+    <div style="text-align:center"><button class="btn secondary small" id="olderBtn" onclick="loadOlder()" style="display:none">Show older messages</button></div>
+    <div id="chatList"></div>
+    <div class="empty" id="chatEmpty" style="display:none">No messages yet. Messages written in the chat from now on show up here.</div>
+  </div>
+  <div class="chat-compose">
+    <textarea id="chatText" rows="2" maxlength="4000" placeholder="Write a message. Enter sends, Shift+Enter starts a new line."></textarea>
+    <button class="btn" id="sendBtn" onclick="sendMsg()">Send</button>
+  </div>
+  <div class="hint" id="sendHint"></div>
+</div>
+
+{% if user.is_admin %}
+<div class="modal-back" id="chooser"><div class="modal">
+  <h2>Choose the chat room</h2>
+  <p class="muted" style="margin-top:0;font-size:13px">Every user with the Chat room permission reads and writes in this chat. Messages from the web are sent with the user's name in front. Changing the room keeps the history of the old one.</p>
+  <div id="chooserError" class="error" style="display:none"></div>
+  <label>Chat</label>
+  <select id="roomSelect"></select>
+  <div class="hint" id="chooserHint"></div>
+  <div class="actions" style="margin-top:20px;justify-content:space-between">
+    <button class="btn danger small" id="clearRoomBtn" onclick="saveRoom(null)">No chat room</button>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal('chooser')">Cancel</button>
+      <button class="btn" onclick="saveRoom(pickedOption())">Save</button>
+    </div>
+  </div>
+</div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const ME = {{ user.id }}, NAME = {{ user.username|tojson }};
+let room = null, lastId = null, firstId = null, options = [];
+
+function dayText(d) {
+  const today = new Date(), y = new Date(); y.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+function bubble(m) {
+  const t = new Date(m.created_at);
+  const mine = m.user_id === ME && m.direction === 'out';
+  const app = m.direction === 'out' && !m.author;
+  const cls = 'msg ' + (m.direction === 'out' ? 'out' : 'in') + (app ? ' sys' : '') + (mine ? ' mine' : '') + (m.status === 'failed' ? ' failed' : '');
+  const who = app ? 'Scrap Meter' : (m.author || 'Unknown') + (m.direction === 'out' ? ' · from the web' : '');
+  return el('div', { class: cls, 'data-id': m.id, 'data-day': t.toDateString() },
+    el('div', { class: 'msg-head' }, el('strong', {}, who),
+      el('span', { title: t.toLocaleString() }, t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))),
+    el('div', { class: 'msg-text' }, m.text),
+    m.status === 'failed' ? el('div', { class: 'msg-error' }, 'Not sent: ' + (m.error || 'unknown error')) : null);
+}
+// date lines between the days, rebuilt after each change
+function redrawDays() {
+  const list = document.getElementById('chatList');
+  list.querySelectorAll('.chat-day').forEach(n => n.remove());
+  let prev = null;
+  list.querySelectorAll('.msg').forEach(n => {
+    if (n.dataset.day !== prev) list.insertBefore(el('div', { class: 'chat-day' }, el('span', {}, dayText(new Date(n.dataset.day)))), n);
+    prev = n.dataset.day;
+  });
+  document.getElementById('chatEmpty').style.display = list.querySelector('.msg') ? 'none' : 'block';
+}
+function atBottom() { const s = document.getElementById('chatScroll'); return s.scrollHeight - s.scrollTop - s.clientHeight < 60; }
+function toBottom() { const s = document.getElementById('chatScroll'); s.scrollTop = s.scrollHeight; }
+
+function append(rows) {
+  if (!rows.length) return;
+  const stick = atBottom(), list = document.getElementById('chatList');
+  for (const m of rows) {
+    if (list.querySelector('[data-id="' + m.id + '"]')) continue;
+    list.append(bubble(m));
+    lastId = Math.max(lastId || 0, m.id);
+    if (firstId === null || m.id < firstId) firstId = m.id;
+  }
+  redrawDays();
+  if (stick) toBottom();
+}
+
+async function loadRoom() {
+  let s;
+  try { s = await getJSON('/api/chat/room'); } catch (e) { document.getElementById('roomLine').textContent = e.message; return; }
+  const changed = JSON.stringify(s.room) !== JSON.stringify(room);
+  room = s.room;
+  const btn = document.getElementById('chooseBtn');
+  if (btn) btn.style.display = room ? '' : 'none';
+  const line = document.getElementById('roomLine');
+  line.innerHTML = '';
+  if (room) line.append(el('span', { class: 'dot ' + (s.connected ? 'ok' : 'bad'), style: 'margin-right:8px' }),
+    el('strong', { style: 'color:var(--text)' }, room.name), ' · ' + room.messenger + (s.connected ? '' : ' · not connected'));
+  else line.textContent = 'One messenger chat everyone can read and write in from here.';
+  const prob = document.getElementById('roomProblem');
+  prob.textContent = s.problem || ''; prob.style.display = room && s.problem ? 'block' : 'none';
+  document.getElementById('noRoom').style.display = room ? 'none' : 'block';
+  document.getElementById('noMessenger').style.display = !room && !s.messengers ? 'block' : 'none';
+  document.getElementById('pickHere').style.display = !room && s.messengers ? 'block' : 'none';
+  document.getElementById('chatBox').style.display = room ? 'flex' : 'none';
+  if (room) {
+    document.getElementById('sendHint').textContent = room.kind === 'whatsapp'
+      ? 'Sent from the linked WhatsApp phone as "*' + NAME + ':* your text". Chat commands such as !status are answered in the group.'
+      : 'Sent by the Telegram bot as "' + NAME + ': your text". The bot only sees every message of a group when its privacy mode is off (@BotFather, /setprivacy) or it is an admin there.';
+  }
+  if (changed) {
+    document.getElementById('chatList').innerHTML = ''; lastId = firstId = null;
+    if (room) {
+      const rows = await getJSON('/api/chat/messages?limit=100');
+      document.getElementById('olderBtn').style.display = rows.length >= 100 ? '' : 'none';
+      append(rows); toBottom();
+    }
+  }
+}
+async function poll() {
+  if (!room) return;
+  try { append(await getJSON('/api/chat/messages?limit=200' + (lastId ? '&after=' + lastId : ''))); } catch (e) { /* next time */ }
+}
+async function loadOlder() {
+  const s = document.getElementById('chatScroll'), h = s.scrollHeight;
+  const rows = await getJSON('/api/chat/messages?limit=100&before=' + firstId);
+  const list = document.getElementById('chatList');
+  rows.slice().reverse().forEach(m => { list.prepend(bubble(m)); firstId = Math.min(firstId, m.id); });
+  document.getElementById('olderBtn').style.display = rows.length >= 100 ? '' : 'none';
+  redrawDays();
+  s.scrollTop = s.scrollHeight - h;
+}
+async function sendMsg() {
+  const ta = document.getElementById('chatText'), btn = document.getElementById('sendBtn');
+  const text = ta.value.trim();
+  if (!text) return;
+  btn.disabled = true;
+  try {
+    const m = await postJSON('/api/chat/messages', { text });
+    ta.value = '';
+    append([m]); toBottom();
+    if (m.status === 'failed') toast('Not sent: ' + m.error, true);
+  } catch (e) { toast(e.message, true); }
+  btn.disabled = false; ta.focus();
+}
+document.getElementById('chatText').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMsg(); }
+});
+
+// ---- choosing the room (administrators)
+function pickedOption() { return options[+document.getElementById('roomSelect').value] || null; }
+async function openChooser() {
+  const sel = document.getElementById('roomSelect'), err = document.getElementById('chooserError'), hint = document.getElementById('chooserHint');
+  err.style.display = 'none'; sel.innerHTML = ''; sel.append(el('option', {}, 'Loading the chats…'));
+  document.getElementById('clearRoomBtn').style.display = room ? '' : 'none';
+  openModal('chooser');
+  let r;
+  try { r = await getJSON('/api/chat/options'); } catch (e) { err.textContent = e.message; err.style.display = 'block'; return; }
+  options = r.options; sel.innerHTML = '';
+  const groups = {};
+  options.forEach((o, i) => (groups[o.messenger] = groups[o.messenger] || []).push([o, i]));
+  for (const [name, items] of Object.entries(groups)) {
+    sel.append(el('optgroup', { label: name }, ...items.map(([o, i]) => {
+      const opt = el('option', { value: i }, o.name);
+      if (room && room.kind === o.kind && room.chat === o.chat) opt.selected = true;
+      return opt;
+    })));
+  }
+  if (!options.length) sel.append(el('option', { value: '' }, 'No chats found'));
+  hint.textContent = (r.problems.length ? r.problems.join(' ') + ' ' : '') +
+    'WhatsApp lists the groups the linked phone is in; Telegram lists the chat ids of each Telegram provider.';
+}
+async function saveRoom(o) {
+  const err = document.getElementById('chooserError');
+  if (o === null && room && !confirm('Remove the chat room? Users can no longer write in it; its history is kept.')) return;
+  try {
+    await api('PUT', '/api/chat/room', o);
+    closeModal('chooser'); room = undefined; await loadRoom();
+    toast(o ? 'Chat room: ' + o.name : 'No chat room');
+  } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+
+loadRoom();
+setInterval(poll, 3000);
+setInterval(loadRoom, 15000);
+</script>
+{% endblock %}

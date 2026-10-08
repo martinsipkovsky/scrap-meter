@@ -67,7 +67,8 @@ function openForm(u) {
   document.getElementById('pwLabel').textContent = u ? 'New password (leave blank to keep)' : 'Password';
   document.getElementById('u_admin').checked = u ? u.is_admin : false;
   document.getElementById('u_active').checked = u ? u.is_active : true;
-  const perms = (u && u.permissions) || [];
+  // a new user can use the Chat room unless it is unticked
+  const perms = u ? (u.permissions || []) : ['chat_room'];
   document.querySelectorAll('.perm').forEach(cb => { cb.checked = perms.includes(cb.value); });
   toggleAdmin();
   openModal('modal');

@@ -145,8 +145,9 @@ receives is listed in the **Command log** with the group, the sender, the
 reply or the reason it was not answered. Messages older than two minutes
 (delivered after the app was offline) are ignored.
 
-Commands also work when you send them from the linked phone itself; the
-app's own replies never trigger a command.
+Commands also work when you send them from the linked phone itself, and from
+the [Chat room](user-guide.md#chat-room) tab when the room is a WhatsApp group;
+the app's own replies never trigger a command.
 
 ### `webhook`
 
@@ -200,6 +201,12 @@ which is Telegram's official way to do this.
 `"silent": true` to send without a notification sound. **Test send** shows
 Telegram's own error if something is wrong ("chat not found" means the bot is
 not in that chat).
+
+A Telegram chat can also be the [Chat room](user-guide.md#chat-room). While it
+is, the app asks Telegram for the bot's new messages (`getUpdates`), so the bot
+must not have a webhook set or be read by another program at the same time.
+Step 3 then shows nothing new: find chat ids before choosing the room, or with
+the room set to another chat.
 
 ## Credentials
 

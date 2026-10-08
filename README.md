@@ -68,10 +68,16 @@ versions keep working.
   job and day: OK / NOK, scrap, production time, OEE), and a read-only login
   switched on from the Database tab (no change on the server), with a manual
   there.
-- **Scrap statistics:** pass, fail and scrap % for any date range, overall,
-  per station, per job and per day, with an Excel export. Time out of
-  production, readings a user excluded and stations set to *Exclude* (such as
-  a test rig) are left out of the overall figures.
+- **Scrap statistics:** scrap %, NOK and pieces for any date range with
+  their change against the period before, a scrap trend per day or hour
+  against the scrap alert, the stations and jobs with the most NOK, a station
+  by day map that marks days above each station's alert, and tables per
+  station, job and day with an Excel export. Time out of production, readings
+  a user excluded and stations set to *Exclude* (such as a test rig) are left
+  out of the overall figures.
+- **Chat room:** one WhatsApp group or Telegram chat that every user can read
+  and write in from the web, with the user's name in front and the history
+  kept; an administrator picks the chat.
 - **Alerts:** rules for scrap rate (with per-station thresholds), fail count,
   disconnects, production and job changes, backup results and app updates,
   each with a level (info / warning / alert) and its own destinations:

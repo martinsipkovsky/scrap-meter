@@ -455,16 +455,36 @@ only** to find them again.
 
 ## Scrap statistics
 
-Pass, fail, total parts and scrap % for a date range. It is in the left panel
-for anyone with the `view_data` permission.
+How much scrap, where it comes from and how it changes, for a date range. It
+is in the left panel for anyone with the `view_data` permission.
 
 - Pick **Current month** (the default), **Today**, **Last 7 days** or
   **Last 30 days**, or set your own **From** and **To** dates (both days
   included, up to a year).
-- The figures are shown overall, per station, per job and per day. A line
-  under the totals says how many parts were left out, and why.
-- **Download Excel** saves an .xlsx file with the same figures as the screen,
-  one sheet each for Overall, Per station, Per job and Per day.
+- **Tiles** at the top: scrap %, NOK pieces and pieces made, each with its
+  change against the same number of days just before the range (scrap in
+  percentage points, the counts in %; green is better, red is worse), and how
+  many days with production were above the scrap alert.
+- **Scrap per day** (per hour for Today or a range of two days): scrap % as a
+  line, with the scrap alert as a dashed red line and the points above it in
+  red. Days or hours without production are gaps. Hover for the figures.
+- **Stations with the most NOK** and **Jobs with the most NOK**: the top 8 by
+  NOK pieces, with their share of all NOK, their scrap % and its change.
+- **Scrap per station and day**: one square per station and day, darker red
+  for more scrap; a square with **!** was above that station's scrap alert.
+  Hover a square for its figures. Shown for ranges of more than one day.
+- **Per station**, **Per job** and **Per day** tables with OK, NOK, total and
+  scrap, the share of all NOK and the change in scrap. Days above the scrap
+  alert are marked. A line under the tiles says how many pieces were left out,
+  and why.
+- **Download Excel** saves an .xlsx file with the same figures as the tables,
+  one sheet each for Overall, Per station, Per job and Per day (with an
+  *Above scrap alert* column).
+
+The **scrap alert** is the threshold of the enabled *Scrap rate* alert rules
+on the Notifications tab: for the overall figures and days the lowest rule
+for all stations, for a station its own lowest one (including its override on
+a rule for all stations). Without such a rule, 5% is used, marked *(default)*.
 
 Parts are counted from the reading history the same way as the station view's
 OK/NOK chart: the growth of each job's totals between readings. Scrap is
@@ -522,6 +542,35 @@ Files exported by earlier versions (Cognex Monitor, or Scrap Meter 1.4) import
 too: each new device in them also gets its own station, with the idle timeout
 and statistics setting from the file.
 
+## Chat room
+
+One messenger chat that everyone can read and write in from the web: a
+WhatsApp group the linked phone is in, or a Telegram chat of a Telegram
+provider's bot. It is in the left menu for users with the `chat_room`
+permission (every user has it unless an administrator takes it away).
+
+- An **administrator** picks the chat with **Choose the chat room** (later
+  **Change room**). The list shows the WhatsApp groups of the linked phone
+  and the chat ids of each Telegram provider. Without a linked phone or a
+  Telegram provider the tab says so and points to the Notifications tab.
+  Changing the room keeps the old room's messages; **No chat room** removes it.
+- The tab shows the messages written in the chat, what users sent from the
+  web, and what the app sent there itself (alerts and command replies, marked
+  *Scrap Meter*). New messages appear on their own; **Show older messages**
+  loads the history, which is kept in the database.
+- A message from the web goes out with the user's name in front: on WhatsApp
+  as "*Martin:* text" from the linked phone, on Telegram as "Martin: text" from
+  the bot. Enter sends, Shift+Enter starts a new line. A message that could not
+  be sent stays in the list, marked in red with the reason.
+- In a WhatsApp room, chat commands work from the web too: `!status` written
+  here is answered in the group, like one typed there. Commands written in the
+  group are answered as before.
+- Photos, videos and files without a caption show as "[photo]", "[video]" or
+  "[file]".
+- A Telegram bot only sees every message of a group when its privacy mode is
+  off (@BotFather, `/setprivacy`) or it is an admin of the group; otherwise
+  only commands and replies to the bot reach the room.
+
 ## Notifications tab
 
 Alert rules (per station or for all stations), delivery providers, the linked
@@ -544,10 +593,14 @@ assign permissions. The last administrator can't be deleted.
 | `exclude_readings` | Exclude readings from (or include them in) the scrap statistics |
 | `manual_entry` | Add, edit and delete manual entries (OK / NOK parts counted by hand) |
 | `manage_notifications` | Configure notification rules and providers |
+| `chat_room` | Read and write in the Chat room (given to every user by default) |
 | `manage_users` | Create users and edit their permissions |
 
-The navigation only shows the tabs a user may open. The Database tab, and
-deleting comments, are for administrators only.
+The navigation only shows the tabs a user may open. The Database tab,
+choosing the chat room, and deleting comments are for administrators only.
+
+`chat_room` is ticked for every new user, and an update to 1.16 gives it to
+every existing user once; untick it to take the Chat room away.
 
 Each user can change their own password under *Account*.
 

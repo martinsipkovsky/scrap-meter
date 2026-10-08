@@ -154,3 +154,38 @@ def test_poller_records_production_state(client):
     client.post(f"/api/devices/{did}/poll")  # pass went up: in production
     states = [r["in_production"] for r in client.get("/api/data/readings").json()]
     assert states == [True, False]  # newest first
+
+
+def test_previous_period_trend_and_alert_days(client):
+    login(client)
+    _seed()
+    s = client.get("/api/data/scrap", params=RANGE).json()
+    # the two days before: only the baseline reading on the 28th, so nothing counted
+    assert (s["previous"]["from"], s["previous"]["to"]) == ("2026-09-27", "2026-09-28")
+    assert s["previous"]["overall"]["total"] == 0
+    # each station's own parts per day, aligned with per_day; hours for a short range
+    assert s["station_days"] == {"1": [[90, 10], [40, 3]]}
+    assert len(s["per_hour"]) == 48
+    assert [(h["hour"][:13], h["total"]) for h in s["per_hour"] if h["total"]] == [
+        ("2026-09-29T08", 100), ("2026-09-30T08", 40), ("2026-09-30T09", 3)]
+    # no scrap alert rule: the default 5 %; both days (10 % and 7 %) are above it
+    assert s["alert"] == {"source": "default", "overall": 0.05, "per_station": {},
+                          "days_above": ["2026-09-29", "2026-09-30"]}
+
+    # a rule for all stations with an override for the station
+    client.post("/api/notifications/rules", json={"name": "scrap", "condition": "scrap_rate", "threshold": 0.08,
+                                                  "thresholds": {"1": 0.12}})
+    s = client.get("/api/data/scrap", params={**RANGE, "from": "2026-09-30"}).json()
+    assert s["alert"]["overall"] == 0.08 and s["alert"]["per_station"] == {"1": 0.12}
+    assert s["alert"]["days_above"] == [] and s["per_hour"] is not None  # 7 % < 8 %
+    # the day before is the previous period
+    assert s["previous"]["overall"]["total"] == 100 and s["previous"]["per_station"]["1"]["fail"] == 10
+    assert s["previous"]["per_job"] == [{"station": "Cam1", "job": "A", "pass": 90, "fail": 10, "total": 100,
+                                         "scrap_rate": 0.1}]
+
+    wb = load_workbook(io.BytesIO(client.get("/api/data/scrap.xlsx", params=RANGE).content))
+    assert [c.value for c in wb["Per day"][1]][-1] == "Above scrap alert"
+    assert (wb["Per day"]["F2"].value, wb["Per day"]["F3"].value) == ("Yes", None)  # 10 % >= 8 % > 7 %
+
+    week = client.get("/api/data/scrap", params={"from": "2026-09-24", "to": "2026-09-30", "tz": "UTC"}).json()
+    assert week["per_hour"] is None and len(week["station_days"]["1"]) == 7

@@ -237,6 +237,45 @@ pre.snippet { background: var(--bg); border: 1px solid var(--border); border-rad
 .daybar > span { display: block; height: 100%; }
 tr.excluded td { color: var(--text-dim); text-decoration: line-through; }
 tr.excluded td:last-child { text-decoration: none; }
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 10px; }
+@media (max-width: 1000px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tile { padding: 14px 16px; }
+.tile-label { color: var(--text-dim); font-size: 12px; }
+.tile-value { font-size: 30px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
+.tile-value.fail { color: var(--bad); }
+.tile-delta { font-size: 12px; margin-top: 4px; min-height: 18px; }
+.delta { font-weight: 600; white-space: nowrap; }
+.delta.good { color: var(--ok); }
+.delta.bad { color: var(--bad); }
+.delta.flat { color: var(--text-dim); font-weight: 500; }
+.section-card { margin-bottom: 16px; }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.card-head h2 { font-size: 15px; margin: 0; }
+.chart-wrap .trend-svg { height: 240px; }
+.legend-line { background: none !important; border-top: 2px dashed var(--bad); height: 0 !important; width: 14px !important; vertical-align: 3px !important; }
+.tnum, td.num { font-variant-numeric: tabular-nums; }
+.rank-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
+.rank-row { display: grid; grid-template-columns: minmax(90px, 1.2fr) 2fr; grid-template-areas: "name bar" "val sub"; gap: 2px 12px; padding: 7px 0; border-top: 1px solid var(--border); align-items: center; }
+.rank-row:first-child { border-top: none; }
+.rank-name { grid-area: name; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-bar { grid-area: bar; height: 10px; }
+.rank-bar span { display: block; height: 100%; background: var(--bad); border-radius: 0 4px 4px 0; }
+.rank-val { grid-area: val; font-size: 13px; }
+.rank-sub { grid-area: sub; font-size: 12px; }
+.heat-wrap { overflow-x: auto; }
+table.heat { width: auto; border-collapse: separate; border-spacing: 2px; }
+table.heat th, table.heat td { padding: 0; border: none; }
+table.heat tr:hover td { background: inherit; }
+.heat-day { font-size: 10px !important; color: var(--text-dim); text-align: center !important; min-width: 22px; letter-spacing: 0 !important; }
+.heat-name { font-size: 12px !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--text) !important; font-weight: 500 !important;
+  padding-right: 10px !important; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right !important; }
+.heat-cell { width: 22px; height: 22px; min-width: 22px; border-radius: 4px; text-align: center !important; font-size: 11px; font-weight: 700; color: #fff; }
+.heat-cell.none { background: var(--bg-3); }
+.heat-cell.above { box-shadow: inset 0 0 0 2px #fecaca; }
+.heat-scale { display: inline-flex; align-items: center; gap: 6px; }
+.heat-scale i { width: 70px !important; height: 8px !important; margin: 0 !important; background: linear-gradient(90deg, rgba(239,68,68,.1), rgba(239,68,68,.9)); }
+.heat-key-above { background: rgba(239,68,68,.6); box-shadow: inset 0 0 0 2px #fecaca; width: 12px !important; height: 12px !important; border-radius: 3px !important; }
+tr.above-alert td { background: rgba(239,68,68,.06); }
 
 /* ---- Dashboard OEE panel ---- */
 .oee-panel { margin-top: 20px; }
@@ -334,3 +373,27 @@ html.hmi-max-open body { overflow: hidden; }
   .hmi-edit input:nth-child(-n+2) { grid-column: 1 / -1; }
   .hmi-head .hmi-url { display: none; }
 }
+
+/* ---- Chat room ---- */
+.chat-card { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 170px); min-height: 360px; padding: 0 0 12px; }
+.chat-scroll { flex: 1; overflow-y: auto; padding: 14px 16px 4px; display: flex; flex-direction: column; }
+.chat-scroll > #chatList { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+.chat-day { text-align: center; margin: 10px 0 4px; }
+.chat-day span { background: var(--bg-3); color: var(--text-dim); font-size: 11px; padding: 2px 10px; border-radius: 999px; }
+.msg { max-width: min(640px, 80%); background: var(--bg-3); border: 1px solid var(--border); border-radius: 12px 12px 12px 4px;
+  padding: 6px 10px 7px; align-self: flex-start; }
+.msg.out { align-self: flex-end; border-radius: 12px 12px 4px 12px; background: rgba(59,130,246,.14); border-color: rgba(59,130,246,.35); }
+.msg.out.sys { background: var(--bg-2); border-style: dashed; }
+.msg.failed { border-color: rgba(239,68,68,.6); }
+.msg-head { display: flex; gap: 10px; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
+.msg-head strong { color: var(--text); font-weight: 600; }
+.msg-text { white-space: pre-wrap; word-break: break-word; margin-top: 1px; }
+.msg-error { color: #fecaca; font-size: 12px; margin-top: 3px; }
+.chat-compose { display: flex; gap: 8px; align-items: flex-end; padding: 0 16px; }
+.chat-compose textarea { min-height: 44px; max-height: 160px; font-family: inherit; font-size: 14px; flex: 1; }
+.chat-card .hint { padding: 0 16px; }
+@media (max-width: 760px) { .chat-card { height: calc(100vh - 150px); } .msg { max-width: 92%; } }
+.card-head .legend { flex-wrap: wrap; gap: 6px 14px; }
+.table-scroll { overflow-x: auto; }
+.tile-delta .delta { white-space: normal; }
+.seg { flex-wrap: wrap; max-width: 100%; }

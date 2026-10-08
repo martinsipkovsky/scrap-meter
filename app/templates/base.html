@@ -16,6 +16,7 @@
     'jobs': '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M3 13h18"/>',
     'data': '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
     'scrap': '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    'chat': '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
     'notifications': '<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 21a2 2 0 0 0 4 0"/>',
     'users': '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     'database': '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
@@ -43,6 +44,9 @@
         {% if user.has_permission('view_data') %}
         {{ link('/data', 'data', 'Data log') }}
         {{ link('/scrap', 'scrap', 'Scrap statistics') }}
+        {% endif %}
+        {% if user.has_permission('chat_room') %}
+        {{ link('/chat', 'chat', 'Chat room') }}
         {% endif %}
         {% if user.has_permission('manage_notifications') %}
         {{ link('/notifications', 'notifications', 'Notifications') }}

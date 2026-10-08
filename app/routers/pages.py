@@ -46,6 +46,11 @@ def scrap_page(request: Request, user: User = Depends(require_page_permission("v
     return templates.TemplateResponse(request, "scrap.html", _ctx(request, user, page="scrap"))
 
 
+@router.get("/chat", response_class=HTMLResponse)
+def chat_page(request: Request, user: User = Depends(require_page_permission("chat_room"))):
+    return templates.TemplateResponse(request, "chat.html", _ctx(request, user, page="chat"))
+
+
 @router.get("/notifications", response_class=HTMLResponse)
 def notifications_page(request: Request, user: User = Depends(require_page_permission("manage_notifications"))):
     return templates.TemplateResponse(request, "notifications.html", _ctx(request, user, page="notifications"))

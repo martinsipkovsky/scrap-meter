@@ -2,7 +2,7 @@
 
 Creates the schema on startup, seeds the default admin, starts the background
 poller, the listeners for devices that push data, the FTP backup
-schedule and the linked WhatsApp client, and wires up the API
+schedule, the linked WhatsApp client and the Chat room, and wires up the API
 routers, HTML pages and static assets.
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from . import __version__, commands, daily, jobs, powerbi_access, reporting, settings_store, stations
+from . import __version__, chatroom, commands, daily, jobs, powerbi_access, reporting, settings_store, stations
 from .notifications import startup_notice
 from .config import settings
 from .database import Base, SessionLocal, active_url, engine, migrate_schema
@@ -23,7 +23,7 @@ from .dependencies import RedirectToLogin
 from .backup_ftp import scheduler as backup_scheduler
 from .notifiers.whatsapp_linked import link as whatsapp_link
 from .poller import listener, poller
-from .routers import (account, auth_routes, backup_admin, commands as commands_api, comments as comments_api, data,
+from .routers import (account, auth_routes, backup_admin, chatroom as chatroom_api, commands as commands_api, comments as comments_api, data,
                       database_admin,
                       devices, jobs as jobs_api, notifications, pages, rawdb, stations as stations_api, users)
 from .seed import seed_admin
@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
     stations.upgrade(engine)  # 1.4 databases: every device becomes a station
     jobs.upgrade(engine)  # 1.6 databases: station cycle times move to the jobs
     reporting.ensure_views(engine)  # read-only views for Power BI and other reports
+    chatroom.upgrade(engine)  # users from before the Chat room get its permission
     if powerbi_access.load().get("enabled"):
         error = powerbi_access.apply(engine, active_url)  # the Power BI port, switched on on the Database tab
         if error:
@@ -59,11 +60,12 @@ async def lifespan(app: FastAPI):
         startup_notice(__version__, previous)
         daily.scheduler.start()  # daily data for reports
     backup_scheduler.start()
-    whatsapp_link.on_message = commands.handle_message  # "!status" in a WhatsApp group
+    chatroom.install()  # the Chat room keeps its chat's messages and hands "!status" to the commands
     if settings.whatsapp_enabled:
         whatsapp_link.start()  # reconnects a linked phone; exits at once if none
     yield
     whatsapp_link.stop()
+    chatroom.telegram_reader.stop()
     daily.scheduler.stop()
     powerbi_access.forwarder.stop()
     backup_scheduler.stop()
@@ -98,6 +100,7 @@ app.include_router(comments_api.router)
 app.include_router(data.router)
 app.include_router(commands_api.router)  # before notifications: /commands/... is more specific
 app.include_router(notifications.router)
+app.include_router(chatroom_api.router)
 app.include_router(database_admin.router)
 app.include_router(backup_admin.router)
 app.include_router(rawdb.router)

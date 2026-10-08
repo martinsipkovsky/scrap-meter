@@ -2,12 +2,12 @@
 {% block title %}Scrap statistics · Scrap Meter{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <div><h1>Scrap statistics</h1><p class="lead">Pass, fail and scrap for a date range, overall, per station, per job and per day.</p></div>
+  <div><h1>Scrap statistics</h1><p class="lead">How much scrap, where it comes from and how it changes, for any date range.</p></div>
 </div>
 
 <div class="card" style="margin-bottom:16px">
   <div class="row">
-    <div style="flex:0 0 auto">
+    <div style="flex:0 1 auto;min-width:0">
       <label style="margin-top:0">Range</label>
       <div class="seg" id="quick">
         <button data-range="month" class="on">Current month</button><button data-range="1">Today</button><button data-range="7">Last 7 days</button><button data-range="30">Last 30 days</button><button data-range="custom">Custom</button>
@@ -20,35 +20,68 @@
       <button class="btn" id="xlsxBtn" onclick="downloadXlsx()">Download Excel</button>
     </div>
   </div>
-  <div class="hint" style="margin-top:8px">Parts are counted from the reading history, like the OK/NOK chart in the station view. Scrap = fail / (pass + fail).
-    Parts from excluded readings, from times a station was not in production (idle or stopped) and from stations set to Exclude from the statistics are left out of the overall figures. Days follow this browser's time zone (<span id="tzName"></span>).</div>
+  <div class="hint" style="margin-top:8px">Pieces are counted from the reading history, like the OK/NOK chart in the station view. Scrap = NOK / (OK + NOK).
+    Pieces from excluded readings, from times a station was not in production (idle or stopped) and from stations set to Exclude from the statistics are left out of the overall figures. Changes compare with the same number of days just before the range. Days follow this browser's time zone (<span id="tzName"></span>).</div>
 </div>
 <div id="scrapError" class="error" style="display:none"></div>
 
-<div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin-bottom:12px">
-  <div class="card"><div class="muted">Pass</div><div class="stat value pass" id="oPass">—</div></div>
-  <div class="card"><div class="muted">Fail</div><div class="stat value fail" id="oFail">—</div></div>
-  <div class="card"><div class="muted">Total parts</div><div class="stat" id="oTotal">—</div></div>
-  <div class="card"><div class="muted">Scrap</div><div class="stat" id="oScrap">—</div><div class="muted" id="oPeriod"></div></div>
+<div class="tiles" id="tiles">
+  <div class="card tile"><div class="tile-label">Scrap</div><div class="tile-value" id="tScrap">—</div><div class="tile-delta" id="dScrap"></div></div>
+  <div class="card tile"><div class="tile-label">NOK pieces</div><div class="tile-value" id="tFail">—</div><div class="tile-delta" id="dFail"></div></div>
+  <div class="card tile"><div class="tile-label">Pieces made</div><div class="tile-value" id="tTotal">—</div><div class="tile-delta" id="dTotal"></div></div>
+  <div class="card tile"><div class="tile-label">Days above the scrap alert</div><div class="tile-value" id="tAbove">—</div><div class="tile-delta" id="dAbove"></div></div>
 </div>
-<p class="hint" id="leftOut" style="margin:0 0 24px"></p>
+<p class="hint" id="leftOut" style="margin:0 0 20px"></p>
+
+<div class="card section-card">
+  <div class="card-head">
+    <h2 id="trendTitle">Scrap per day</h2>
+    <div class="legend" style="margin:0">
+      <span><i style="background:var(--accent)"></i>Scrap %</span>
+      <span><i class="legend-line"></i><span id="alertLegend">Scrap alert</span></span>
+      <span><i style="background:var(--bad);border-radius:50%"></i>Above the alert</span>
+    </div>
+  </div>
+  <div class="chart-wrap"><svg id="trend" class="trend-svg" role="img" aria-label="Scrap percentage over the range"></svg><div class="chart-tip" id="trendTip"></div></div>
+  <div class="empty" id="trendEmpty" style="display:none">No pieces counted in this range.</div>
+</div>
+
+<div class="rank-grid">
+  <div class="card section-card">
+    <div class="card-head"><h2>Stations with the most NOK</h2></div>
+    <div id="rankStations"></div>
+  </div>
+  <div class="card section-card">
+    <div class="card-head"><h2>Jobs with the most NOK</h2></div>
+    <div id="rankJobs"></div>
+  </div>
+</div>
+
+<div class="card section-card" id="heatCard">
+  <div class="card-head">
+    <h2>Scrap per station and day</h2>
+    <div class="legend" style="margin:0"><span class="heat-scale"><span>0%</span><i></i><span id="heatMax"></span></span>
+      <span><i class="heat-key-above"></i>Above the station's scrap alert</span></div>
+  </div>
+  <div class="heat-wrap"><table class="heat" id="heat"></table></div>
+</div>
 
 <div class="section">
   <h2>Per station</h2>
-  <table><thead><tr><th>Station</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th></tr></thead>
-  <tbody id="camRows"></tbody></table>
+  <div class="table-scroll"><table><thead><tr><th>Station</th><th>OK</th><th>NOK</th><th>Total</th><th>Scrap</th><th>Share of NOK</th><th>Scrap vs before</th></tr></thead>
+  <tbody id="camRows"></tbody></table></div>
   <div id="camEmpty" class="empty" style="display:none">No stations configured.</div>
 </div>
 <div class="section">
   <h2>Per job</h2>
-  <table><thead><tr><th>Station</th><th>Job</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th></tr></thead>
-  <tbody id="jobRows"></tbody></table>
-  <div id="jobEmpty" class="empty" style="display:none">No parts counted in this range.</div>
+  <div class="table-scroll"><table><thead><tr><th>Station</th><th>Job</th><th>OK</th><th>NOK</th><th>Total</th><th>Scrap</th><th>Share of NOK</th><th>Scrap vs before</th></tr></thead>
+  <tbody id="jobRows"></tbody></table></div>
+  <div id="jobEmpty" class="empty" style="display:none">No pieces counted in this range.</div>
 </div>
 <div class="section">
   <h2>Per day</h2>
-  <table><thead><tr><th>Day</th><th>Pass</th><th>Fail</th><th>Total</th><th>Scrap</th><th style="width:30%"></th></tr></thead>
-  <tbody id="dayRows"></tbody></table>
+  <div class="table-scroll"><table><thead><tr><th>Day</th><th>OK</th><th>NOK</th><th>Total</th><th>Scrap</th><th style="width:30%"></th></tr></thead>
+  <tbody id="dayRows"></tbody></table></div>
 </div>
 
 {% if user.has_permission('exclude_readings') %}
@@ -71,6 +104,7 @@
 <script>
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 document.getElementById('tzName').textContent = TZ;
+let S = null;  // the last statistics, redrawn on resize
 function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function setQuick(range) {
   document.querySelectorAll('#quick button').forEach(b => b.classList.toggle('on', b.dataset.range === range));
@@ -89,56 +123,263 @@ function rangeQuery() {
   if (!f || !t) throw new Error('Pick both a from and a to date.');
   return 'from=' + f + '&to=' + t + '&tz=' + encodeURIComponent(TZ);
 }
-function scrapBadge(rate, total) {
+const num = (n) => n.toLocaleString();
+const day = (iso, opts) => new Date(iso + 'T00:00:00').toLocaleDateString([], opts || { day: 'numeric', month: 'numeric' });
+function rangeText(from, to) { return from === to ? day(from, { day: 'numeric', month: 'short' }) : day(from) + '–' + day(to, { day: 'numeric', month: 'numeric', year: 'numeric' }); }
+
+// ---- the change against the period before: an arrow, the change and whether that is good
+function delta(now, before, opts) {
+  if (before === null || before === undefined) return null;
+  let diff, text;
+  if (opts.pp) {
+    diff = (now - before) * 100;
+    if (Math.abs(diff) < 0.05) return { cls: 'flat', text: '= same as before' };
+    text = (diff > 0 ? '+' : '−') + Math.abs(diff).toFixed(1) + ' pp';
+  } else {
+    if (!before) return now ? { cls: 'flat', text: 'none before' } : null;
+    diff = (now - before) / before * 100;
+    if (Math.abs(diff) < 0.5) return { cls: 'flat', text: '= same as before' };
+    // ten times as many or more reads better as a factor
+    text = diff >= 900 ? '×' + num(Math.round(now / before)) : (diff > 0 ? '+' : '−') + Math.abs(diff).toFixed(Math.abs(diff) < 10 ? 1 : 0) + '%';
+  }
+  const good = opts.upIsGood ? diff > 0 : diff < 0;
+  return { cls: opts.neutral ? 'flat' : (good ? 'good' : 'bad'), arrow: diff > 0 ? '▲' : '▼', text };
+}
+function deltaNode(d, suffix) {
+  if (!d) return el('span', { class: 'muted' }, '—');
+  return el('span', { class: 'delta ' + d.cls }, d.arrow ? d.arrow + ' ' : '', d.text, suffix ? el('span', { class: 'muted' }, ' ' + suffix) : null);
+}
+function setDelta(id, d, suffix) { const n = document.getElementById(id); n.innerHTML = ''; n.append(deltaNode(d, suffix)); }
+
+function scrapBadge(rate, total, threshold) {
   if (!total) return el('span', { class: 'muted' }, '—');
-  const c = scrapClass(rate);
+  const c = threshold !== undefined && threshold !== null ? (rate >= threshold ? 'fail' : rate >= threshold * 0.6 ? 'warn' : 'pass') : scrapClass(rate);
   return el('span', { class: 'badge ' + (c === 'pass' ? 'ok' : c === 'warn' ? 'warn' : 'bad') }, fmtPct(rate));
 }
-function numCells(r) {
-  return [el('td', {}, r.pass.toLocaleString()), el('td', {}, r.fail.toLocaleString()),
-          el('td', {}, r.total.toLocaleString()), el('td', {}, scrapBadge(r.scrap_rate, r.total))];
+function numCells(r, threshold) {
+  return [el('td', { class: 'num' }, num(r.pass)), el('td', { class: 'num' }, num(r.fail)),
+          el('td', { class: 'num' }, num(r.total)), el('td', {}, scrapBadge(r.scrap_rate, r.total, threshold))];
 }
-function fill(id, rows, emptyId, cells) {
+function fill(id, rows, emptyId, cells, rowAttrs) {
   const tb = document.getElementById(id); tb.innerHTML = '';
   if (emptyId) document.getElementById(emptyId).style.display = rows.length ? 'none' : 'block';
-  rows.forEach(r => tb.append(el('tr', {}, ...cells(r))));
+  rows.forEach(r => tb.append(el('tr', rowAttrs ? rowAttrs(r) : {}, ...cells(r))));
 }
 // a station excluded from the statistics by default: its row is not in the overall figures
 function deviceCell(r) {
   if (!r.excluded_by_default) return el('td', {}, r.station);
   const counted = (r.counted_pass || 0) + (r.counted_fail || 0);
   return el('td', {}, r.station, ' ', el('span', { class: 'badge off', title: 'Excluded from the statistics by default' +
-    (counted ? '; ' + counted.toLocaleString() + ' included parts are in the overall figures' : '') }, 'not in totals'));
+    (counted ? '; ' + num(counted) + ' included pieces are in the overall figures' : '') }, 'not in totals'));
 }
-function partsText(r) { return r.pass.toLocaleString() + ' pass / ' + r.fail.toLocaleString() + ' fail'; }
+function partsText(r) { return num(r.pass) + ' OK / ' + num(r.fail) + ' NOK'; }
+function stationThreshold(id) {
+  const a = S.alert, v = a.per_station[String(id)];
+  return v !== undefined ? v : a.overall;
+}
+
 async function loadScrap() {
   const err = document.getElementById('scrapError');
-  let s;
-  try { s = await getJSON('/api/data/scrap?' + rangeQuery()); err.style.display = 'none'; }
+  try { S = await getJSON('/api/data/scrap?' + rangeQuery()); err.style.display = 'none'; }
   catch (e) { err.textContent = e.message; err.style.display = 'block'; return; }
-  const o = s.overall;
-  document.getElementById('oPass').textContent = o.pass.toLocaleString();
-  document.getElementById('oFail').textContent = o.fail.toLocaleString();
-  document.getElementById('oTotal').textContent = o.total.toLocaleString();
-  const os = document.getElementById('oScrap');
-  os.textContent = o.total ? fmtPct(o.scrap_rate) : '—';
-  os.className = 'stat value ' + (o.total ? scrapClass(o.scrap_rate) : '');
-  document.getElementById('oPeriod').textContent = s.from === s.to ? s.from : s.from + ' to ' + s.to;
+  render();
+}
+
+function render() {
+  const s = S, o = s.overall, p = s.previous, po = p.overall;
+  const before = 'vs ' + rangeText(p.from, p.to);
+  // tiles
+  const ts = document.getElementById('tScrap');
+  ts.textContent = o.total ? fmtPct(o.scrap_rate) : '—';
+  ts.className = 'tile-value ' + (o.total ? (o.scrap_rate >= s.alert.overall ? 'fail' : '') : '');
+  setDelta('dScrap', o.total && po.total ? delta(o.scrap_rate, po.scrap_rate, { pp: true }) : null, before);
+  document.getElementById('tFail').textContent = num(o.fail);
+  setDelta('dFail', delta(o.fail, po.fail, {}), before);
+  document.getElementById('tTotal').textContent = num(o.total);
+  setDelta('dTotal', delta(o.total, po.total, { upIsGood: true }), before);
+  const produced = s.per_day.filter(d => d.total > 0).length;
+  document.getElementById('tAbove').textContent = s.alert.days_above.length + ' of ' + produced;
+  const da = document.getElementById('dAbove'); da.innerHTML = '';
+  da.append(el('span', { class: 'muted', title: s.alert.source === 'default' ? 'No Scrap rate alert rule is set on the Notifications page, so 5% is used.' : 'The lowest Scrap rate alert for all stations.' },
+    'days with production · alert ' + fmtPct(s.alert.overall) + (s.alert.source === 'default' ? ' (default)' : '')));
+  document.getElementById('alertLegend').textContent = 'Scrap alert ' + fmtPct(s.alert.overall);
+
   const ex = s.left_out.excluded, np = s.left_out.not_in_production, xd = s.left_out.excluded_stations;
-  document.getElementById('leftOut').textContent = 'Left out: ' + partsText(np) + ' while not in production; ' +
-    partsText(ex) + ' from ' + ex.readings.toLocaleString() + ' excluded reading' + (ex.readings === 1 ? '' : 's') +
+  document.getElementById('leftOut').textContent = num(o.pass) + ' OK and ' + num(o.fail) + ' NOK counted, ' +
+    (s.from === s.to ? s.from : s.from + ' to ' + s.to) + '. Left out: ' + partsText(np) + ' while not in production; ' +
+    partsText(ex) + ' from ' + num(ex.readings) + ' excluded reading' + (ex.readings === 1 ? '' : 's') +
     (xd && xd.total ? '; ' + partsText(xd) + ' from stations excluded from the statistics by default' : '') + '.';
-  fill('camRows', s.per_station, 'camEmpty', r => [deviceCell(r), ...numCells(r)]);
-  fill('jobRows', s.per_job, 'jobEmpty', r => [deviceCell(r), el('td', {}, r.job), ...numCells(r)]);
+
+  drawTrend();
+  drawRanks();
+  drawHeat();
+
+  // tables
+  const totalFail = o.fail;
+  const share = (r) => el('td', { class: 'num' }, totalFail > 0 && !r.excluded_by_default ? fmtPct(r.fail / totalFail) : '—');
+  fill('camRows', s.per_station, 'camEmpty', r => {
+    const prev = p.per_station[String(r.station_id)];
+    return [deviceCell(r), ...numCells(r, stationThreshold(r.station_id)), share(r),
+      el('td', {}, deltaNode(r.total && prev && prev.total ? delta(r.scrap_rate, prev.scrap_rate, { pp: true }) : null))];
+  });
+  const prevJob = {};
+  p.per_job.forEach(r => { prevJob[r.station + '\u0000' + r.job] = r; });
+  const stationIds = Object.fromEntries(s.per_station.map(r => [r.station, r.station_id]));
+  fill('jobRows', s.per_job, 'jobEmpty', r => {
+    const prev = prevJob[r.station + '\u0000' + r.job];
+    return [deviceCell(r), el('td', {}, r.job), ...numCells(r, stationThreshold(stationIds[r.station])), share(r),
+      el('td', {}, deltaNode(r.total && prev && prev.total ? delta(r.scrap_rate, prev.scrap_rate, { pp: true }) : null))];
+  });
+  const above = new Set(s.alert.days_above);
   const maxTotal = Math.max(1, ...s.per_day.map(r => r.total));
   fill('dayRows', s.per_day.slice().reverse(), null, r => {
     const bar = el('div', { class: 'daybar', title: partsText(r) });
-    bar.append(el('span', { style: 'width:' + (100 * r.pass / maxTotal) + '%;background:var(--ok)' }),
-               el('span', { style: 'width:' + (100 * r.fail / maxTotal) + '%;background:var(--bad)' }));
-    const d = new Date(r.day + 'T00:00:00');
-    return [el('td', {}, d.toLocaleDateString([], { weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit' })), ...numCells(r), el('td', {}, bar)];
-  });
+    bar.append(el('span', { style: 'width:' + (100 * Math.max(0, r.pass) / maxTotal) + '%;background:var(--ok)' }),
+               el('span', { style: 'width:' + (100 * Math.max(0, r.fail) / maxTotal) + '%;background:var(--bad)' }));
+    return [el('td', {}, day(r.day, { weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit' }),
+              above.has(r.day) ? el('span', { class: 'badge bad', style: 'margin-left:8px' }, '▲ above alert') : null),
+            ...numCells(r, s.alert.overall), el('td', {}, bar)];
+  }, r => above.has(r.day) ? { class: 'above-alert' } : {});
 }
+
+// ---- scrap % over the range: per day, or per hour for one or two days
+function niceTop(v) {
+  const steps = [0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1];
+  for (const s of steps) if (v <= s * 4) return [Math.ceil(v / s) * s || s, s];
+  return [1, 0.25];
+}
+function drawTrend() {
+  const svg = document.getElementById('trend'), tip = document.getElementById('trendTip');
+  const hourly = !!S.per_hour;
+  const pts = hourly ? S.per_hour : S.per_day;
+  document.getElementById('trendTitle').textContent = hourly ? 'Scrap per hour' : 'Scrap per day';
+  const any = pts.some(r => r.total > 0);
+  document.getElementById('trendEmpty').style.display = any ? 'none' : 'block';
+  svg.style.display = any ? 'block' : 'none';
+  if (!any) return;
+  const W = svg.getBoundingClientRect().width || 800, H = 240, L = 48, R = 16, T = 14, B = 28;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const thr = S.alert.overall;
+  const maxRate = Math.max(thr * 1.15, ...pts.filter(r => r.total > 0).map(r => r.scrap_rate));
+  const [top, step] = niceTop(maxRate);
+  const pw = W - L - R, ph = H - T - B, n = pts.length;
+  const x = i => L + (n === 1 ? pw / 2 : (i / (n - 1)) * pw);
+  const y = v => T + ph - (Math.min(v, top) / top) * ph;
+  const label = (r) => hourly ? new Date(r.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : day(r.day);
+  const long = (r) => hourly ? new Date(r.hour).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })
+                             : day(r.day, { weekday: 'short', day: 'numeric', month: 'long' });
+  let out = '';
+  for (let v = 0; v <= top + 1e-9; v += step) {
+    out += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>`;
+    out += `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" fill="var(--text-dim)" font-size="11" class="tnum">${(v * 100).toFixed(step < 0.01 ? 1 : 0)}%</text>`;
+  }
+  // the alert threshold
+  out += `<line x1="${L}" x2="${W - R}" y1="${y(thr)}" y2="${y(thr)}" stroke="var(--bad)" stroke-width="1.5" stroke-dasharray="5 4" opacity=".8"/>`;
+  out += `<text x="${W - R}" y="${y(thr) - 5}" text-anchor="end" fill="var(--text-dim)" font-size="11">alert ${fmtPct(thr)}</text>`;
+  // the line, broken where nothing was made
+  let path = '', open = false;
+  pts.forEach((r, i) => {
+    if (r.total > 0) { path += (open ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(r.scrap_rate).toFixed(1); open = true; }
+    else open = false;
+  });
+  out += `<path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const labelEvery = Math.ceil(n / Math.max(1, Math.floor(pw / 64)));
+  pts.forEach((r, i) => {
+    if (r.total > 0) {
+      const hi = r.scrap_rate >= thr;
+      if (hi || n <= 40) out += `<circle cx="${x(i)}" cy="${y(r.scrap_rate)}" r="${hi ? 4.5 : 3}" fill="${hi ? 'var(--bad)' : 'var(--accent)'}" stroke="var(--bg-2)" stroke-width="2"/>`;
+    }
+    if (i % labelEvery === 0) out += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" fill="var(--text-dim)" font-size="11">${label(r)}</text>`;
+  });
+  // the hover line and its dot, moved by the pointer
+  out += `<line id="trendX" y1="${T}" y2="${T + ph}" stroke="var(--text-dim)" stroke-width="1" opacity="0"/>`;
+  out += `<rect x="${L - 10}" y="${T}" width="${pw + 20}" height="${ph}" fill="transparent" id="trendHit"/>`;
+  svg.innerHTML = out;
+  const hair = svg.querySelector('#trendX');
+  svg.onmousemove = (e) => {
+    const r0 = svg.getBoundingClientRect(), px = (e.clientX - r0.left) * (W / r0.width);
+    const i = Math.max(0, Math.min(n - 1, Math.round(n === 1 ? 0 : (px - L) / pw * (n - 1))));
+    const r = pts[i];
+    hair.setAttribute('x1', x(i)); hair.setAttribute('x2', x(i)); hair.setAttribute('opacity', '.6');
+    tip.innerHTML = '';
+    tip.append(el('strong', {}, long(r)), el('br'),
+      r.total ? el('span', {}, 'Scrap ' + fmtPct(r.scrap_rate) + (r.scrap_rate >= thr ? ' ▲ above the alert' : '')) : el('span', { class: 'muted' }, 'Nothing made'),
+      el('br'), el('span', { class: 'muted' }, num(r.pass) + ' OK · ' + num(r.fail) + ' NOK'));
+    tip.style.display = 'block';
+    const left = (x(i) / W) * r0.width + 12;
+    tip.style.left = Math.min(left, r0.width - tip.offsetWidth - 4) + 'px';
+    tip.style.top = '8px';
+  };
+  svg.onmouseleave = () => { tip.style.display = 'none'; hair.setAttribute('opacity', '0'); };
+}
+
+// ---- where the NOK comes from
+function rankList(id, rows, nameOf, prevOf, thresholdOf) {
+  const box = document.getElementById(id); box.innerHTML = '';
+  const withNok = rows.filter(r => r.fail > 0).sort((a, b) => b.fail - a.fail);
+  if (!withNok.length) { box.append(el('div', { class: 'empty', style: 'padding:16px' }, 'No NOK pieces in this range.')); return; }
+  const top = withNok.slice(0, 8), max = top[0].fail;
+  const all = rows.reduce((a, r) => a + Math.max(0, r.fail), 0);
+  for (const r of top) {
+    const prev = prevOf(r), thr = thresholdOf(r);
+    const d = prev && prev.total && r.total ? delta(r.scrap_rate, prev.scrap_rate, { pp: true }) : null;
+    box.append(el('div', { class: 'rank-row', title: partsText(r) + ' · scrap ' + fmtPct(r.scrap_rate) },
+      el('div', { class: 'rank-name' }, nameOf(r)),
+      el('div', { class: 'rank-bar' }, el('span', { style: 'width:' + Math.max(1.5, 100 * r.fail / max) + '%' })),
+      el('div', { class: 'rank-val' }, el('strong', {}, num(r.fail)), el('span', { class: 'muted' }, ' NOK · ' + fmtPct(all ? r.fail / all : 0) + ' of all')),
+      el('div', { class: 'rank-sub' }, scrapBadge(r.scrap_rate, r.total, thr), ' ', deltaNode(d, d ? 'vs before' : null))));
+  }
+  if (withNok.length > top.length) box.append(el('div', { class: 'hint', style: 'margin-top:8px' }, (withNok.length - top.length) + ' more with NOK in the tables below.'));
+}
+function drawRanks() {
+  const p = S.previous;
+  rankList('rankStations', S.per_station, r => r.station + (r.excluded_by_default ? ' (not in totals)' : ''),
+    r => p.per_station[String(r.station_id)], r => stationThreshold(r.station_id));
+  const prevJob = {};
+  p.per_job.forEach(r => { prevJob[r.station + '\u0000' + r.job] = r; });
+  const ids = Object.fromEntries(S.per_station.map(r => [r.station, r.station_id]));
+  rankList('rankJobs', S.per_job, r => r.job + ' · ' + r.station, r => prevJob[r.station + '\u0000' + r.job],
+    r => stationThreshold(ids[r.station]));
+}
+
+// ---- stations x days: scrap % as the strength of one hue
+function drawHeat() {
+  const card = document.getElementById('heatCard'), tbl = document.getElementById('heat');
+  const days = S.per_day.map(d => d.day);
+  const rows = S.per_station.filter(r => S.station_days[String(r.station_id)]);
+  card.style.display = days.length > 1 && rows.length ? '' : 'none';
+  if (card.style.display === 'none') return;
+  let max = S.alert.overall * 2;
+  rows.forEach(r => S.station_days[String(r.station_id)].forEach(([ok, nok]) => { if (ok + nok > 0) max = Math.max(max, nok / (ok + nok)); }));
+  max = Math.min(1, max);
+  document.getElementById('heatMax').textContent = fmtPct(max) + '+';
+  tbl.innerHTML = '';
+  const head = el('tr', {}, el('th', {}, ''));
+  const showEvery = Math.ceil(days.length / 31);
+  days.forEach((d, i) => head.append(el('th', { class: 'heat-day' }, i % showEvery === 0 ? new Date(d + 'T00:00:00').getDate() : '')));
+  tbl.append(el('thead', {}, head));
+  const body = el('tbody');
+  for (const r of rows) {
+    const thr = stationThreshold(r.station_id);
+    const tr = el('tr', {}, el('th', { class: 'heat-name', title: r.station }, r.station));
+    S.station_days[String(r.station_id)].forEach(([ok, nok], i) => {
+      const tot = ok + nok;
+      if (tot <= 0) { tr.append(el('td', { class: 'heat-cell none', title: r.station + ' · ' + day(days[i]) + ': nothing made' })); return; }
+      const rate = Math.max(0, nok / tot), hi = rate >= thr;
+      const a = 0.1 + 0.8 * Math.min(1, rate / max);
+      tr.append(el('td', { class: 'heat-cell' + (hi ? ' above' : ''), style: 'background:rgba(239,68,68,' + a.toFixed(2) + ')',
+        title: r.station + ' · ' + day(days[i], { weekday: 'short', day: 'numeric', month: 'long' }) + ': scrap ' + fmtPct(rate) +
+          ' (' + num(ok) + ' OK, ' + num(nok) + ' NOK)' + (hi ? ' · above the alert ' + fmtPct(thr) : '') }, hi ? '!' : ''));
+    });
+    body.append(tr);
+  }
+  tbl.append(body);
+}
+
+let resizeTimer;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => S && drawTrend(), 150); });
+window.addEventListener('navchange', () => setTimeout(() => S && drawTrend(), 200));
+
 async function downloadXlsx() {
   const btn = document.getElementById('xlsxBtn');
   btn.disabled = true;

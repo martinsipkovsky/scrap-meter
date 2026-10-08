@@ -302,7 +302,7 @@ def _scrap_range(start: dt.date, end: dt.date, tz: str | None, db: Session) -> d
         raise HTTPException(400, "The To date must not be before the From date")
     if (end - start).days >= _MAX_RANGE_DAYS:
         raise HTTPException(400, f"The range may cover at most {_MAX_RANGE_DAYS} days")
-    return scrap_stats.compute(db, start, end, scrap_stats.zone(tz))
+    return scrap_stats.report(db, start, end, scrap_stats.zone(tz))
 
 
 @router.get("/scrap")
@@ -313,7 +313,8 @@ def scrap(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("view_data")),
 ):
-    """Pass/fail/scrap for a date range: overall, per station, per job, per day."""
+    """Pass/fail/scrap for a date range: overall, per station, per job, per day,
+    with the previous period of the same length and the scrap alert thresholds."""
     return _scrap_range(start, end, tz, db)
 
 

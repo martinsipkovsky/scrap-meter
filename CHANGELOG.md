@@ -4,6 +4,9 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.22.0 — 2026-10-08
+- New **Tutorial** under the version number in the left menu: short pages with pictures on everything the app can do, from getting started to error codes. They are part of the app, so they work without internet, and link to the longer guides.
+
 ## 1.21.0 — 2026-10-08
 - Settings has one compact table: your setting next to the default for everyone (administrators), and **Reset to default**.
 - New **Developer options** for administrators: the WhatsApp virtual client (QR login) and Signal (signal-cli) are off unless turned on. Turning one off stops and hides it without deleting the linked phone or the history. A server that already used them keeps them on after the update.

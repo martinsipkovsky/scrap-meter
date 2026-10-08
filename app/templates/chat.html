@@ -74,7 +74,7 @@ function bubble(m) {
   const who = app ? 'Scrap Meter' : (m.author || 'Unknown') + (m.direction === 'out' ? ' · from the web' : '');
   return el('div', { class: cls, 'data-id': m.id, 'data-day': t.toDateString() },
     el('div', { class: 'msg-head' }, el('strong', {}, who),
-      el('span', { title: t.toLocaleString() }, t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))),
+      el('span', { title: fmtFull(t) }, fmtClock(t))),
     el('div', { class: 'msg-text' }, m.text),
     m.status === 'failed' ? el('div', { class: 'msg-error' }, 'Not sent: ' + (m.error || 'unknown error')) : null);
 }

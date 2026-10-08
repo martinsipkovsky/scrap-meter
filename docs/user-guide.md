@@ -29,7 +29,10 @@ strip; **›** opens it over the page, and a tap next to it closes it again.
 
 The bottom of the menu shows the version the server runs (**Version 1.17.0**,
 or **v1.17** in the icon strip). Clicking it opens the **Changelog**: every
-release, newest first, with its date and what changed.
+release, newest first, with its date and what changed. Under it, **Tutorial** opens short
+pages with pictures on everything the app can do ([docs/wiki](wiki/README.md)),
+served by the app itself, so they also work without internet; they link to
+this guide where it goes deeper.
 
 ## Dashboard
 

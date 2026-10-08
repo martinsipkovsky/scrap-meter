@@ -434,6 +434,7 @@ html.hmi-max-open body { overflow: hidden; }
 /* ---- Version and changelog ---- */
 .userbox .version { display: block; margin-top: 8px; font-size: 12px; color: var(--text-dim); }
 .userbox .version:hover { color: var(--text); }
+.userbox .version + .version { margin-top: 2px; }
 .userbox .compact .version-tag { font-size: 10px; font-weight: 600; letter-spacing: .2px; }
 .changelog { display: flex; flex-direction: column; gap: 12px; max-width: 860px; }
 .release { padding: 14px 18px; }
@@ -481,3 +482,24 @@ html.hmi-max-open body { overflow: hidden; }
 .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
 .swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg-2) inset; }
 .badge.code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .3px; cursor: help; }
+
+/* ---- Tutorial (docs/wiki) ---- */
+.wiki { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; max-width: 1180px; }
+.wiki-nav { position: sticky; top: 16px; display: flex; flex-direction: column; padding: 10px 8px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.wiki-nav a { color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 13px; }
+.wiki-nav a:hover { color: var(--text); background: var(--bg-3); text-decoration: none; }
+.wiki-nav a.on { color: #fff; background: var(--accent); }
+.wiki-page { padding: 20px 28px; line-height: 1.6; font-size: 14.5px; }
+.wiki-page h1 { margin-top: 0; }
+.wiki-page h2 { margin-top: 28px; font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.wiki-page h3 { margin-top: 20px; font-size: 15px; }
+.wiki-page img { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; display: block; }
+.wiki-page code { background: var(--bg-3); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+.wiki-page pre code { display: block; padding: 10px; overflow-x: auto; }
+.wiki-page table { margin: 10px 0; }
+.wiki-page blockquote { margin: 10px 0; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--bg-3); border-radius: 0 8px 8px 0; }
+@media (max-width: 860px) {
+  .wiki { grid-template-columns: 1fr; }
+  .wiki-nav { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
+  .wiki-page { padding: 14px 16px; }
+}

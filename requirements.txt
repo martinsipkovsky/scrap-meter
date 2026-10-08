@@ -12,6 +12,7 @@ httpx==0.28.1
 pymodbus==3.8.3
 asyncua==2.0.1
 openpyxl==3.1.5
+markdown==3.7
 tzdata==2025.2
 neonize==0.5.2
 pytest==8.3.4

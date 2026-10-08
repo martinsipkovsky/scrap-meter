@@ -4,10 +4,10 @@ built from the signed-in user's permissions so they only see what they can use.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
-from .. import changelog
+from .. import changelog, wiki
 from ..database import get_db
 from ..dependencies import require_page_permission, require_user
 from ..models import PERMISSIONS, User
@@ -104,3 +104,37 @@ def account_page(request: Request, user: User = Depends(require_user)):
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, user: User = Depends(require_user)):
     return templates.TemplateResponse(request, "settings.html", _ctx(request, user, page="settings"))
+
+
+# ---- Tutorial (docs/wiki, app.wiki) -------------------------------------------
+def _tutorial(request: Request, user: User, folder: str, name: str):
+    page = wiki.render(folder, name)
+    if page is None:
+        raise HTTPException(404, "No such tutorial page")
+    return templates.TemplateResponse(request, "tutorial.html", _ctx(
+        request, user, page="tutorial", contents=wiki.contents(), current=name if folder == "wiki" else None,
+        doc=page, guide=folder == "docs"))
+
+
+@router.get("/tutorial", response_class=HTMLResponse)
+def tutorial_home(request: Request, user: User = Depends(require_user)):
+    return _tutorial(request, user, "wiki", "README")
+
+
+@router.get("/tutorial/images/{name}")
+def tutorial_image(name: str, _: User = Depends(require_user)):
+    path = wiki.image(name)
+    if path is None:
+        raise HTTPException(404, "No such picture")
+    return FileResponse(path, headers={"Cache-Control": "max-age=86400"})
+
+
+@router.get("/tutorial/docs/{name}", response_class=HTMLResponse)
+def tutorial_guide(name: str, request: Request, user: User = Depends(require_user)):
+    """A longer guide from docs (the user guide, notifications, ...)."""
+    return _tutorial(request, user, "docs", name)
+
+
+@router.get("/tutorial/{name}", response_class=HTMLResponse)
+def tutorial_page(name: str, request: Request, user: User = Depends(require_user)):
+    return _tutorial(request, user, "wiki", name)

@@ -50,6 +50,9 @@ container of a throwaway stack with an empty database (another
 - `tests/perf_compare.py`: the statistics and OEE at a fixed moment as JSON;
   run it with the old and the new image on the same database and compare.
 - `tests/perf_poll.py`: the cost of one device read (the poller's work).
+- `tests/wiki_demo.py` and `tests/wiki_shots.py`: demo data on a seeded
+  throwaway stack and the Tutorial screenshots (`docs/wiki/images`), taken
+  with the Playwright image (see the scripts' docstrings).
 
 The scripts need `PYTHONPATH=/srv` when run from `/srv/tests`.
 
@@ -90,6 +93,7 @@ app/
   mute.py            muted station alerts (!mute, the Scrap warnings switch), StationEvent
   messengers.py      reads Discord channels and Signal groups (commands, Chat room)
   ui_settings.py     Settings tab: each user's look and behaviour, defaults for everyone
+  wiki.py            Tutorial: docs/wiki pages (and the guides in docs) shown in the app
   dev_options.py     Developer options (WhatsApp virtual client, Signal), on for servers that used them
   changelog.py       the Changelog page, read from CHANGELOG.md
   auth.py            password hashing and signed session cookies

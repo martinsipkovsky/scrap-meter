@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 # shown on the Changelog page (app/changelog.py)
 COPY CHANGELOG.md ./CHANGELOG.md
+# the Tutorial pages and the guides they link to (app/wiki.py)
+COPY docs ./docs
 
 # Settings files (database choice, FTP backup). docker-compose mounts the
 # app_data volume here; declaring it also keeps the files in an anonymous

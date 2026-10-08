@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }} · Tutorial · Scrap Meter{% endblock %}
+{% block content %}
+<div class="wiki">
+  <nav class="wiki-nav card" aria-label="Tutorial pages">
+    <a href="/tutorial" class="{{ 'on' if current == 'README' }}"><strong>Tutorial</strong></a>
+    {% for p in contents %}
+    <a href="/tutorial/{{ p.name }}" class="{{ 'on' if current == p.name }}">{{ p.title }}</a>
+    {% endfor %}
+  </nav>
+  <article class="wiki-page card">
+    {% if guide %}<p class="muted"><a href="/tutorial">← Tutorial</a> · a longer guide from the documentation</p>{% endif %}
+    {{ doc.html }}
+  </article>
+</div>
+{% endblock %}

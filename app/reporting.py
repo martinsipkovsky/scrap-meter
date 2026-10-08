@@ -23,7 +23,9 @@ log = logging.getLogger("cognex.reporting")
 
 # name -> (what it holds, SELECT). Column names stay as they are, since
 # reports refer to them: add new columns at the end only (Postgres' CREATE OR
-# REPLACE VIEW can only append columns).
+# REPLACE VIEW can only append columns). Corrections (negative manual
+# entries) can take a day's OK or NOK below zero: scrap and quality stay
+# within 0 - 100 % then, and are empty without parts.
 VIEWS: dict[str, tuple[str, str]] = {
     "powerbi_station_comments": (
         "Comments written on the stations, with the job and OK / NOK / scrap at that moment",
@@ -130,7 +132,7 @@ SELECT
     d.ok AS ok_count,
     d.nok AS nok_count,
     d.ok + d.nok AS total_count,
-    ROUND(CAST(100.0 * (d.nok) / NULLIF(d.ok + d.nok, 0) AS NUMERIC), 2) AS scrap_pct,
+    ROUND(CAST(100.0 * (CASE WHEN d.ok + d.nok <= 0 THEN NULL WHEN d.nok <= 0 THEN 0.0 WHEN d.nok >= d.ok + d.nok THEN 1.0 ELSE 1.0 * d.nok / (d.ok + d.nok) END) AS NUMERIC), 2) AS scrap_pct,
     d.manual_ok AS manual_ok,
     d.manual_nok AS manual_nok,
     d.excluded_ok AS excluded_ok,
@@ -141,8 +143,8 @@ SELECT
     ROUND(CAST(d.window_s / 60.0 AS NUMERIC), 1) AS day_min,
     ROUND(CAST(100.0 * (d.production_s) / NULLIF(d.window_s, 0) AS NUMERIC), 2) AS availability_pct,
     ROUND(CAST(100.0 * (d.ideal_s) / NULLIF(d.timed_production_s, 0) AS NUMERIC), 2) AS performance_pct,
-    ROUND(CAST(100.0 * (d.ok) / NULLIF(d.ok + d.nok, 0) AS NUMERIC), 2) AS quality_pct,
-    ROUND(CAST(100.0 * (d.production_s) / NULLIF(d.window_s, 0) * (d.ideal_s) / NULLIF(d.timed_production_s, 0) * (d.ok) / NULLIF(d.ok + d.nok, 0) AS NUMERIC), 2) AS oee_pct,
+    ROUND(CAST(100.0 * (CASE WHEN d.ok + d.nok <= 0 THEN NULL WHEN d.ok <= 0 THEN 0.0 WHEN d.ok >= d.ok + d.nok THEN 1.0 ELSE 1.0 * d.ok / (d.ok + d.nok) END) AS NUMERIC), 2) AS quality_pct,
+    ROUND(CAST(100.0 * (d.production_s) / NULLIF(d.window_s, 0) * (d.ideal_s) / NULLIF(d.timed_production_s, 0) * (CASE WHEN d.ok + d.nok <= 0 THEN NULL WHEN d.ok <= 0 THEN 0.0 WHEN d.ok >= d.ok + d.nok THEN 1.0 ELSE 1.0 * d.ok / (d.ok + d.nok) END) AS NUMERIC), 2) AS oee_pct,
     d.jobs AS jobs,
     d.readings AS readings,
     d.comments AS comments,
@@ -166,7 +168,7 @@ SELECT
     j.ok AS ok_count,
     j.nok AS nok_count,
     j.ok + j.nok AS total_count,
-    ROUND(CAST(100.0 * (j.nok) / NULLIF(j.ok + j.nok, 0) AS NUMERIC), 2) AS scrap_pct,
+    ROUND(CAST(100.0 * (CASE WHEN j.ok + j.nok <= 0 THEN NULL WHEN j.nok <= 0 THEN 0.0 WHEN j.nok >= j.ok + j.nok THEN 1.0 ELSE 1.0 * j.nok / (j.ok + j.nok) END) AS NUMERIC), 2) AS scrap_pct,
     j.manual_ok AS manual_ok,
     j.manual_nok AS manual_nok,
     ROUND(CAST(j.production_s / 60.0 AS NUMERIC), 1) AS production_min,
@@ -186,12 +188,12 @@ SELECT
     t.ok AS ok_count,
     t.nok AS nok_count,
     t.ok + t.nok AS total_count,
-    ROUND(CAST(100.0 * (t.nok) / NULLIF(t.ok + t.nok, 0) AS NUMERIC), 2) AS scrap_pct,
+    ROUND(CAST(100.0 * (CASE WHEN t.ok + t.nok <= 0 THEN NULL WHEN t.nok <= 0 THEN 0.0 WHEN t.nok >= t.ok + t.nok THEN 1.0 ELSE 1.0 * t.nok / (t.ok + t.nok) END) AS NUMERIC), 2) AS scrap_pct,
     ROUND(CAST(t.production_s / 60.0 AS NUMERIC), 1) AS production_min,
     ROUND(CAST(100.0 * (t.production_s) / NULLIF(t.window_s, 0) AS NUMERIC), 2) AS availability_pct,
     ROUND(CAST(100.0 * (t.ideal_s) / NULLIF(t.timed_production_s, 0) AS NUMERIC), 2) AS performance_pct,
-    ROUND(CAST(100.0 * (t.ok) / NULLIF(t.ok + t.nok, 0) AS NUMERIC), 2) AS quality_pct,
-    ROUND(CAST(100.0 * (t.production_s) / NULLIF(t.window_s, 0) * (t.ideal_s) / NULLIF(t.timed_production_s, 0) * (t.ok) / NULLIF(t.ok + t.nok, 0) AS NUMERIC), 2) AS oee_pct,
+    ROUND(CAST(100.0 * (CASE WHEN t.ok + t.nok <= 0 THEN NULL WHEN t.ok <= 0 THEN 0.0 WHEN t.ok >= t.ok + t.nok THEN 1.0 ELSE 1.0 * t.ok / (t.ok + t.nok) END) AS NUMERIC), 2) AS quality_pct,
+    ROUND(CAST(100.0 * (t.production_s) / NULLIF(t.window_s, 0) * (t.ideal_s) / NULLIF(t.timed_production_s, 0) * (CASE WHEN t.ok + t.nok <= 0 THEN NULL WHEN t.ok <= 0 THEN 0.0 WHEN t.ok >= t.ok + t.nok THEN 1.0 ELSE 1.0 * t.ok / (t.ok + t.nok) END) AS NUMERIC), 2) AS oee_pct,
     t.comments AS comments
 FROM (
     SELECT day, COUNT(*) AS stations, SUM(ok) AS ok, SUM(nok) AS nok, SUM(production_s) AS production_s,

@@ -20,7 +20,7 @@
       <option value="">All readings</option><option value="true">Excluded readings only</option>
     </select>
   </div>
-  <p class="hint">Manual entries are marked <span class="badge warn">manual</span> with who entered them.{% if user.has_permission('manual_entry') %} Edit or Delete changes them; add them on a station's view.{% endif %} Readings marked <span class="badge off">excluded</span>, <span class="badge off">station not in totals</span> or <span class="badge warn">not in production</span> are left out of the overall <a href="/scrap">scrap statistics</a>.{% if user.has_permission('exclude_readings') %} Use Exclude to leave a reading's parts out; Include counts them, also for a station that is excluded from the statistics by default.{% endif %}</p>
+  <p class="hint">Manual entries are marked <span class="badge warn">manual</span> with who entered them; one with negative parts takes back parts counted by mistake and is marked <span class="badge bad">correction</span>.{% if user.has_permission('manual_entry') %} Edit or Delete changes them; add them on a station's view.{% endif %} Readings marked <span class="badge off">excluded</span>, <span class="badge off">station not in totals</span> or <span class="badge warn">not in production</span> are left out of the overall <a href="/scrap">scrap statistics</a>.{% if user.has_permission('exclude_readings') %} Use Exclude to leave a reading's parts out; Include counts them, also for a station that is excluded from the statistics by default.{% endif %}</p>
   <table><thead><tr><th>Time</th><th>Station</th><th>Job</th><th>Raw pass</th><th>Raw fail</th><th>Counted</th><th>Total pass</th><th>Total fail</th><th>Scrap statistics</th></tr></thead>
   <tbody id="readingRows"></tbody></table>
   <div id="readingEmpty" class="empty" style="display:none">No readings yet.</div>
@@ -29,11 +29,12 @@
 <div class="modal-back" id="entryModal">
   <div class="modal">
     <h2>Edit manual entry</h2>
+    <div class="hint" style="margin-top:0">A negative number is a correction: it takes back parts counted by mistake.</div>
     <div id="entryError" class="error" style="display:none"></div>
     <input type="hidden" id="m_id" />
     <div class="row">
-      <div><label>OK</label><input id="m_ok" type="number" min="0" /></div>
-      <div><label>NOK</label><input id="m_nok" type="number" min="0" /></div>
+      <div><label>OK</label><input id="m_ok" type="number" /></div>
+      <div><label>NOK</label><input id="m_nok" type="number" /></div>
     </div>
     <div class="row">
       <div><label>Time</label><input id="m_at" type="datetime-local" /></div>
@@ -93,17 +94,20 @@ async function load() {
     rRows.append(el('tr', { class: leftOut(r) ? 'excluded' : '' },
       el('td', { class: 'muted' }, new Date(r.created_at).toLocaleString()),
       el('td', {}, devName(r.station_id),
-        r.manual ? el('div', { class: 'muted' }, el('span', { class: 'badge warn' }, 'manual'), ' ' + (r.entered_by || '') + (r.note ? ' · ' + r.note : ''))
+        r.manual ? el('div', { class: 'muted' }, el('span', { class: 'badge warn' }, 'manual'),
+          isCorrection(r) ? el('span', { class: 'badge bad', style: 'margin-left:4px', title: 'Negative parts: takes back parts counted by mistake' }, 'correction') : null,
+          ' ' + (r.entered_by || '') + (r.note ? ' · ' + r.note : ''))
           : r.device ? el('div', { class: 'muted' }, r.device) : null),
       el('td', {}, r.job_name || '—'),
-      el('td', {}, (r.manual ? '+' : '') + r.raw_pass), el('td', {}, (r.manual ? '+' : '') + r.raw_fail),
-      el('td', { class: 'muted', title: 'Pieces this reading added to the station counters (only while in production)' },
-        r.manual ? '+' + r.raw_pass + ' / +' + r.raw_fail : r.ok_added === null ? '—' : '+' + r.ok_added + ' / +' + r.nok_added),
+      el('td', {}, r.manual ? signed(r.raw_pass) : String(r.raw_pass)), el('td', {}, r.manual ? signed(r.raw_fail) : String(r.raw_fail)),
+      el('td', { class: 'muted', title: 'Pieces this reading added to the station counters (only while in production); a correction takes them back' },
+        r.manual ? signed(r.raw_pass) + ' / ' + signed(r.raw_fail) : r.ok_added === null ? '—' : '+' + r.ok_added + ' / +' + r.nok_added),
       el('td', {}, r.manual ? '—' : String(r.total_pass)), el('td', {}, r.manual ? '—' : String(r.total_fail)),
       el('td', {}, readingState(r)),
     ));
   }
 }
+function isCorrection(r) { return r.manual && (r.raw_pass < 0 || r.raw_fail < 0); }
 // left out by a user, or by its station's statistics default (and not included)
 function leftOut(r) { return r.excluded || (r.station_excluded && !r.included); }
 function readingState(r) {
@@ -138,19 +142,21 @@ async function saveEntry() {
   const err = document.getElementById('entryError');
   try {
     const at = document.getElementById('m_at').value;
-    await api('PUT', '/api/data/readings/' + document.getElementById('m_id').value + '/entry', {
+    const saved = await sendConfirmed((confirm) => api('PUT', '/api/data/readings/' + document.getElementById('m_id').value + '/entry', {
       ok: parseInt(document.getElementById('m_ok').value, 10) || 0,
       nok: parseInt(document.getElementById('m_nok').value, 10) || 0,
       at: at ? new Date(at).toISOString() : null,
       job: document.getElementById('m_job').value.trim() || null,
       note: document.getElementById('m_note').value,
-    });
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone, confirm,
+    }));
+    if (!saved) return;
     closeModal('entryModal');
     load();
   } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
 }
 async function deleteEntry(r) {
-  if (!confirm('Delete this manual entry (OK ' + r.raw_pass + ' / NOK ' + r.raw_fail + ')?')) return;
+  if (!confirm('Delete this ' + (isCorrection(r) ? 'correction' : 'manual entry') + ' (OK ' + signed(r.raw_pass) + ' / NOK ' + signed(r.raw_fail) + ')?')) return;
   try { await delJSON('/api/data/readings/' + r.id); load(); } catch (e) { toast(e.message, true); }
 }
 async function setExcluded(r, excluded) {

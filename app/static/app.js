@@ -11,10 +11,26 @@ async function api(method, url, body) {
   try { data = await resp.json(); } catch (e) { /* no body */ }
   if (!resp.ok) {
     const msg = (data && (data.detail || data.message)) || resp.statusText;
-    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    const err = new Error(typeof msg === 'string' ? msg : (msg && msg.confirm) || JSON.stringify(msg));
+    err.status = resp.status;
+    err.detail = msg;
+    throw err;
   }
   return data;
 }
+// send(confirm) posts a manual entry; a correction that takes a day's count
+// below zero comes back as 409 {confirm: message}: ask, then send it confirmed.
+// Returns null when the user cancels.
+async function sendConfirmed(send) {
+  try { return await send(false); }
+  catch (e) {
+    if (e.status !== 409 || !e.detail || !e.detail.confirm) throw e;
+    if (!confirm(e.detail.confirm + '\n\nThe count stays below zero until more parts are counted. Save it anyway?')) return null;
+    return send(true);
+  }
+}
+// a manual entry's parts with their sign (+5, -3, 0)
+function signed(n) { return n > 0 ? '+' + n : n < 0 ? '−' + (-n) : '0'; }
 const getJSON = (u) => api('GET', u);
 const postJSON = (u, b) => api('POST', u, b);
 const patchJSON = (u, b) => api('PATCH', u, b);

@@ -34,7 +34,8 @@ versions keep working.
   sources, each a device with its own OK, NOK, total and job values: two
   cameras each running their own job, or OK from an OPC UA PLC and NOK from a
   reject counter that pushes over TCP. The dashboard shows which devices are
-  active. Parts counted by hand are added as manual entries on the station.
+  active. Parts counted by hand are added as manual entries on the station;
+  a negative entry is a correction that takes back falsely counted parts.
 - **HMI windows:** a station view can show its devices' own web pages (a
   Cognex WebHMI, a PLC web server) with reload, full screen and new-tab
   buttons; devices that refuse to be embedded get a clear hint instead.

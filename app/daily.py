@@ -121,11 +121,11 @@ def station_day(db: Session, st: Station, day: dt.date, tz_name: str, cycles: di
     window = row["window_s"]
     row["production_s"] = round(min(row["production_s"], window))
     row["timed_production_s"] = round(min(row["timed_production_s"], window))
-    row["ideal_s"] = round(row["ideal_s"], 1)
+    row["ideal_s"] = round(max(row["ideal_s"], 0.0), 1)  # corrections may take back more than was made
     job_rows = []
     for j in per_job.values():
         j["production_s"] = round(min(j["production_s"], window))
-        j["ideal_s"] = round(j["ideal_s"], 1)
+        j["ideal_s"] = round(max(j["ideal_s"], 0.0), 1)
         if j["ok"] or j["nok"] or j["production_s"]:  # not a bare baseline reading
             job_rows.append(j)
     row["jobs"] = " + ".join(sorted((j["job"] for j in job_rows), key=str.lower))

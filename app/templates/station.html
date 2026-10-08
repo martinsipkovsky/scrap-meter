@@ -22,10 +22,10 @@
 {% if user.has_permission('manual_entry') %}
 <div class="card" style="margin-bottom:16px" id="entryCard">
   <h3 style="margin:0 0 4px">Add entry</h3>
-  <div class="hint" style="margin-top:0">Parts counted by hand, e.g. from a manual check or a machine without a connection. They count like device data: on the dashboard, in the statistics, the Excel export and the OEE meter. Edit or delete entries in the <a href="/data">Data log</a>.</div>
+  <div class="hint" style="margin-top:0">Parts counted by hand, e.g. from a manual check or a machine without a connection. They count like device data: on the dashboard, in the statistics, the Excel export and the OEE meter. A negative number is a correction: it takes back parts that were counted by mistake. Edit or delete entries in the <a href="/data">Data log</a>.</div>
   <div class="row">
-    <div style="flex:0 0 110px"><label>OK</label><input id="e_ok" type="number" min="0" value="0" /></div>
-    <div style="flex:0 0 110px"><label>NOK</label><input id="e_nok" type="number" min="0" value="0" /></div>
+    <div style="flex:0 0 110px"><label>OK</label><input id="e_ok" type="number" value="0" /></div>
+    <div style="flex:0 0 110px"><label>NOK</label><input id="e_nok" type="number" value="0" /></div>
     <div style="flex:0 0 210px"><label>Time</label><input id="e_at" type="datetime-local" /></div>
     <div style="flex:0 0 150px"><label>Job</label><input id="e_job" placeholder="current job" /></div>
     <div><label>Note (optional)</label><input id="e_note" maxlength="1000" /></div>
@@ -54,7 +54,7 @@
     </div>
   </div>
   <div class="chart-wrap"><svg id="chart"></svg><div class="chart-tip" id="tip"></div></div>
-  <div class="legend"><span><i style="background:var(--ok)"></i>OK</span><span><i style="background:var(--bad)"></i>NOK</span><span id="bucketLabel"></span></div>
+  <div class="legend"><span><i style="background:var(--ok)"></i>OK</span><span><i style="background:var(--bad)"></i>NOK</span><span id="corrLegend" style="display:none"><i style="background:var(--warn)"></i>correction (taken back)</span><span id="bucketLabel"></span></div>
 </div>
 {% endblock %}
 {% block scripts %}
@@ -111,12 +111,14 @@ async function addEntry() {
   const nok = parseInt(document.getElementById('e_nok').value, 10) || 0;
   const at = document.getElementById('e_at').value;
   try {
-    await postJSON('/api/stations/' + STATION_ID + '/entries', {
+    const saved = await sendConfirmed((confirm) => postJSON('/api/stations/' + STATION_ID + '/entries', {
       ok, nok, at: at ? new Date(at).toISOString() : null,
       job: document.getElementById('e_job').value.trim() || null,
       note: document.getElementById('e_note').value.trim() || null,
-    });
-    toast('Entry added: OK ' + ok + ' · NOK ' + nok);
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone, confirm,
+    }));
+    if (!saved) return;
+    toast((ok < 0 || nok < 0 ? 'Correction added' : 'Entry added') + ': OK ' + signed(ok) + ' · NOK ' + signed(nok));
     document.getElementById('e_ok').value = 0; document.getElementById('e_nok').value = 0;
     document.getElementById('e_note').value = ''; document.getElementById('e_at').value = localNow();
     load();
@@ -134,7 +136,9 @@ function renderChart(h) {
   const W = svg.getBoundingClientRect().width || 800, H = 280, L = 44, R = 8, T = 10, B = 26;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const bars = h.bars;
-  const max = Math.max(1, ...bars.map(b => b.ok + b.nok));
+  // a correction (negative manual entry) can take a bar below zero: draw it at zero
+  const pos = (v) => Math.max(0, v);
+  const max = Math.max(1, ...bars.map(b => pos(b.ok) + pos(b.nok)));
   const step = niceStep(max);
   const top = Math.ceil(max / step) * step;
   const pw = W - L - R, ph = H - T - B;
@@ -149,9 +153,13 @@ function renderChart(h) {
   bars.forEach((b, i) => {
     const x = L + i * bw + Math.min(2, bw * 0.15);
     const w = Math.max(1, bw - 2 * Math.min(2, bw * 0.15));
-    const hOk = (b.ok / top) * ph, hNok = (b.nok / top) * ph;
+    const hOk = (pos(b.ok) / top) * ph, hNok = (pos(b.nok) / top) * ph;
     out += `<rect x="${x}" y="${T + ph - hOk}" width="${w}" height="${hOk}" fill="var(--ok)" rx="1"/>`;
     out += `<rect x="${x}" y="${T + ph - hOk - hNok}" width="${w}" height="${hNok}" fill="var(--bad)" rx="1"/>`;
+    if (b.corr_ok || b.corr_nok) {
+      const cx = L + i * bw + bw / 2, cy = T + ph - hOk - hNok - 7;
+      out += `<path d="M${cx - 5} ${cy - 4} L${cx + 5} ${cy - 4} L${cx} ${cy + 3} Z" fill="var(--warn)"/>`;
+    }
     out += `<rect x="${L + i * bw}" y="${T}" width="${bw}" height="${ph}" fill="transparent" data-i="${i}"/>`;
     if (i % labelEvery === 0) out += `<text x="${L + i * bw + bw / 2}" y="${H - 8}" text-anchor="middle" fill="var(--text-dim)" font-size="11">${fmtTime(b.t, h.bucket_seconds)}</text>`;
   });
@@ -163,7 +171,8 @@ function renderChart(h) {
     const b = bars[+i], tot = b.ok + b.nok;
     tip.innerHTML = `<strong>${fmtTime(b.t, h.bucket_seconds)}</strong> (${fmtBucket(h.bucket_seconds)})<br>` +
       `<span style="color:var(--ok)">OK ${b.ok}</span> · <span style="color:var(--bad)">NOK ${b.nok}</span>` +
-      (tot ? ` · scrap ${fmtPct(b.nok / tot)}` : '');
+      (tot > 0 && b.nok >= 0 && b.nok <= tot ? ` · scrap ${fmtPct(b.nok / tot)}` : '') +
+      (b.corr_ok || b.corr_nok ? `<br><span style="color:var(--warn)">incl. correction: OK ${signed(b.corr_ok)} · NOK ${signed(b.corr_nok)}</span>` : '');
     tip.style.display = 'block';
     const r = svg.getBoundingClientRect();
     tip.style.left = Math.min(e.clientX - r.left + 12, r.width - tip.offsetWidth - 4) + 'px';
@@ -331,7 +340,9 @@ async function load() {
   document.getElementById('winLabel').textContent = 'Last ' + (HOURS >= 48 ? HOURS / 24 + ' days' : HOURS + ' h') + ' (OK / NOK)';
   document.getElementById('wPass').textContent = h.ok;
   document.getElementById('wFail').textContent = h.nok;
-  document.getElementById('wScrap').textContent = 'Scrap ' + (wt ? fmtPct(h.nok / wt) : '—');
+  document.getElementById('wScrap').textContent = 'Scrap ' + (wt > 0 && h.nok >= 0 && h.nok <= wt ? fmtPct(h.nok / wt) : '—') +
+    (h.corr_ok || h.corr_nok ? ' · incl. correction OK ' + signed(h.corr_ok) + ' / NOK ' + signed(h.corr_nok) : '');
+  document.getElementById('corrLegend').style.display = h.corr_ok || h.corr_nok ? '' : 'none';
   document.getElementById('bucketLabel').textContent = 'one bar = ' + fmtBucket(h.bucket_seconds);
   renderControls(d);
   renderChart(h);

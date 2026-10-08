@@ -93,6 +93,12 @@ If a saved database server is not reachable when the app starts, it retries
 for about a minute before falling back to the bundled database (the Database
 tab then says so). `GET /healthz` shows the running version.
 
+### Updating to 1.14 (corrections)
+
+Nothing has to be done: the compose file and the database do not change.
+Manual entries may now be negative (corrections); the Power BI views are
+replaced on the first start with the same columns.
+
 ### Updating to 1.13 (HMI windows)
 
 Nothing has to be done: the compose file does not change. Stations get an

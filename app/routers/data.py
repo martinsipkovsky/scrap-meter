@@ -14,7 +14,7 @@ from .. import comments, hmi, jobs, oee, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import Device, Reading, Station, User, utcnow
-from .stations import ManualEntry, check_entry
+from .stations import ManualEntry, check_below_zero, check_entry
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -95,11 +95,13 @@ def ok_nok_buckets(readings: list[Reading], start: dt.datetime, end: dt.datetime
     """OK/NOK parts produced per time bucket (app.scrap_stats.parts).
 
     ``readings`` must be oldest first; one from before ``start`` only serves
-    as baseline.
+    as baseline. A bar's ok / nok include corrections (negative manual
+    entries), which corr_ok / corr_nok also show on their own.
     """
     n = max(1, int((end - start).total_seconds() // bucket_s) + 1)
     first = int(start.timestamp()) // bucket_s * bucket_s
-    bars = [{"t": dt.datetime.fromtimestamp(first + i * bucket_s, dt.timezone.utc), "ok": 0, "nok": 0} for i in range(n)]
+    bars = [{"t": dt.datetime.fromtimestamp(first + i * bucket_s, dt.timezone.utc), "ok": 0, "nok": 0,
+             "corr_ok": 0, "corr_nok": 0} for i in range(n)]
     prev = None
     for r in readings:
         d_ok, d_nok = scrap_stats.parts(r, prev)
@@ -111,6 +113,9 @@ def ok_nok_buckets(readings: list[Reading], start: dt.datetime, end: dt.datetime
         if 0 <= idx < n:
             bars[idx]["ok"] += d_ok
             bars[idx]["nok"] += d_nok
+            if r.manual:
+                bars[idx]["corr_ok"] += min(d_ok, 0)
+                bars[idx]["corr_nok"] += min(d_nok, 0)
     return bars
 
 
@@ -145,6 +150,9 @@ def station_view(
             "bars": bars,
             "ok": sum(b["ok"] for b in bars),
             "nok": sum(b["nok"] for b in bars),
+            # corrections (negative manual entries) in the window, included above
+            "corr_ok": sum(b["corr_ok"] for b in bars),
+            "corr_nok": sum(b["corr_nok"] for b in bars),
         },
     }
 
@@ -240,6 +248,7 @@ def edit_entry(
     if not r or not r.manual:
         raise HTTPException(404, "Manual entry not found")
     check_entry(payload)
+    check_below_zero(db, r.station, payload, payload.job or r.job_name, r.created_at, r.id)
     stations.update_entry(db, r, payload.ok, payload.nok, payload.at, payload.job, payload.note)
     return {"id": r.id}
 

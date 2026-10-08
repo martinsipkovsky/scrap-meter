@@ -363,6 +363,29 @@ the note. They can be excluded and included like any reading, and **Edit**
 (parts, time, job, note) or **Delete** changes them; the station's counters
 follow.
 
+### Corrections (negative entries)
+
+To take back parts that were counted by mistake (a double count, a test run,
+a device that counted wrongly), enter a negative number of OK and/or NOK
+parts, for example OK −10 and NOK 0. OK and NOK may each be positive,
+negative or zero, but not both zero. A correction subtracts everywhere manual
+entries count: the dashboard and station view counters, the OK/NOK chart,
+Scrap statistics and the Excel export, the OEE meter, chat command replies
+and the Power BI views (also the daily ones). Put it at the time (and job) of
+the false parts so it lands on the right day.
+
+- In the Data log a correction is marked **correction** and shows its parts
+  with a minus sign. On the station view's chart a bar with a correction gets
+  an orange marker, and its tooltip and the window's totals say how much was
+  taken back.
+- A correction never sends a scrap alert (also not when taking back OK parts
+  raises the scrap rate); the next device reading or normal entry checks the
+  alert rules as usual.
+- If a correction would take the day's OK or NOK of the station or of the job
+  below zero, the app says so and asks before saving it. Saved anyway, the
+  dashboard shows 0 rather than a negative count, scrap and quality stay
+  within 0 - 100 %, and the totals catch up as more parts are counted.
+
 ## OEE
 
 The bottom of the dashboard shows OEE over the last 24 hours:

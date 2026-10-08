@@ -38,6 +38,12 @@ def _ratio(a: float, b: float) -> float | None:
     return round(a / b, 4) if b else None
 
 
+def _quality(ok: int, parts: int) -> float | None:
+    """OK / parts; corrections (negative manual entries) can take either
+    below zero, so it stays within 0 - 1 and is None without parts."""
+    return round(min(max(ok / parts, 0.0), 1.0), 4) if parts > 0 else None
+
+
 def station_figures(db: Session, st: Station, start: dt.datetime, end: dt.datetime,
                     cycles: dict[str, float] | None = None) -> dict:
     """``cycles``: {job: ideal seconds per piece} (read from the jobs when None)."""
@@ -68,8 +74,9 @@ def station_figures(db: Session, st: Station, start: dt.datetime, end: dt.dateti
     prod_s = min(prod.total_seconds(), window)
     timed_s = min(timed.total_seconds(), window)
     parts = ok + nok
+    ideal = max(ideal, 0.0)  # corrections may take more back than was made
     availability = _ratio(prod_s, window)
-    quality = _ratio(ok, parts)
+    quality = _quality(ok, parts)
     performance = _ratio(ideal, timed_s) if ideal else None
     oee = (round(availability * performance * quality, 4)
            if None not in (availability, performance, quality) else None)
@@ -103,18 +110,18 @@ def compute(db: Session, hours: float = 24, now: dt.datetime | None = None) -> d
         oee["availability"] = _ratio(prod, window * len(with_ct))
         oee["performance"] = _ratio(sum(r["ideal_s"] for r in with_ct),
                                     sum(r["timed_production_s"] for r in with_ct))
-        oee["quality"] = _ratio(c_ok, c_parts)
+        oee["quality"] = _quality(c_ok, c_parts)
         if None not in (oee["availability"], oee["performance"], oee["quality"]):
             oee["oee"] = round(oee["availability"] * oee["performance"] * oee["quality"], 4)
     elif inc:
         # no cycle times: what can be said without them
         oee["availability"] = _ratio(sum(r["production_s"] for r in inc), window * len(inc))
-        oee["quality"] = _ratio(ok, ok + nok)
+        oee["quality"] = _quality(ok, ok + nok)
     return {
         "hours": hours,
         "from": start.isoformat(),
         "to": end.isoformat(),
-        "totals": {"ok": ok, "nok": nok, "total": ok + nok, "quality": _ratio(ok, ok + nok)},
+        "totals": {"ok": ok, "nok": nok, "total": ok + nok, "quality": _quality(ok, ok + nok)},
         "overall": {**oee, "stations": len(with_ct),
                     "without_cycle_time": [r["name"] for r in inc if not r["covered"]],
                     "jobs_without_cycle_time": sorted({j for r in inc for j in r["jobs_without_cycle_time"]},

@@ -53,7 +53,8 @@ def _row(**keys) -> dict:
 def _finish(rows: list[dict]) -> list[dict]:
     for r in rows:
         r["total"] = r["pass"] + r["fail"]
-        r["scrap_rate"] = round(r["fail"] / r["total"], 4) if r["total"] else 0.0
+        # a correction (negative manual entry) can take a total to zero or below
+        r["scrap_rate"] = round(min(max(r["fail"] / r["total"], 0.0), 1.0), 4) if r["total"] > 0 else 0.0
     return rows
 
 
@@ -67,7 +68,7 @@ def day_bounds(first_day: dt.date, last_day: dt.date, tz: dt.tzinfo) -> tuple[dt
 def parts(r, prev) -> tuple[int, int]:
     """(OK, NOK) a reading counted; ``prev`` is the station's previous device
     reading (only used for readings from before 1.8)."""
-    if r.manual:  # entered by hand: its own parts, outside the devices' totals
+    if r.manual:  # entered by hand: its own parts (negative for a correction)
         return r.raw_pass, r.raw_fail
     if r.ok_added is not None:
         return r.ok_added, r.nok_added or 0
@@ -84,11 +85,12 @@ PART_COLUMNS = (Reading.job_name, Reading.total_pass, Reading.total_fail, Readin
 def station_parts(db: Session, station: Station, start: dt.datetime, end: dt.datetime):
     """The station's readings in [start, end) with the parts each one counted.
 
-    Yields dicts: t, prev_t (the previous reading's time, or None), job,
-    ok, nok (parts since the previous reading of the same job), excluded,
-    included (by a user), in_production (recorded, or by the idle rule).
+    Yields dicts: id, t, prev_t (the previous reading's time, or None), job,
+    ok, nok (parts since the previous reading of the same job; a manual
+    entry's own parts, negative for a correction), excluded, included (by a
+    user), in_production (recorded, or by the idle rule).
     """
-    cols = (*PART_COLUMNS, Reading.created_at, Reading.excluded, Reading.in_production, Reading.included)
+    cols = (*PART_COLUMNS, Reading.id, Reading.created_at, Reading.excluded, Reading.in_production, Reading.included)
     timeout = dt.timedelta(minutes=max(1, station.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN))
     # start one idle timeout early so the idle rule knows the last pass
     # increase before the range
@@ -108,7 +110,7 @@ def station_parts(db: Session, station: Station, start: dt.datetime, end: dt.dat
         if r.manual:
             # entered by hand: its own parts, outside the devices' totals
             if t >= start:
-                yield {"t": t, "prev_t": None, "job": r.job_name, "ok": r.raw_pass, "nok": r.raw_fail,
+                yield {"id": r.id, "t": t, "prev_t": None, "job": r.job_name, "ok": r.raw_pass, "nok": r.raw_fail,
                        "excluded": bool(r.excluded), "included": bool(r.included), "in_production": True,
                        "manual": True}
             continue
@@ -121,7 +123,7 @@ def station_parts(db: Session, station: Station, start: dt.datetime, end: dt.dat
             continue
         in_prod = (r.in_production if r.in_production is not None
                    else last_increase is not None and t - last_increase < timeout)
-        yield {"t": t, "prev_t": prev_t, "job": r.job_name, "ok": d_ok, "nok": d_nok,
+        yield {"id": r.id, "t": t, "prev_t": prev_t, "job": r.job_name, "ok": d_ok, "nok": d_nok,
                "excluded": bool(r.excluded), "included": bool(r.included), "in_production": bool(in_prod)}
 
 

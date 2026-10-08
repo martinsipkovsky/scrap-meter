@@ -31,7 +31,10 @@ Parts can also be entered by hand (``add_entry``): a manual entry is a
 Reading with manual=True whose raw_pass / raw_fail are the parts entered. It
 adds to the station's counters for its job (CounterState.manual_*) and counts
 in the statistics and OEE like device data. A station may have no devices at
-all and be fed only by manual entries.
+all and be fed only by manual entries. An entry may be negative (a
+correction, e.g. to take back falsely counted parts): it subtracts wherever
+entries count, and never fires a scrap alert (``below_zero`` says when it
+would take a day's count below zero, which the API has confirmed).
 
 ``upgrade`` turns the devices of a version 1.4 (or older) database into
 stations, and ``upgrade_sources`` the role-based sources of 1.5 to 1.7 into
@@ -625,8 +628,42 @@ def add_entry(db: Session, station: Station, ok: int, nok: int, at: dt.datetime 
     if station.current_job is None:
         station.current_job = job
     db.commit()
-    notifications.evaluate_station(db, station)
+    if ok < 0 or nok < 0:
+        # a correction takes counts back: it never fires a scrap alert
+        notifications.check_production(db, station)
+    else:
+        notifications.evaluate_station(db, station)
     return reading
+
+
+def below_zero(db: Session, station: Station, job: str | None, ok: int, nok: int, at: dt.datetime | None,
+               tz: dt.tzinfo, skip_id: int | None = None) -> list[str]:
+    """What an entry of ``ok`` / ``nok`` parts at ``at`` would take below zero
+    on its (local) day: the station's or the job's OK or NOK, counting every
+    part of that day (devices and entries, also excluded ones). ``skip_id``:
+    the entry being changed, left out. Empty when nothing would."""
+    from .scrap_stats import day_bounds, station_parts
+
+    if ok >= 0 and nok >= 0:
+        return []
+    at = _aware(at) if at else utcnow()
+    job = (job or "").strip() or station.current_job or station.default_job or "MAIN"
+    day = at.astimezone(tz).date()
+    start, end = day_bounds(day, day, tz)
+    st_ok = st_nok = job_ok = job_nok = 0
+    for r in station_parts(db, station, start, end):
+        if skip_id is not None and r["id"] == skip_id:
+            continue
+        st_ok, st_nok = st_ok + r["ok"], st_nok + r["nok"]
+        if r["job"] == job:
+            job_ok, job_nok = job_ok + r["ok"], job_nok + r["nok"]
+    out = []
+    for what, have_ok, have_nok in ((f"Station '{station.name}'", st_ok, st_nok), (f"Job '{job}'", job_ok, job_nok)):
+        low = [f"{name} {have + add}" for name, have, add in (("OK", have_ok, ok), ("NOK", have_nok, nok))
+               if add < 0 and have + add < 0]
+        if low:
+            out.append(f"{what} would end {day.isoformat()} at " + " and ".join(low))
+    return out
 
 
 def update_entry(db: Session, reading: Reading, ok: int, nok: int, at: dt.datetime | None,

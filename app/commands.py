@@ -118,7 +118,7 @@ def seed_defaults(db: Session) -> None:
 
 # ---- figures ----------------------------------------------------------------
 def _pct(fail: int, total: int) -> str:
-    return f"{fail / total * 100:.1f}%" if total else "—"
+    return f"{fail / total * 100:.1f}%" if total > 0 else "—"
 
 
 def _window_counts(db: Session, station: Station, start: dt.datetime) -> tuple[int, int]:

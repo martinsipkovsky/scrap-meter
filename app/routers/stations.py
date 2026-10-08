@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import hmi, production, stations
+from .. import hmi, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import CounterState, NotificationRule, Station, User, utcnow
@@ -220,20 +220,37 @@ def station_counters(
 
 
 class ManualEntry(BaseModel):
-    ok: int = Field(default=0, ge=0, le=10_000_000)
-    nok: int = Field(default=0, ge=0, le=10_000_000)
+    # negative parts make a correction (taking back falsely counted parts)
+    ok: int = Field(default=0, ge=-10_000_000, le=10_000_000)
+    nok: int = Field(default=0, ge=-10_000_000, le=10_000_000)
     at: dt.datetime | None = None  # default: now
     job: str | None = Field(default=None, max_length=255)
     note: str | None = Field(default=None, max_length=1000)
+    # the viewer's time zone: the day a correction is checked against
+    tz: str | None = Field(default=None, max_length=64)
+    # add it although it takes a day's count below zero
+    confirm: bool = False
 
 
 def check_entry(payload: ManualEntry) -> None:
     if payload.ok == 0 and payload.nok == 0:
-        raise HTTPException(400, "Enter at least one OK or NOK part")
+        raise HTTPException(400, "Enter OK or NOK parts (negative to correct)")
     if payload.at is not None:
         at = payload.at if payload.at.tzinfo else payload.at.replace(tzinfo=dt.timezone.utc)
         if at > dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5):
             raise HTTPException(400, "The time of an entry can't be in the future")
+
+
+def check_below_zero(db: Session, station: Station, payload: ManualEntry, job: str | None,
+                     at: dt.datetime | None = None, skip_id: int | None = None) -> None:
+    """409 with {"confirm": message} when a correction takes the day's count
+    of the station or job below zero and the user hasn't confirmed it."""
+    if payload.confirm:
+        return
+    low = stations.below_zero(db, station, job, payload.ok, payload.nok, payload.at or at,
+                              scrap_stats.zone(payload.tz), skip_id)
+    if low:
+        raise HTTPException(409, {"confirm": "; ".join(low) + "."})
 
 
 @router.post("/{station_id}/entries", status_code=201)
@@ -246,5 +263,6 @@ def add_entry(
     """OK / NOK parts entered by hand; they count like device data."""
     st = _get(db, station_id)
     check_entry(payload)
+    check_below_zero(db, st, payload, payload.job)
     r = stations.add_entry(db, st, payload.ok, payload.nok, payload.at, payload.job, payload.note, user.username)
     return {"id": r.id, "job": r.job_name, "ok": r.raw_pass, "nok": r.raw_fail, "at": r.created_at}

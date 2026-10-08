@@ -42,7 +42,10 @@ job (`total_*`), and since 1.8 the pieces it counted (`ok_added` /
 `nok_added`, 0 while the station was not in production). For older readings
 `ok_added` is empty and the parts made between two readings are the
 difference of the totals (see the hourly query below). A manual entry holds
-the parts entered in `raw_ok` / `raw_nok`.
+the parts entered in `raw_ok` / `raw_nok`, negative for a correction (parts
+taken back, since 1.14); sums over the entries already subtract them. A day
+taken below zero by a correction keeps its negative `ok_count` / `nok_count`
+in the daily views, with `scrap_pct` and `quality_pct` held within 0 - 100.
 
 ### Daily data
 

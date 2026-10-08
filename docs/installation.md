@@ -93,6 +93,11 @@ If a saved database server is not reachable when the app starts, it retries
 for about a minute before falling back to the bundled database (the Database
 tab then says so). `GET /healthz` shows the running version.
 
+### Updating to 1.13 (HMI windows)
+
+Nothing has to be done: the compose file does not change. Stations get an
+empty HMI windows list (a new database column, added on the first start).
+
 ### Updating to 1.12 (pictures and pieces)
 
 Nothing has to be done: the compose file does not change. Jobs have no piece

@@ -4,7 +4,9 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from . import hmi
 
 
 # ---- Users ----------------------------------------------------------------
@@ -125,6 +127,30 @@ class SourceIn(BaseModel):
     start_window_s: int = Field(default=60, ge=1, le=86_400)
 
 
+class HmiWindow(BaseModel):
+    """A device web page (HMI) shown on the station view (see app.hmi)."""
+
+    name: str = Field(min_length=1, max_length=120)
+    url: str = Field(min_length=1, max_length=2000)
+    height: Optional[int] = Field(default=None, ge=150, le=4000)  # pixels; None = default
+
+    @field_validator("name", "url")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("must not be empty")
+        return v
+
+    @field_validator("url")
+    @classmethod
+    def _web_address(cls, v: str) -> str:
+        return hmi.check_url(v)
+
+
+HmiWindows = list[HmiWindow]
+
+
 class StationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     # a list of sources; the role dict of 1.5 - 1.7 is still accepted
@@ -135,6 +161,7 @@ class StationCreate(BaseModel):
     # whether the station's readings count in the overall statistics
     stats_default: Literal["include", "exclude"] = "include"
     sort_order: int = 0
+    hmi_windows: HmiWindows = Field(default=[], max_length=50)
 
 
 class StationUpdate(BaseModel):
@@ -144,6 +171,7 @@ class StationUpdate(BaseModel):
     idle_timeout_min: Optional[int] = Field(default=None, ge=1, le=10080)
     stats_default: Optional[Literal["include", "exclude"]] = None
     sort_order: Optional[int] = None
+    hmi_windows: Optional[HmiWindows] = Field(default=None, max_length=50)
 
 
 class StationExportSource(BaseModel):
@@ -173,6 +201,8 @@ class StationExportItem(BaseModel):
     idle_timeout_min: int = Field(default=30, ge=1, le=10080)
     stats_default: Literal["include", "exclude"] = "include"
     sort_order: int = 0
+    # since 1.13; a file without it keeps the station's HMI windows
+    hmi_windows: Optional[HmiWindows] = Field(default=None, max_length=50)
     # files from 1.5 / 1.6 only: the station's cycle time, given on import to
     # the jobs the station has run (and its default job) that have none
     ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400, exclude=True)

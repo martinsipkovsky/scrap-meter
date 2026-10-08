@@ -35,6 +35,9 @@ versions keep working.
   cameras each running their own job, or OK from an OPC UA PLC and NOK from a
   reject counter that pushes over TCP. The dashboard shows which devices are
   active. Parts counted by hand are added as manual entries on the station.
+- **HMI windows:** a station view can show its devices' own web pages (a
+  Cognex WebHMI, a PLC web server) with reload, full screen and new-tab
+  buttons; devices that refuse to be embedded get a clear hint instead.
 - **Pictures and pieces:** per job, how many camera pictures make one real
   piece and when it is OK (all OK, at least K OK, a NOK ends the piece, a
   timer, a piece id value), so all figures count real pieces.

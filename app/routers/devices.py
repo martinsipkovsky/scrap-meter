@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import jobs, pieces, protocols, stations
+from .. import hmi, jobs, pieces, protocols, stations
 from ..config import settings
 from ..database import get_db
 from ..dependencies import require_api_user, require_permission
@@ -112,7 +112,7 @@ def _check_listen_port(db: Session, protocol: str, port: int, device_id: int | N
 
 
 DEVICE_FIELDS = ("name", "host", "port", "protocol", "protocol_config", "poll_interval", "enabled")
-STATION_FIELDS = tuple(f for f in StationExportItem.model_fields if f not in ("sources", "ideal_cycle_s"))
+STATION_FIELDS = tuple(f for f in StationExportItem.model_fields if f not in ("sources", "ideal_cycle_s", "hmi_windows"))
 
 
 class OpcUaBrowse(BaseModel):
@@ -169,7 +169,8 @@ def export_devices(db: Session = Depends(get_db), _: User = Depends(require_perm
         sources = [{"device": names.get(src["device_id"], "?"),
                     **{k: src[k] for k in (*stations.ROLES, "start_count", "start_window_s")}}
                    for src in st.source_list()]
-        out_stations.append({**{f: getattr(st, f) for f in STATION_FIELDS}, "sources": sources})
+        out_stations.append({**{f: getattr(st, f) for f in STATION_FIELDS}, "sources": sources,
+                             "hmi_windows": hmi.windows(st)})
     jobs.sync(db)
     out_jobs = [{"name": j.name, "ideal_cycle_s": j.ideal_cycle_s, "piece_rule": j.piece_rule}
                 for j in db.query(Job).order_by(Job.name)]
@@ -274,6 +275,8 @@ def import_devices(
                 errors.append(f"station {item.name}: {exc}")
                 continue
             fields = {f: getattr(item, f) for f in STATION_FIELDS}
+            if item.hmi_windows is not None:  # a file from 1.12 or older keeps them
+                fields["hmi_windows"] = [w.model_dump() for w in item.hmi_windows] or None
             st = db.query(Station).filter(Station.name == item.name).first()
             if st is None:
                 st = Station(**fields, sources=sources)

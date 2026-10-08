@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import production, stations
+from .. import hmi, production, stations
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import CounterState, NotificationRule, Station, User, utcnow
@@ -34,6 +34,7 @@ def station_out(db: Session, st: Station, devices: dict) -> dict:
         "idle_timeout_min": st.idle_timeout_min,
         "stats_default": st.stats_default,
         "sort_order": st.sort_order,
+        "hmi_windows": hmi.windows(st),
         "last_reading_at": st.last_reading_at,
         **stations.status(st, devices),
         **production.describe(st),
@@ -71,6 +72,7 @@ def create_station(
     if db.query(Station).filter(Station.name == payload.name).first():
         raise HTTPException(409, "A station with that name already exists")
     st = Station(**payload.model_dump(exclude={"sources"}), sources=_sources(db, payload.sources))
+    st.hmi_windows = payload.model_dump()["hmi_windows"] or None
     db.add(st)
     db.commit()
     db.refresh(st)
@@ -90,6 +92,8 @@ def update_station(
         raise HTTPException(409, "A station with that name already exists")
     if payload.sources is not None:
         st.sources = _sources(db, payload.sources)
+    if "hmi_windows" in data:
+        data["hmi_windows"] = data["hmi_windows"] or None
     for key, value in data.items():
         setattr(st, key, value)
     db.commit()
@@ -108,6 +112,28 @@ def delete_station(
     db.query(NotificationRule).filter(NotificationRule.station_id == st.id).delete()
     db.delete(st)
     db.commit()
+
+
+@router.get("/{station_id}/hmi/{index}/check")
+async def check_hmi(
+    station_id: int,
+    index: int,
+    origin: str = Query(max_length=300),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("view_dashboard")),
+):
+    """Ask the device of the station's HMI window ``index`` (from 0) for its
+    page from the server: whether it answers, and whether it lets a browser
+    on ``origin`` (the address the app is opened at) show it in a window.
+    Only the station's saved addresses are asked (see app.hmi)."""
+    wins = hmi.windows(_get(db, station_id))
+    if not 0 <= index < len(wins):
+        raise HTTPException(404, "No such HMI window")
+    try:
+        hmi.check_url(origin)
+    except ValueError as exc:
+        raise HTTPException(400, "origin " + str(exc)) from exc
+    return await hmi.check(wins[index]["url"], origin)
 
 
 def _set_production(db: Session, station_id: int, running: bool) -> dict:

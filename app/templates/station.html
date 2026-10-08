@@ -17,6 +17,8 @@
   <div class="card"><div class="muted" id="winLabel">Last 8 h (OK / NOK)</div><div class="stat small"><span id="wPass" class="value pass">0</span> / <span id="wFail" class="value fail">0</span></div><div class="muted" id="wScrap"></div></div>
 </div>
 
+<div id="hmiWindows"></div>
+
 {% if user.has_permission('manual_entry') %}
 <div class="card" style="margin-bottom:16px" id="entryCard">
   <h3 style="margin:0 0 4px">Add entry</h3>
@@ -190,6 +192,105 @@ function renderSources(d) {
   }
 }
 
+// ---- HMI windows: device web pages, loaded by this browser straight from the device
+let hmiShown = null;  // the list rendered, so the 10 s refresh doesn't reload the pages
+function hmiKey(w) { return 'sm.hmi.' + STATION_ID + '.' + w.name; }
+function hmiCollapsed(w) { try { return localStorage.getItem(hmiKey(w)) === 'collapsed'; } catch (e) { return false; } }
+function hmiSetCollapsed(w, on) {
+  try { if (on) localStorage.setItem(hmiKey(w), 'collapsed'); else localStorage.removeItem(hmiKey(w)); } catch (e) {}
+}
+function renderHmi(list) {
+  const json = JSON.stringify(list || []);
+  if (json === hmiShown) return;
+  hmiShown = json;
+  const box = document.getElementById('hmiWindows');
+  box.innerHTML = '';
+  (list || []).forEach((w, i) => box.append(hmiWindow(w, i)));
+}
+function hmiWindow(w, i) {
+  const height = (w.height || 600) + 'px';
+  const frameBox = el('div', { class: 'hmi-frame', style: 'height:' + height });
+  const note = el('div', { class: 'hmi-note', style: 'display:none' });
+  let frame = null, isBlocked = false;
+  const show = () => {
+    if (frame) return;
+    frame = el('iframe', { src: w.url, title: w.name, allow: 'fullscreen', referrerpolicy: 'no-referrer' });
+    frameBox.append(frame);
+  };
+  const blocked = (text) => {
+    // the browser would show an empty or "refused" frame; say why instead
+    isBlocked = true;
+    if (frame) { frame.remove(); frame = null; }
+    note.innerHTML = '';
+    note.append(el('div', {}, text),
+      el('div', { style: 'margin-top:8px;display:flex;gap:8px;flex-wrap:wrap' },
+        el('a', { class: 'btn small', href: w.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open in a new tab ↗'),
+        el('button', { class: 'btn secondary small', type: 'button', onclick: () => {
+          isBlocked = false; note.style.display = 'none'; frameBox.style.display = ''; show();
+        } }, 'Try here anyway')));
+    note.style.display = '';
+    frameBox.style.display = 'none';
+  };
+  const body = el('div', { class: 'hmi-body' }, frameBox, note);
+  const toggle = el('button', { class: 'btn secondary small hmi-toggle', type: 'button' });
+  const card = el('div', { class: 'card hmi-card', style: 'margin-bottom:16px' },
+    el('div', { class: 'hmi-head' },
+      toggle,
+      el('h3', { style: 'margin:0;flex:1' }, w.name),
+      el('span', { class: 'muted hmi-url' }, w.url),
+      el('button', { class: 'btn secondary small', type: 'button', title: 'Reload this window', 'aria-label': 'Reload ' + w.name,
+        onclick: () => { if (frame) frame.src = w.url; } }, '↻'),
+      el('button', { class: 'btn secondary small', type: 'button', title: 'Full screen (Esc to leave)', 'aria-label': 'Show ' + w.name + ' full screen',
+        onclick: () => fullScreen() }, '⛶'),
+      el('a', { class: 'btn secondary small', href: w.url, target: '_blank', rel: 'noopener noreferrer',
+        title: 'Open in a new tab', 'aria-label': 'Open ' + w.name + ' in a new tab' }, '↗')),
+    body);
+  // full screen; where the browser doesn't allow it (some kiosk and embedded
+  // browsers), the window fills the browser window instead
+  const maximize = (on) => {
+    card.classList.toggle('hmi-max', on);
+    document.documentElement.classList.toggle('hmi-max-open', on);
+  };
+  const fullScreen = () => {
+    if (card.classList.contains('hmi-max')) { maximize(false); return; }
+    if (!frame) return;
+    if (!frameBox.requestFullscreen) { maximize(true); return; }
+    // a browser may also leave the request pending (asking for permission)
+    let settled = false;
+    frameBox.requestFullscreen().then(() => { settled = true; maximize(false); }, () => { settled = true; maximize(true); });
+    setTimeout(() => { if (!settled && !document.fullscreenElement) maximize(true); }, 1500);
+  };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && card.classList.contains('hmi-max')) maximize(false); });
+  const setOpen = (open) => {
+    body.style.display = open ? '' : 'none';
+    toggle.textContent = open ? '▾' : '▸';
+    toggle.title = open ? 'Collapse' : 'Expand';
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', (open ? 'Collapse ' : 'Expand ') + w.name);
+    if (open && !isBlocked) show();
+  };
+  toggle.addEventListener('click', () => {
+    const open = body.style.display === 'none';
+    hmiSetCollapsed(w, !open);
+    setOpen(open);
+  });
+  setOpen(!hmiCollapsed(w));
+  if (location.protocol === 'https:' && /^http:/i.test(w.url)) {
+    blocked('Browsers don\'t show an http:// page inside this https:// page. Open it in a new tab, or give the device an https:// address.');
+  } else {
+    getJSON('/api/stations/' + STATION_ID + '/hmi/' + i + '/check?origin=' + encodeURIComponent(location.origin)).then(r => {
+      if (r.blocked) blocked('This window can\'t show the page here: ' + r.blocked + '.');
+      else if (!r.reachable) {
+        note.innerHTML = '';
+        note.append('The Scrap Meter server can\'t reach this address (' + r.error + '). If the window stays empty, this computer can\'t reach the device either: check the address and the network.');
+        note.classList.add('muted');
+        note.style.display = '';
+      }
+    }).catch(() => {});
+  }
+  return card;
+}
+
 function niceStep(max) {
   const raw = max / 5, mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const n = raw / mag;
@@ -210,6 +311,7 @@ async function load() {
   const act = activeLine(d);
   if (act) sub.append(act);
   renderSources(d);
+  renderHmi(d.hmi_windows);
   const [cls, label] = PROD_BADGE[d.production_state];
   const ps = document.getElementById('prodState');
   ps.innerHTML = ''; ps.append(el('span', { class: 'badge ' + cls, style: 'font-size:14px' }, label));

@@ -53,6 +53,9 @@
     </div>
     <div class="hint">Ideal cycle times for the OEE are set per job, in the Jobs list below the stations.
       Excluded stations keep their own rows in Scrap statistics but stay out of the totals, the Excel export totals, chat command totals and the OEE meter; single readings or periods can be included again.</div>
+    <label style="margin-top:16px">HMI windows</label>
+    <div id="hmiList"></div>
+    <div class="hint">Web pages of the station's devices, e.g. a camera's WebHMI (http://192.168.0.10/) or a PLC's web server, shown on the station view in this order. Each viewer's browser opens the page straight from the device, so it must be able to reach that address. Some devices don't allow their page inside another page; the station view then says so and offers to open it in a new tab.</div>
     <div class="actions" style="margin-top:20px;justify-content:flex-end">
       <button class="btn secondary" onclick="closeModal('modal')">Cancel</button>
       <button class="btn" onclick="save()">Save</button>
@@ -82,6 +85,7 @@ const ROLES = [['ok', 'OK count'], ['nok', 'NOK count'], ['count', 'Total (optio
 const DEFAULT_KEYS = { ok: 'pass', nok: 'fail', count: '', job: 'job' };
 let DEVICES = [];  // from /api/devices/values
 let SRC = [];      // the sources being edited
+let HMI = [];      // the HMI windows being edited
 
 function devName(id) { const d = DEVICES.find(x => x.id === id); return d ? d.name : '#' + id; }
 function valText(d, key) {
@@ -122,6 +126,7 @@ async function load() {
       el('td', {}, el('strong', {}, s.name),
         s.stats_default === 'exclude' ? el('span', { class: 'badge off', style: 'margin-left:8px' }, 'not in totals') : null,
         el('div', { class: 'muted' }, 'job ' + (s.current_job || '—')),
+        s.hmi_windows.length ? el('div', { class: 'muted' }, s.hmi_windows.length + ' HMI window' + (s.hmi_windows.length > 1 ? 's' : '')) : null,
         s.problem ? el('div', { class: 'muted', style: 'color:var(--warn)' }, s.problem) : null),
       el('td', {}, srcCell(s)),
       el('td', {}, activeLine(s), el('div', { class: 'muted' }, 'idle after ' + s.idle_timeout_min + ' min')),
@@ -188,6 +193,44 @@ function readSources() {
   return SRC.filter(s => s.device_id).map(s => ({ ...s, id: s.id || undefined }));
 }
 
+// ---- HMI windows -------------------------------------------------------------
+function renderHmiList() {
+  const box = document.getElementById('hmiList');
+  box.innerHTML = '';
+  HMI.forEach((w, i) => {
+    const field = (key, attrs) => {
+      const inp = el('input', { ...attrs, value: w[key] ?? '', oninput: () => { w[key] = inp.value; } });
+      return inp;
+    };
+    const move = (d) => { const j = i + d; [HMI[i], HMI[j]] = [HMI[j], HMI[i]]; renderHmiList(); };
+    box.append(el('div', { class: 'hmi-edit' },
+      field('name', { placeholder: 'Name, e.g. Camera 1', maxlength: '120', 'aria-label': 'Name of HMI window ' + (i + 1) }),
+      field('url', { placeholder: 'http://192.168.0.10/', maxlength: '2000', spellcheck: 'false', 'aria-label': 'Address of HMI window ' + (i + 1) }),
+      field('height', { type: 'number', min: '150', max: '4000', placeholder: '600', title: 'Height in pixels (default 600)', 'aria-label': 'Height of HMI window ' + (i + 1) }),
+      el('button', { class: 'btn secondary small', type: 'button', title: 'Move up', 'aria-label': 'Move HMI window ' + (i + 1) + ' up',
+        disabled: i === 0 ? '' : null, onclick: () => move(-1) }, '↑'),
+      el('button', { class: 'btn secondary small', type: 'button', title: 'Move down', 'aria-label': 'Move HMI window ' + (i + 1) + ' down',
+        disabled: i === HMI.length - 1 ? '' : null, onclick: () => move(1) }, '↓'),
+      el('button', { class: 'btn danger small', type: 'button', title: 'Remove this window', onclick: () => { HMI.splice(i, 1); renderHmiList(); } }, 'Remove')));
+  });
+  box.append(el('button', { class: 'btn secondary small', type: 'button', onclick: () => { HMI.push({ name: '', url: '', height: '' }); renderHmiList(); } },
+    '+ Add HMI window'));
+}
+function readHmi() {
+  const out = [];
+  HMI.forEach((w, i) => {
+    const name = (w.name || '').trim(), url = (w.url || '').trim(), h = String(w.height ?? '').trim();
+    if (!name && !url) return;
+    if (!name || !url) throw new Error('HMI window ' + (i + 1) + ' needs both a name and an address.');
+    const scheme = url.match(/^([a-z][a-z0-9+.-]*):(?!\d)/i);
+    if (scheme && !/^https?$/i.test(scheme[1])) throw new Error('The address of HMI window ' + (i + 1) + ' must start with http:// or https://.');
+    const height = h === '' ? null : parseInt(h, 10);
+    if (height !== null && !(height >= 150 && height <= 4000)) throw new Error('The height of HMI window ' + (i + 1) + ' must be 150 to 4000 pixels (empty: 600).');
+    out.push({ name, url, height });
+  });
+  return out;
+}
+
 // ---- OPC UA browse ------------------------------------------------------------
 let browseTarget = null, browseDevice = null;
 function openBrowse(s, role, d) {
@@ -248,6 +291,8 @@ async function openForm(s) {
   SRC = s ? s.sources.map(src => ({ id: src.id, device_id: src.device_id, ok: src.ok, nok: src.nok, count: src.count, job: src.job,
     start_count: src.start_count, start_window_s: src.start_window_s })) : [newSource()];
   renderSources();
+  HMI = s ? s.hmi_windows.map(w => ({ ...w, height: w.height ?? '' })) : [];
+  renderHmiList();
   openModal('modal');
 }
 
@@ -263,6 +308,7 @@ async function save() {
       idle_timeout_min: parseInt(document.getElementById('f_idle').value, 10) || 30,
       stats_default: document.getElementById('f_stats').value,
       sort_order: parseInt(document.getElementById('f_order').value, 10) || 0,
+      hmi_windows: readHmi(),
     };
     if (id) await patchJSON('/api/stations/' + id, payload);
     else await postJSON('/api/stations', payload);

@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import comments, jobs, oee, production, scrap_stats, stations
+from .. import comments, hmi, jobs, oee, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import Device, Reading, Station, User, utcnow
@@ -138,6 +138,7 @@ def station_view(
     bars = ok_nok_buckets(([baseline] if baseline else []) + rows, start, end, bucket_s)
     return {
         **_station_summary(db, station, stations.devices_of(db, [station])),
+        "hmi_windows": hmi.windows(station),
         "history": {
             "hours": hours,
             "bucket_seconds": bucket_s,

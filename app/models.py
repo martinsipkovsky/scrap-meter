@@ -199,6 +199,11 @@ class Station(Base):
     # jobs the station had run. Kept so a downgrade still finds it.
     ideal_cycle_s: Mapped[Optional[float]] = mapped_column(nullable=True)
 
+    # since 1.13: device web pages (HMIs) shown on the station view, in order:
+    # [{"name": "Camera 1", "url": "http://10.0.0.5/", "height": 600}, ...]
+    # (height in pixels, null = the default). See app.hmi.
+    hmi_windows: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

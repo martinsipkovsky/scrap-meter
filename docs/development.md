@@ -63,6 +63,8 @@ app/
   scrap_stats.py     scrap statistics for a date range, Excel export
   oee.py             OEE and OK / NOK totals over the last hours (dashboard)
   comments.py        station comments with their snapshot of the station
+  hmi.py             HMI windows: address checks and the server-side check
+                     of a device's framing headers (X-Frame-Options, CSP)
   reporting.py       powerbi_* views and the read-only login for reports
   rawdb.py           Raw data tab: table rows, type-checked edits with the audit
                      log (DbAuditLog) and undo, the read-only SQL box

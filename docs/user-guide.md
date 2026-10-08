@@ -136,6 +136,7 @@ Add a station with:
 | Job name when no job value is set | The job of a station whose sources have no job value (default `MAIN`) |
 | Production idle timeout | Minutes without an OK increase on any source before the station leaves production (default 30) |
 | Statistics | **Include** (default) or **Exclude**, see [Stations excluded from the statistics](#stations-excluded-from-the-statistics) |
+| HMI windows | Web pages of the station's devices shown on the station view, see [HMI windows](#hmi-windows) |
 
 Each **source** has:
 
@@ -277,8 +278,51 @@ With the `manual_entry` permission the station view also has an **Add entry**
 form, see [Manual entries](#manual-entries). Every user who sees the
 dashboard gets the **Comments** box, see [Comments](#comments).
 
+If the station has [HMI windows](#hmi-windows), they are shown below the
+cards at the top.
+
 The station view is at `/station/<id>`; links from earlier versions
 (`/camera/<id>`, `/device/<id>`) still open it.
+
+### HMI windows
+
+A station can show the web pages of its devices on its station view: a Cognex
+camera's WebHMI, a PLC's web server, a robot or press panel. Add them in the
+station's settings (Stations tab, **Edit**) under **HMI windows**:
+
+| Field | Meaning |
+|---|---|
+| Name | Shown above the window, e.g. `Camera 1` |
+| Address | The page, e.g. `http://192.168.0.10/` or `https://192.168.0.10:8443/`. An address without `http://` gets it. |
+| Height | Pixels (150 to 4000, blank: 600). The window can also be made taller by dragging its bottom-right corner. |
+
+**↑ / ↓** change the order, **Remove** takes a window away. Anyone who can
+edit stations edits the list; everyone who can see the station sees the
+windows. On the station view each window has:
+
+- **▾ / ▸** to collapse or expand it. A collapsed window doesn't load its page;
+  the browser remembers the choice.
+- **↻** to reload the page.
+- **⛶** to show it full screen (Esc leaves). Where the browser doesn't allow
+  full screen, the window fills the browser window instead.
+- **↗** to open the page in a new tab.
+
+The page is loaded by the viewer's browser straight from the device, so:
+
+- **The computer showing the station view must reach the device's address.**
+  A phone on the office Wi-Fi may see Scrap Meter but not the machine network.
+- **The device must allow its page inside another page.** Many devices forbid
+  it with an `X-Frame-Options` or `Content-Security-Policy: frame-ancestors`
+  header; some Cognex models (e.g. the D900, until a firmware update) do. Scrap
+  Meter asks the device for the page from the server, and if the device forbids
+  it the window says so and offers **Open in a new tab** (and **Try here
+  anyway**). If the server can't reach the address, the window says that too.
+- **An `http://` device page can't be shown inside Scrap Meter opened over
+  `https://`** (browsers block it). The window then offers a new tab.
+
+Pages that sign in, use websockets (a live camera image) or keep their own
+settings work as when opened directly, because the browser talks to the device
+itself. HMI windows are part of the device export and of backups.
 
 ## Comments
 
@@ -419,8 +463,9 @@ file (devices without passwords; stations list their sources by device name), wi
 and their ideal cycle times. **Import** reads such a file: devices and
 stations with a new name are added, existing ones (same name) are updated, a
 missing password keeps the saved one, and jobs in the file with a cycle time
-get it. Counters and history are never touched. If anything in the file is
-invalid, nothing is imported.
+get it. Stations bring their HMI windows; a file from 1.12 or older has none
+and keeps the ones a station already has. Counters and history are never
+touched. If anything in the file is invalid, nothing is imported.
 
 Files from 1.5 and 1.6 hold a cycle time per station instead: it is given to
 the jobs that station has run and to its default job, where they have none.

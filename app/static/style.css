@@ -383,6 +383,10 @@ html.hmi-max-open body { overflow: hidden; }
 .switch.on .knob::after { left: 16px; background: #fff; }
 .switch:not(.on) { border-color: rgba(245,158,11,.5); }
 .mute-note { margin-bottom: 16px; }
+/* dashboard sound switch: off is not a warning */
+.toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.switch.plain:not(.on) { border-color: var(--border); }
+.switch .sound-hint { font-weight: 400; font-size: 12px; color: var(--warn); }
 .muted-icon { font-size: 13px; }
 
 /* ---- Version and changelog ---- */

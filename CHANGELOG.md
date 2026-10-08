@@ -4,6 +4,11 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.18.0 — 2026-10-08
+- The dashboard plays a chime when a station starts or leaves production, or its devices go offline or come back. Muted stations stay quiet, and several changes at once chime once.
+- A Sound switch at the top of the dashboard turns it off or on; each browser remembers its choice (on by default). Until the page has been clicked once the switch says so, because browsers block sound before that.
+- The explanation under the dashboard heading is gone; it is in the user guide.
+
 ## 1.17.0 — 2026-10-08
 - Alerts of a station can be muted: `!mute Line 1` in a WhatsApp group mutes them until the station's job changes, `!unmute Line 1` turns them back on.
 - The station view has a Scrap warnings switch next to Reset counters; turned off there, the station's alerts stay off until someone turns them on again.

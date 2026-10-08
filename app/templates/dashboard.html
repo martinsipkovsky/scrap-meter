@@ -4,9 +4,11 @@
 <div class="toolbar">
   <div>
     <h1>Dashboard</h1>
-    <p class="lead">Live OK / NOK counters per station, with each station's availability, performance and quality over the last 24 hours and its cycle time (actual vs. set, for the current job). Grayed stations are not in production. Click a station for its OK/NOK chart and comments.</p>
   </div>
-  <button class="btn secondary small" onclick="load()">Refresh now</button>
+  <div class="toolbar-actions">
+    <button class="switch plain" id="soundSwitch" role="switch" onclick="toggleSound()"><span class="knob"></span><span id="soundLabel">Sound</span><span class="sound-hint" id="soundHint" hidden>click the page to allow</span></button>
+    <button class="btn secondary small" onclick="load()">Refresh now</button>
+  </div>
 </div>
 <div id="cards" class="grid"></div>
 
@@ -43,6 +45,7 @@ async function load() {
   try { data = await getJSON('/api/data/summary'); }
   catch (e) { cards.innerHTML = ''; cards.append(el('div', { class: 'empty' }, e.message)); return; }
   oeeData = await oeeReq;
+  soundOnChanges(data);
   const figures = {};
   for (const s of (oeeData ? oeeData.stations : [])) figures[s.id] = s;
   cards.innerHTML = '';
@@ -155,6 +158,74 @@ function showOee(r) {
       el('td', {}, el('strong', {}, pct(s.oee)))));
   }
 }
+// ---- Sound on station status changes ----
+// A chime when a station starts or leaves production, or its devices go
+// offline or come back. Off/on is remembered per browser (on unless turned off).
+// Muted stations stay quiet; the first load only records the states, and
+// several changes in one refresh chime once.
+const SOUND_KEY = 'sm.sound';
+let soundOn = true;
+try { soundOn = localStorage.getItem(SOUND_KEY) !== 'off'; } catch (e) {}
+let audioCtx = null, chimeBuf = null, lastChime = 0;
+const prevStatus = {};
+function soundCtx() {
+  if (audioCtx) return audioCtx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  audioCtx = new AC();
+  audioCtx.onstatechange = showSound;
+  fetch('/static/sounds/chime.mp3').then(r => r.arrayBuffer())
+    .then(b => new Promise((ok, bad) => audioCtx.decodeAudioData(b, ok, bad)))
+    .then(buf => { chimeBuf = buf; }).catch(() => {});
+  return audioCtx;
+}
+function chime() {
+  const ctx = soundCtx();
+  if (!ctx || !chimeBuf) return;
+  if (ctx.state !== 'running') { ctx.resume().catch(() => {}); return; }
+  if (Date.now() - lastChime < 1500) return;
+  lastChime = Date.now();
+  const src = ctx.createBufferSource(); src.buffer = chimeBuf; src.connect(ctx.destination); src.start();
+}
+function showSound() {
+  const sw = document.getElementById('soundSwitch');
+  sw.classList.toggle('on', soundOn);
+  sw.setAttribute('aria-checked', String(soundOn));
+  document.getElementById('soundLabel').textContent = soundOn ? 'Sound on' : 'Sound off';
+  // browsers keep sound off until the page has been clicked once
+  const blocked = soundOn && (!audioCtx || audioCtx.state !== 'running');
+  document.getElementById('soundHint').hidden = !blocked;
+  sw.title = !soundOn ? 'Click to play a sound when a station starts or leaves production or its devices go offline or come back.'
+    : blocked ? 'Sound is on, but this browser only allows it after the page has been clicked once.'
+    : 'A sound plays when a station starts or leaves production or its devices go offline or come back (not for muted stations). Click to turn it off.';
+}
+function toggleSound() {
+  soundOn = !soundOn;
+  try { localStorage.setItem(SOUND_KEY, soundOn ? 'on' : 'off'); } catch (e) {}
+  if (soundOn) {
+    const ctx = soundCtx();
+    if (ctx) ctx.resume().then(() => { lastChime = 0; chime(); }).catch(() => {});
+  }
+  showSound();
+}
+function soundOnChanges(data) {
+  let changed = false;
+  for (const d of data) {
+    const now = d.production_state + '|' + (d.connected ? 'online' : 'offline');
+    if (d.id in prevStatus && prevStatus[d.id] !== now && !d.alerts_muted) changed = true;
+    prevStatus[d.id] = now;
+  }
+  if (changed && soundOn) chime();
+}
+// any click or key on the page lets the browser play sound
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => {
+  const ctx = soundCtx();
+  if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+}, true));
+soundCtx();
+if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+showSound();
+
 // the bar is pinned to the bottom: keep the last stations above it
 (function () {
   const bar = document.getElementById('oeePanel'), main = document.querySelector('.main');

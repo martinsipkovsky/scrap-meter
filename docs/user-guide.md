@@ -59,6 +59,14 @@ view while the station blocks scroll (the last blocks always end above it).
 **Per station** opens the figures of each station inside the bar. See
 [OEE](#oee).
 
+**Sound.** The dashboard plays a short chime when a station starts or leaves
+production, or its devices go offline or come back. Stations whose alerts are
+muted make no sound, and several changes in one refresh chime once. The
+**Sound** switch at the top turns it off or on; each browser remembers its own
+choice, and sound is on until someone turns it off. Browsers only allow sound
+after the page has been clicked once: until then the switch shows *click the
+page to allow*, and any click on the page clears it.
+
 ## Devices tab
 
 Add a device with:

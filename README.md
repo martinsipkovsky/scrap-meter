@@ -45,6 +45,8 @@ versions keep working.
 - **OEE meter:** availability, performance and quality over the last 24 hours,
   with total OK and NOK, at the bottom of the dashboard, and per station on
   each dashboard block next to the actual and set cycle time.
+- **Sound:** the dashboard chimes when a station starts or leaves production
+  or its devices go offline or come back, with a Sound switch per browser.
 - **Jobs tab:** every job's settings in one place, and jobs can be added
   before production. Cycle times are set as X seconds per shot of Y pieces
   (multi-cavity moulds), per job, so a station that changes job is weighed

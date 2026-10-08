@@ -222,7 +222,8 @@ def test_api_and_export(client):
     listed = {j["name"]: j for j in client.get("/api/jobs").json()}["J1"]
     assert listed["ideal_cycle_s"] == 3 and listed["piece_rule"]["pictures"] == 2 and listed["open_pieces"] == []
     exported = client.get("/api/devices/export").json()
-    assert exported["jobs"] == [{"name": "J1", "ideal_cycle_s": 3, "piece_rule": listed["piece_rule"]}]
+    assert exported["jobs"] == [{"name": "J1", "ideal_cycle_s": 3, "shot_s": 3, "pieces_per_shot": 1,
+                                 "piece_rule": listed["piece_rule"]}]
     client.patch(f"/api/jobs/{jid}", json={"piece_rule": None})
     assert client.get("/api/jobs").json()[0]["piece_rule"] is None
     r = client.post("/api/devices/import", json={"version": 4, "cameras": [], "stations": [], "jobs": exported["jobs"]})

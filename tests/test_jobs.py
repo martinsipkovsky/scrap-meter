@@ -200,10 +200,12 @@ def test_export_import_carries_job_cycle_times(client):
     jid = client.get("/api/jobs").json()[0]["id"]
     client.patch(f"/api/jobs/{jid}", json={"ideal_cycle_s": 3})
     data = client.get("/api/devices/export").json()
-    assert data["version"] == 4 and data["jobs"] == [{"name": "R1", "ideal_cycle_s": 3, "piece_rule": None}]
+    assert data["version"] == 5 and data["jobs"] == [{"name": "R1", "ideal_cycle_s": 3, "shot_s": 3,
+                                                      "pieces_per_shot": 1, "piece_rule": None}]
     assert "ideal_cycle_s" not in data["stations"][0]
 
     client.patch(f"/api/jobs/{jid}", json={"ideal_cycle_s": None})
+    data["jobs"][0]["shot_s"] = None  # as in a version 4 file
     data["jobs"].append({"name": "NEW", "ideal_cycle_s": 1.5})
     r = client.post("/api/devices/import", json=data)
     assert r.status_code == 200, r.text
@@ -233,3 +235,121 @@ def test_powerbi_jobs_view(client):
         assert conn.execute(text("SELECT job, ideal_cycle_s FROM powerbi_jobs")).all() == [("VJ", 2)]
         assert conn.execute(text("SELECT ideal_cycle_s FROM powerbi_stations")).scalar_one() == 2
         assert conn.execute(text("SELECT ideal_cycle_s FROM powerbi_job_totals")).scalar_one() == 2
+
+
+# ---- 1.15: cycle time per shot, jobs added before production, Jobs tab ---------
+def test_cycle_time_per_shot_of_several_pieces(client):
+    login(client)
+    did, sid = add_station_device(client, "Mould", {"jobs": ["M8"], "parts_per_poll": 4, "fail_ratio": 0.0})
+    poll(client, did)
+    jid = client.get("/api/jobs").json()[0]["id"]
+    # 12 s per shot of a 4-cavity mould: 3 s per piece
+    r = client.patch(f"/api/jobs/{jid}", json={"shot_s": 12, "pieces_per_shot": 4})
+    assert r.status_code == 200, r.text
+    assert (r.json()["shot_s"], r.json()["pieces_per_shot"], r.json()["ideal_cycle_s"]) == (12, 4, 3)
+    assert client.get("/api/data/summary").json()[0]["job_cycle_s"] == 3
+    assert client.get("/api/data/summary").json()[0]["job_shot_s"] == 12
+    # only the pieces change: the seconds per shot stay
+    assert client.patch(f"/api/jobs/{jid}", json={"pieces_per_shot": 2}).json()["ideal_cycle_s"] == 6
+    assert client.patch(f"/api/jobs/{jid}", json={"pieces_per_shot": 0}).status_code == 422
+    assert client.patch(f"/api/jobs/{jid}", json={"pieces_per_shot": 1001}).status_code == 422
+    # a 1.14 client sending seconds per piece: 1 piece per shot
+    r = client.patch(f"/api/jobs/{jid}", json={"ideal_cycle_s": 5}).json()
+    assert (r["shot_s"], r["pieces_per_shot"], r["ideal_cycle_s"]) == (5, 1, 5)
+    # clearing keeps the pieces per shot
+    client.patch(f"/api/jobs/{jid}", json={"shot_s": 8, "pieces_per_shot": 4})
+    r = client.patch(f"/api/jobs/{jid}", json={"shot_s": None}).json()
+    assert (r["shot_s"], r["pieces_per_shot"], r["ideal_cycle_s"]) == (None, 4, None)
+
+
+def test_station_figures_carry_the_current_jobs_cycle_time(client):
+    db = SessionLocal()
+    try:
+        db.query(Reading).delete()
+        db.query(Station).delete()
+        db.query(Job).delete()
+        st = Station(name="Cav", sources={}, idle_timeout_min=30, current_job="C4")
+        job = Job(name="C4")
+        jobs.apply_cycle(job, 8, 4)  # 2 s per piece
+        db.add_all([st, job])
+        db.flush()
+        # 60 pieces / 10 min = 10 s per piece actual, 40 s per shot of 4
+        _run(db, st, "C4", NOW - dt.timedelta(hours=2), 60, 60)
+        db.commit()
+        row = oee.compute(db, hours=24, now=NOW)["stations"][0]
+    finally:
+        db.close()
+    c = row["cycle"]
+    assert (c["job"], c["shot_s"], c["pieces_per_shot"], c["ideal_cycle_s"]) == ("C4", 8, 4, 2)
+    assert (c["actual_cycle_s"], c["actual_shot_s"], c["pieces"]) == (10, 40, 360)
+    assert row["performance"] == 0.2  # 2 s ideal / 10 s actual
+
+
+def test_jobs_added_before_production(client):
+    login(client)
+    r = client.post("/api/jobs", json={"name": "  4711 ", "shot_s": 30, "pieces_per_shot": 6})
+    assert r.status_code == 201, r.text
+    assert (r.json()["name"], r.json()["ideal_cycle_s"]) == ("4711", 5)
+    assert client.post("/api/jobs", json={"name": "4711"}).status_code == 409
+    assert client.post("/api/jobs", json={"name": "   "}).status_code == 400
+    assert client.post("/api/jobs", json={"name": "BARE"}).status_code == 201
+    listed = {j["name"]: j for j in client.get("/api/jobs").json()}
+    assert listed["BARE"]["shot_s"] is None and listed["BARE"]["pieces_per_shot"] == 1
+    assert listed["4711"]["stations"] == [] and listed["4711"]["running_on"] == []
+
+    # the device then reports the job: its settings apply from the first piece
+    did, sid = add_station_device(client, "Inj", {"jobs": ["4711"], "parts_per_poll": 6})
+    poll(client, did)
+    listed = {j["name"]: j for j in client.get("/api/jobs").json()}
+    assert listed["4711"]["running_on"] == ["Inj"] and listed["4711"]["shot_s"] == 30
+    assert next(s for s in client.get("/api/data/oee").json()["stations"] if s["id"] == sid)["cycle"]["shot_s"] == 30
+    assert client.delete(f"/api/jobs/{listed['4711']['id']}").status_code == 409  # counted now
+    assert client.delete(f"/api/jobs/{listed['BARE']['id']}").status_code == 204
+
+    # export / import keep a job without settings too
+    data = client.get("/api/devices/export").json()
+    assert {"name": "4711", "ideal_cycle_s": 5, "shot_s": 30, "pieces_per_shot": 6, "piece_rule": None} in data["jobs"]
+    data["jobs"].append({"name": "LATER", "pieces_per_shot": 2})
+    assert client.post("/api/devices/import", json=data).status_code == 200
+    listed = {j["name"]: j for j in client.get("/api/jobs").json()}
+    assert listed["LATER"]["shot_s"] is None and listed["4711"]["pieces_per_shot"] == 6
+
+    client.post("/api/users", json={"username": "viewer2", "password": "pw", "permissions": ["view_dashboard"]})
+    client.get("/logout")
+    login(client, "viewer2", "pw")
+    assert client.post("/api/jobs", json={"name": "X"}).status_code == 403
+    page = client.get("/jobs")
+    assert page.status_code == 200 and "Add job" not in page.text and 'href="/jobs"' in page.text
+
+
+def test_1_14_cycle_times_become_seconds_per_shot_of_one_piece(client):
+    login(client)
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM jobs"))
+        conn.execute(text("INSERT INTO jobs (name, ideal_cycle_s, created_at, updated_at) "
+                          "VALUES ('OLD', 4.5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
+    jobs.upgrade(engine)
+    db = SessionLocal()
+    try:
+        j = db.query(Job).filter(Job.name == "OLD").one()
+        assert (j.shot_s, j.pieces_per_shot, j.ideal_cycle_s) == (4.5, 1, 4.5)
+    finally:
+        db.close()
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT shot_s, pieces_per_shot FROM powerbi_jobs WHERE job = 'OLD'")).one() == (4.5, 1)
+
+
+def test_backup_round_trip_keeps_shots(client, tmp_path, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path / "data"))
+    login(client)
+    client.post("/api/jobs", json={"name": "B1", "shot_s": 20, "pieces_per_shot": 8})
+    path = tmp_path / "b.json.gz"
+    backup.write_backup(path)
+    jid = client.get("/api/jobs").json()[0]["id"]
+    client.patch(f"/api/jobs/{jid}", json={"shot_s": 1, "pieces_per_shot": 1})
+    backup.restore(path)
+    login(client)
+    j = client.get("/api/jobs").json()[0]
+    assert (j["shot_s"], j["pieces_per_shot"], j["ideal_cycle_s"]) == (20, 8, 2.5)

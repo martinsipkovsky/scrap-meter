@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import comments, hmi, jobs, oee, production, scrap_stats, stations
+from .. import hmi, jobs, oee, production, scrap_stats, stations
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import Device, Reading, Station, User, utcnow
@@ -27,9 +27,13 @@ def _aware(t: dt.datetime) -> dt.datetime:
     return t.replace(tzinfo=dt.timezone.utc) if t.tzinfo is None else t
 
 
-def _station_summary(db: Session, st: Station, devices: dict, cycles: dict | None = None) -> dict:
+def _station_summary(db: Session, st: Station, devices: dict, cycles: dict | None = None,
+                     shots: dict | None = None) -> dict:
     if cycles is None:
         cycles = jobs.cycle_times(db)
+    if shots is None:
+        shots = oee.shot_settings(db)
+    shot_s, per_shot = shots.get(st.current_job, (None, 1))
     active = stations.shown(db, st)
     online = stations.status(st, devices)
     view = stations.sources_view(db, st, devices)
@@ -50,6 +54,9 @@ def _station_summary(db: Session, st: Station, devices: dict, cycles: dict | Non
         "stats_default": st.stats_default,
         # the current job's ideal cycle time (OEE), None when not set
         "job_cycle_s": cycles.get(st.current_job),
+        # ... as set: seconds per shot of pieces_per_shot pieces
+        "job_shot_s": shot_s,
+        "job_pieces_per_shot": per_shot,
         **production.describe(st),
         "active_job": None
         if active is None
@@ -72,13 +79,12 @@ def _stations(db: Session) -> list[Station]:
 
 @router.get("/summary")
 def summary(db: Session = Depends(get_db), _: User = Depends(require_permission("view_dashboard"))):
-    """Every station's dashboard block."""
+    """Every station's dashboard block (its OEE comes from /oee)."""
     rows = _stations(db)
     devices = stations.devices_of(db, rows)
-    latest = comments.latest(db, [st.id for st in rows])
     cycles = jobs.cycle_times(db)
-    return [{**_station_summary(db, st, devices, cycles),
-             "latest_comment": comments.out(latest[st.id]) if st.id in latest else None} for st in rows]
+    shots = oee.shot_settings(db)
+    return [_station_summary(db, st, devices, cycles, shots) for st in rows]
 
 
 @router.get("/oee")

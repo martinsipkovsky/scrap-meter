@@ -34,9 +34,9 @@ def test_comment_keeps_a_snapshot_of_the_station(client):
     assert rows[1]["nok"] == 10 and rows[1]["station_name"] == "M1"
     assert rows[0]["nok"] == 110 and rows[0]["station_name"] == "M1 new"
 
-    # the dashboard shows each station's latest comment
+    # since 1.15 comments stay on the station view, not the dashboard blocks
     summary = {s["id"]: s for s in client.get("/api/data/summary").json()}
-    assert summary[sid]["latest_comment"]["text"] == "second"
+    assert "latest_comment" not in summary[sid]
 
 
 def test_comment_validation_and_permissions(client):
@@ -47,7 +47,6 @@ def test_comment_validation_and_permissions(client):
     assert client.post(f"/api/stations/{sid}/comments", json={"text": ""}).status_code == 422
     assert client.post(f"/api/stations/{sid}/comments", json={"text": "x" * 2001}).status_code == 422
     assert client.post("/api/stations/999/comments", json={"text": "hi"}).status_code == 404
-    assert client.get(f"/api/data/summary").json()[1]["latest_comment"] is None
 
     client.post("/api/users", json={"username": "op", "password": "pw123456", "permissions": ["view_dashboard"]})
     client.post("/api/users", json={"username": "nobody", "password": "pw123456", "permissions": []})

@@ -57,8 +57,9 @@ app/
                      production, readings, manual entries, active devices, the
                      upgrades of 1.4 data (devices became stations) and of
                      1.5-1.7 data (roles became sources)
-  jobs.py            the jobs list, ideal cycle times per job, the upgrade of
-                     1.6 data (station cycle times moved to the jobs)
+  jobs.py            the jobs list (Jobs tab), cycle times per job (seconds per
+                     shot of N pieces), the upgrade of 1.6 data (station cycle
+                     times moved to the jobs) and of 1.14 cycle times (per shot)
   production.py      running / idle / stopped state per station
   scrap_stats.py     scrap statistics for a date range, Excel export
   oee.py             OEE and OK / NOK totals over the last hours (dashboard)

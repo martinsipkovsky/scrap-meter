@@ -39,10 +39,15 @@ the block shows the device that was active last, grayed, with the time it
 stopped. Stations that are not in production (see below) are shown **grayed
 out**. Click a station to open its station view.
 
-Below the counters each block shows the station's latest comment (author,
-time, scrap at that moment). **+ Comment** / **Comments** opens the station's
-comments to read them or write a new one without leaving the dashboard. See
-[Comments](#comments).
+Below the counters each block shows the station's **availability**,
+**performance** and **quality** over the last 24 hours (the same figures and
+formulas as the [OEE](#oee) bar) and the **cycle time** of its current job:
+the actual one, measured over the same 24 hours (production time on the job /
+its pieces), next to the one set on the [Jobs tab](#jobs-tab) ("set 12.0 s ·
+per shot of 4"). When a shot of the job makes several pieces, both are per
+shot; otherwise per piece. Hover a figure for how it is worked out.
+Comments are written and read on the station view (see
+[Comments](#comments)).
 
 **Last 24 hours**, pinned to the bottom of the screen, shows the OEE meter and
 the total OK and NOK of the stations included in the statistics, and stays in
@@ -72,9 +77,8 @@ station uses can't be deleted until the station is changed or deleted.
 
 When a camera takes several pictures of one real piece (both sides, several
 cavities, a re-check), its OK / NOK counters count pictures, not pieces. The
-**Jobs: pictures and pieces** list under the devices sets, per job, how
-pictures make a piece (**Set rule**; the same button is in the Jobs list on
-the Stations tab). From then on the dashboard, statistics, OEE, notifications,
+**Pictures and pieces** column of the [Jobs tab](#jobs-tab) sets, per job, how
+pictures make a piece (**Set rule**). From then on the dashboard, statistics, OEE, notifications,
 chat commands and Power BI count real pieces. The Data log keeps the camera's
 own picture counters next to the pieces counted (*Counted*). Past data isn't
 changed. Without a rule every picture is a piece, as before.
@@ -173,19 +177,42 @@ A station is **online** when every device it uses is online and has delivered
 its values; otherwise the list and the dashboard say what is missing (e.g. "no
 value 'ns=2;s=M1.Bad' from device 'PLC' yet").
 
-### Jobs and ideal cycle times
+Deleting a station deletes its counters, readings and alert rules; its devices
+stay.
 
-Below the stations, **Jobs** lists every job the stations have counted, from a
-device's job value, a station's default job or a manual entry. A job appears
-there by itself the first time it is counted, with no cycle time yet. For each
-job the list shows the stations running it now, the stations that have
-counted it, and when it was last counted.
+## Jobs tab
 
-The **ideal cycle time** is the seconds one piece of the job takes at full
-speed; it is the OEE performance factor. Users with `manage_devices` type it
-next to the job and press **Save** (or Enter); an empty field clears it. A job
-no station has counted any more (its stations were deleted) can be removed
-with **Remove**.
+The **Jobs** tab (between Devices and Data log) holds every job's settings.
+It lists every job the stations have counted, from a device's job value, a
+station's default job or a manual entry; a job appears there by itself the
+first time it is counted, with no settings yet. For each job the list shows
+its cycle time, how pictures make pieces, the stations running it now, the
+stations that have counted it, and when it was last counted. Everyone who
+sees the dashboard sees the tab; users with `manage_devices` change it.
+
+**+ Add job** adds a job before production starts, so its settings are ready
+from the first piece. Enter the job name or number exactly as the device
+reports it (the job value of the station's source), or a station's job name
+for manual entries. A job no station has counted (added here and not run yet,
+or its stations were deleted) can be removed with **Remove**.
+
+### Cycle time
+
+The cycle time is the OEE performance factor, set as **X seconds per shot**
+(one machine cycle at full speed) and **Y pieces per shot** (for example the
+cavities of an injection mould). One piece then ideally takes X / Y seconds,
+shown under the fields: 12 s per shot of 4 pieces = 3 s / piece. For a machine
+that makes one piece at a time, leave the pieces at 1. Type the values next to
+the job and press **Save** (or Enter); an empty seconds field clears the cycle
+time. Cycle times set before 1.15 (seconds per piece) became X seconds per
+shot of 1 piece, so nothing changed until they are edited.
+
+The pieces per shot only set the cycle time. How camera pictures make pieces
+is the separate [pictures and pieces](#pictures-and-pieces) rule in the next
+column (a 4-cavity mould whose camera takes one picture per cavity needs no
+rule; one picture of all 4 needs one).
+
+### Upgrades from 1.6
 
 Up to version 1.6 the cycle time was set per station. When 1.7 starts on an
 older database (or an older backup is imported), each station's cycle time is
@@ -193,9 +220,6 @@ copied to the jobs that station has run, where the job has none yet. When
 several stations ran the same job with different cycle times, the one of the
 station that ran it most recently is kept, and the app log says so (`upgrade:
 stations had different cycle times for job ...`).
-
-Deleting a station deletes its counters, readings and alert rules; its devices
-stay.
 
 ## How counting works
 
@@ -327,9 +351,8 @@ itself. HMI windows are part of the device export and of backups.
 ## Comments
 
 Comments note what happened on a station: a tool change, a material batch, a
-stop for cleaning. Write one in the **Comments** box on the station view, or
-from the station's block on the dashboard, and press **Add comment** (or
-Ctrl+Enter). Anyone who can see the dashboard can write comments.
+stop for cleaning. Write one in the **Comments** box on the station view and press **Add comment** (or
+Ctrl+Enter). Since 1.15 the dashboard blocks no longer show comments. Anyone who can see the dashboard can write comments.
 
 Each comment is saved with:
 
@@ -339,8 +362,7 @@ Each comment is saved with:
   counters since the last **Reset counters**, as on the dashboard).
 
 That snapshot never changes, even when the station is renamed or counts on.
-Comments are listed newest first, and the latest one also shows on the
-station's dashboard block. Only an administrator can delete a comment.
+Comments are listed newest first. Only an administrator can delete a comment.
 Comments are kept when their station is deleted, are part of backups, and
 reports read them from the `powerbi_station_comments` view (see
 [Reports](reporting.md)).
@@ -395,7 +417,7 @@ The bottom of the dashboard shows OEE over the last 24 hours:
   one shift a day can reach at most about 33 %.
 - **Performance** = ideal time of the parts made / time in production. The
   parts of each reading are weighed with the [ideal cycle time of their
-  job](#jobs-and-ideal-cycle-times), so a station that changes job during the
+  job](#cycle-time) (seconds per shot / pieces per shot), so a station that changes job during the
   day is weighed correctly. Parts of a job without a cycle time, and the time
   spent making them, are left out of performance, and the panel names those
   jobs. A value above 100 % means a cycle time is set too long.
@@ -410,7 +432,8 @@ left out. The meter, the factors and the total OK / NOK cover the stations
 included in the statistics; the OEE itself covers those of them that made
 parts of a job with a cycle time, or stand on such a job (an idle station on
 it counts with availability 0). **Per station** under the meter shows the
-same figures for every station, and which of its jobs have no cycle time.
+same figures for every station, and which of its jobs have no cycle time;
+each station's block on the dashboard shows them too, with its cycle time.
 
 ## Data log
 
@@ -482,11 +505,13 @@ Changing the setting applies to all readings of the station, old and new.
 ## Export and import
 
 **Export** on the Devices tab downloads every device and station as one JSON
-file (devices without passwords; stations list their sources by device name), with the jobs
-and their ideal cycle times. **Import** reads such a file: devices and
+file (devices without passwords; stations list their sources by device name), with every job
+and its settings (cycle time per shot, pieces per shot, pictures-and-pieces
+rule). **Import** reads such a file: devices and
 stations with a new name are added, existing ones (same name) are updated, a
-missing password keeps the saved one, and jobs in the file with a cycle time
-get it. Stations bring their HMI windows; a file from 1.12 or older has none
+missing password keeps the saved one, jobs in the file with a cycle time
+get it, and jobs not in the list yet are added. A file from 1.14 or older has
+seconds per piece, which become seconds per shot of 1 piece. Stations bring their HMI windows; a file from 1.12 or older has none
 and keeps the ones a station already has. Counters and history are never
 touched. If anything in the file is invalid, nothing is imported.
 
@@ -513,7 +538,7 @@ assign permissions. The last administrator can't be deleted.
 | Permission | Allows |
 |---|---|
 | `view_dashboard` | View the dashboard, stations, devices and the OEE meter; write comments on stations; export settings |
-| `manage_devices` | Create, edit, delete and import devices and stations, set job cycle times, browse OPC UA servers |
+| `manage_devices` | Create, edit, delete and import devices and stations, add jobs and set their cycle times and piece rules (Jobs tab), browse OPC UA servers |
 | `control_connections` | Poll devices, start/stop production, reset the dashboard counters |
 | `view_data` | Browse logged readings and counters, scrap statistics |
 | `exclude_readings` | Exclude readings from (or include them in) the scrap statistics |

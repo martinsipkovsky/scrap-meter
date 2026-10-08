@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Jobs · Scrap Meter{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div><h1>Jobs</h1><p class="lead">Every job the stations count, with its settings. A job appears here by itself when a station first counts it; add one beforehand to have its settings ready when production starts. The cycle time is the OEE performance factor: X seconds per shot (one machine cycle) making Y pieces (cavities), so one piece ideally takes X / Y seconds. Pieces of a job without a cycle time are left out of performance, and the OEE panel names the job.</p></div>
+  <div class="actions">
+    {% if user.has_permission('manage_devices') %}
+    <button class="btn" style="white-space:nowrap" onclick="openAdd()">+ Add job</button>
+    {% endif %}
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>Job</th><th>Cycle time</th><th>Pictures and pieces</th><th>Running on</th><th>Counted on</th><th>Last counted</th><th></th></tr></thead>
+  <tbody id="jobRows"></tbody>
+</table>
+<div id="jobsEmpty" class="empty" style="display:none">No jobs yet: a job appears when a station first counts it (from a device or a manual entry){% if user.has_permission('manage_devices') %}, or add one with "+ Add job"{% endif %}.</div>
+
+{% if user.has_permission('manage_devices') %}
+<div class="modal-back" id="addModal">
+  <div class="modal" style="width:560px">
+    <h2>Add job</h2>
+    <div id="addError" class="error" style="display:none"></div>
+    <label>Job name or number</label>
+    <input id="a_name" placeholder="e.g. 4711 or HOUSING-A" maxlength="255" />
+    <div class="hint">Exactly as the device reports it (the job value of the station's source), or a station's job name for manual entries, so the settings apply when production starts.</div>
+    <div class="row">
+      <div><label>Seconds per shot</label><input id="a_shot" type="number" min="0" step="any" placeholder="not set" /></div>
+      <div><label>Pieces per shot</label><input id="a_pieces" type="number" min="1" max="1000" step="1" value="1" /></div>
+    </div>
+    <div class="hint" id="a_per_piece">Leave the seconds empty to set the cycle time later. How pictures make pieces can be set once the job is in the list.</div>
+    <div class="actions" style="margin-top:20px;justify-content:flex-end">
+      <button class="btn secondary" onclick="closeModal('addModal')">Cancel</button>
+      <button class="btn" onclick="addJob()">Add</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const CAN_MANAGE = {{ 'true' if user.has_permission('manage_devices') else 'false' }};
+const num = (x) => +(+x).toFixed(3);
+function perPieceText(shot, n) {
+  return shot > 0 && n >= 1 ? '= ' + num(shot / n) + ' s / piece' : '';
+}
+function cycleText(j) {
+  if (!j.shot_s) return el('span', { class: 'muted' }, 'not set');
+  const n = j.pieces_per_shot || 1;
+  return el('span', {}, num(j.shot_s) + ' s / shot' + (n > 1 ? ' of ' + n + ' pieces' : ' of 1 piece'),
+    n > 1 ? el('div', { class: 'muted' }, perPieceText(j.shot_s, n)) : null);
+}
+
+const jobsEditing = () => [...document.querySelectorAll('#jobRows input')].some(i => i === document.activeElement || i.dataset.dirty);
+async function loadJobs() {
+  let list;
+  try { list = await getJSON('/api/jobs'); } catch (e) { return; }
+  const tb = document.getElementById('jobRows');
+  tb.innerHTML = '';
+  document.getElementById('jobsEmpty').style.display = list.length ? 'none' : 'block';
+  for (const j of list) {
+    let cell;
+    if (CAN_MANAGE) {
+      const shot = el('input', { type: 'number', min: '0', step: 'any', placeholder: 'not set', style: 'width:90px',
+        value: j.shot_s ?? '', 'aria-label': 'Seconds per shot of ' + j.name });
+      const n = el('input', { type: 'number', min: '1', max: '1000', step: '1', style: 'width:64px',
+        value: j.pieces_per_shot || 1, 'aria-label': 'Pieces per shot of ' + j.name });
+      const per = el('span', { class: 'muted' }, j.shot_s && j.pieces_per_shot > 1 ? perPieceText(j.shot_s, j.pieces_per_shot) : '');
+      const btn = el('button', { class: 'btn small', style: 'visibility:hidden', onclick: () => saveCycle(j, shot, n) }, 'Save');
+      for (const inp of [shot, n]) {
+        inp.addEventListener('input', () => {
+          inp.dataset.dirty = '1'; btn.style.visibility = 'visible';
+          per.textContent = perPieceText(parseFloat(shot.value), parseInt(n.value, 10));
+        });
+        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveCycle(j, shot, n); });
+      }
+      const line = (...c) => el('div', { style: 'display:flex;gap:6px;align-items:center;margin-bottom:4px;white-space:nowrap' }, ...c);
+      cell = el('div', {},
+        line(shot, el('span', { class: 'muted' }, 's per shot')),
+        line(n, el('span', { class: 'muted' }, 'pieces per shot'), btn),
+        per);
+    } else {
+      cell = cycleText(j);
+    }
+    tb.append(el('tr', {},
+      el('td', {}, el('strong', {}, j.name)),
+      el('td', {}, cell),
+      el('td', { style: 'max-width:260px' }, pieceRuleCell(j, CAN_MANAGE, loadJobs)),
+      el('td', {}, j.running_on.length ? j.running_on.join(', ') : el('span', { class: 'muted' }, '—')),
+      el('td', { class: 'muted' }, j.stations.join(', ') || (j.last_counted_at ? '—' : 'not counted yet')),
+      el('td', { class: 'muted' }, j.last_counted_at ? fmtAgo(j.last_counted_at) : '—'),
+      el('td', {}, CAN_MANAGE && !j.stations.length
+        ? el('button', { class: 'btn danger small', title: 'No station has counted this job', onclick: () => removeJob(j) }, 'Remove') : null)));
+  }
+}
+async function removeJob(j) {
+  if (!confirm('Remove job "' + j.name + '" with its settings? If a station counts it later, it comes back without them.')) return;
+  try { await delJSON('/api/jobs/' + j.id); loadJobs(); } catch (e) { toast(e.message, true); }
+}
+function readCycle(shotInp, nInp) {
+  const raw = shotInp.value.trim();
+  const shot = raw === '' ? null : parseFloat(raw);
+  const n = parseInt(nInp.value, 10);
+  if (shot !== null && !(shot > 0)) throw new Error('The seconds per shot must be more than 0 (empty clears the cycle time).');
+  if (!(n >= 1 && n <= 1000)) throw new Error('Pieces per shot must be a whole number from 1 to 1000.');
+  return { shot_s: shot, pieces_per_shot: n };
+}
+async function saveCycle(j, shotInp, nInp) {
+  let body;
+  try { body = readCycle(shotInp, nInp); } catch (e) { toast(e.message, true); return; }
+  try {
+    await patchJSON('/api/jobs/' + j.id, body);
+    toast(body.shot_s === null ? 'Cycle time of ' + j.name + ' cleared'
+      : j.name + ': ' + body.shot_s + ' s per shot of ' + body.pieces_per_shot + ' piece' + (body.pieces_per_shot > 1 ? 's' : ''));
+    delete shotInp.dataset.dirty; delete nInp.dataset.dirty;
+    document.activeElement && document.activeElement.blur();
+    loadJobs();
+  } catch (e) { toast(e.message, true); }
+}
+
+function openAdd() {
+  document.getElementById('addError').style.display = 'none';
+  document.getElementById('a_name').value = '';
+  document.getElementById('a_shot').value = '';
+  document.getElementById('a_pieces').value = '1';
+  openModal('addModal');
+  document.getElementById('a_name').focus();
+}
+async function addJob() {
+  const err = document.getElementById('addError');
+  err.style.display = 'none';
+  const name = document.getElementById('a_name').value.trim();
+  try {
+    if (!name) throw new Error('Enter the job name or number.');
+    const body = { name, ...readCycle(document.getElementById('a_shot'), document.getElementById('a_pieces')) };
+    if (body.shot_s === null) delete body.shot_s;
+    await postJSON('/api/jobs', body);
+    closeModal('addModal');
+    toast('Job ' + name + ' added');
+    loadJobs();
+  } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+if (CAN_MANAGE) for (const id of ['a_shot', 'a_pieces']) document.getElementById(id).addEventListener('input', () => {
+  const t = perPieceText(parseFloat(document.getElementById('a_shot').value), parseInt(document.getElementById('a_pieces').value, 10));
+  document.getElementById('a_per_piece').textContent = t ? 'One piece ideally takes ' + t.slice(2, -8) + '.'
+    : 'Leave the seconds empty to set the cycle time later. How pictures make pieces can be set once the job is in the list.';
+});
+if (CAN_MANAGE) document.getElementById('a_name').addEventListener('keydown', (e) => { if (e.key === 'Enter') addJob(); });
+
+loadJobs();
+setInterval(() => { if (!document.querySelector('.modal-back.open') && !jobsEditing()) loadJobs(); }, 5000);
+</script>
+{% endblock %}

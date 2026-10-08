@@ -43,8 +43,12 @@ versions keep working.
   piece and when it is OK (all OK, at least K OK, a NOK ends the piece, a
   timer, a piece id value), so all figures count real pieces.
 - **OEE meter:** availability, performance and quality over the last 24 hours,
-  with total OK and NOK, at the bottom of the dashboard. Ideal cycle times are
-  set per job, so a station that changes job is weighed correctly.
+  with total OK and NOK, at the bottom of the dashboard, and per station on
+  each dashboard block next to the actual and set cycle time.
+- **Jobs tab:** every job's settings in one place, and jobs can be added
+  before production. Cycle times are set as X seconds per shot of Y pieces
+  (multi-cavity moulds), per job, so a station that changes job is weighed
+  correctly.
 - **Reset-proof counters:** if an operator resets the counters on the device,
   the running totals keep going. A job change freezes the old job's totals and
   starts new ones.
@@ -58,7 +62,7 @@ versions keep working.
   (history and statistics are kept).
 - **Comments:** anyone on the dashboard can write a comment on a station. It
   is saved with the time, the author, the current job and the OK / NOK / scrap
-  at that moment; the latest one shows on the station's dashboard block.
+  at that moment; they are read and written on the station view.
 - **Power BI and Excel:** read-only `powerbi_*` database views with all
   counted data and the comments, daily data filled in by the app (per station,
   job and day: OK / NOK, scrap, production time, OEE), and a read-only login
@@ -80,7 +84,7 @@ versions keep working.
 - **Raw data tab** for admins: every table page by page with search, filters
   and sorting, type-aware inline editing, a change log with undo, and a
   read-only SQL box. Secrets stay hidden.
-- **Export/import** of devices, stations and job cycle times as JSON, and an admin **Database tab** to move the
+- **Export/import** of devices, stations and jobs with their settings as JSON, and an admin **Database tab** to move the
   app to another PostgreSQL server.
 - **Backups:** download all data as one file, import it again, and automatic
   scheduled backups to an FTP/FTPS server, with a reminder when the last

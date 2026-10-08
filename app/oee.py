@@ -16,6 +16,11 @@ OEE = availability x performance x quality, per station and overall:
   no OEE, only availability and quality.
 * quality: OK / (OK + NOK).
 
+Each station also gets the cycle time of its current job: the one set (X s
+per shot of Y pieces, so X / Y s per piece) next to the actual one over the
+window, the production time on that job divided by its pieces (times Y for
+the actual time per shot).
+
 Parts are counted like Scrap statistics (app.scrap_stats.station_parts):
 excluded readings and parts made while not in production are left out. The
 overall figures and the OK / NOK totals cover the stations included in the
@@ -30,7 +35,7 @@ import datetime as dt
 from sqlalchemy.orm import Session
 
 from . import jobs, production, stations
-from .models import Station, utcnow
+from .models import Job, Station, utcnow
 from .scrap_stats import station_parts
 
 
@@ -44,11 +49,21 @@ def _quality(ok: int, parts: int) -> float | None:
     return round(min(max(ok / parts, 0.0), 1.0), 4) if parts > 0 else None
 
 
+def shot_settings(db: Session) -> dict[str, tuple[float | None, int]]:
+    """{job: (seconds per shot or None, pieces per shot)}"""
+    return {n: (s, p or 1) if s is not None else (ideal, 1)
+            for n, s, p, ideal in db.query(Job.name, Job.shot_s, Job.pieces_per_shot, Job.ideal_cycle_s)}
+
+
 def station_figures(db: Session, st: Station, start: dt.datetime, end: dt.datetime,
-                    cycles: dict[str, float] | None = None) -> dict:
-    """``cycles``: {job: ideal seconds per piece} (read from the jobs when None)."""
+                    cycles: dict[str, float] | None = None,
+                    shots: dict[str, tuple[float | None, int]] | None = None) -> dict:
+    """``cycles``: {job: ideal seconds per piece}, ``shots``: shot_settings
+    (both read from the jobs when None)."""
     if cycles is None:
         cycles = jobs.cycle_times(db)
+    if shots is None:
+        shots = shot_settings(db)
     cap = dt.timedelta(minutes=max(1, st.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN))
     window = (end - start).total_seconds()
     ok = nok = 0
@@ -56,6 +71,9 @@ def station_figures(db: Session, st: Station, start: dt.datetime, end: dt.dateti
     timed = dt.timedelta()  # production time on jobs with a cycle time
     ideal = 0.0  # ideal seconds of the parts made on those jobs
     missing: set[str] = set()  # jobs without a cycle time that were produced
+    job_now = st.current_job or st.default_job
+    now_prod = dt.timedelta()  # production time and pieces of the current job
+    now_parts = 0
     for r in station_parts(db, st, start, end):
         if r["excluded"] or not r["in_production"]:
             continue
@@ -65,6 +83,10 @@ def station_figures(db: Session, st: Station, start: dt.datetime, end: dt.dateti
             prod += gap
             if ct:
                 timed += gap
+            if r["job"] == job_now:
+                now_prod += gap
+        if r["job"] == job_now:
+            now_parts += r["ok"] + r["nok"]
         ok += r["ok"]
         nok += r["nok"]
         if ct:
@@ -80,8 +102,17 @@ def station_figures(db: Session, st: Station, start: dt.datetime, end: dt.dateti
     performance = _ratio(ideal, timed_s) if ideal else None
     oee = (round(availability * performance * quality, 4)
            if None not in (availability, performance, quality) else None)
+    shot_s, per_shot = shots.get(job_now, (None, 1))
+    actual = round(now_prod.total_seconds() / now_parts, 2) if now_parts > 0 and now_prod else None
+    cycle = {
+        "job": job_now, "shot_s": shot_s, "pieces_per_shot": per_shot, "ideal_cycle_s": cycles.get(job_now),
+        # measured over the window: seconds per piece and per shot
+        "actual_cycle_s": actual, "actual_shot_s": round(actual * per_shot, 2) if actual else None,
+        "pieces": now_parts, "production_s": round(now_prod.total_seconds()),
+    }
     return {
         "id": st.id, "name": st.name, "in_totals": not st.excluded_by_default,
+        "cycle": cycle,
         "ok": ok, "nok": nok, "production_s": round(prod_s),
         "timed_production_s": round(timed_s), "ideal_s": round(ideal, 1),
         # in the overall OEE: parts of a job with a cycle time, or idle on one
@@ -96,7 +127,8 @@ def compute(db: Session, hours: float = 24, now: dt.datetime | None = None) -> d
     start = end - dt.timedelta(hours=hours)
     window = (end - start).total_seconds()
     cycles = jobs.cycle_times(db)
-    rows = [station_figures(db, st, start, end, cycles)
+    shots = shot_settings(db)
+    rows = [station_figures(db, st, start, end, cycles, shots)
             for st in db.query(Station).order_by(Station.sort_order, Station.name).all()]
     inc = [r for r in rows if r["in_totals"]]
     with_ct = [r for r in inc if r["covered"]]

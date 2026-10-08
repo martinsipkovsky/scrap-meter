@@ -82,12 +82,15 @@ LEFT JOIN jobs j ON j.name = t.job_name
 """,
     ),
     "powerbi_jobs": (
-        "Every job the stations have counted, with its ideal cycle time (seconds per piece; empty when not set)",
+        "Every job (counted by the stations or added on the Jobs tab), with its ideal cycle time (seconds per "
+        "piece; empty when not set) and the cycle time as set: seconds per shot making pieces_per_shot pieces",
         """
 SELECT
     n.job AS job,
     j.ideal_cycle_s AS ideal_cycle_s,
-    j.updated_at AS updated_at_utc
+    j.updated_at AS updated_at_utc,
+    j.shot_s AS shot_s,
+    COALESCE(j.pieces_per_shot, 1) AS pieces_per_shot
 FROM (SELECT name AS job FROM jobs UNION SELECT job_name FROM counter_states) n
 LEFT JOIN jobs j ON j.name = n.job
 """,

@@ -93,6 +93,15 @@ If a saved database server is not reachable when the app starts, it retries
 for about a minute before falling back to the bundled database (the Database
 tab then says so). `GET /healthz` shows the running version.
 
+### Updating to 1.15 (Jobs tab, cycle time per shot)
+
+Nothing has to be done: the compose file does not change. Jobs get two new
+database columns on the first start (seconds per shot, pieces per shot); each
+cycle time set before becomes that many seconds per shot of 1 piece, so OEE
+stays the same until a job is edited. `powerbi_jobs` gets the columns
+`shot_s` and `pieces_per_shot` at the end. Export files are now version 5;
+older files still import.
+
 ### Updating to 1.14 (corrections)
 
 Nothing has to be done: the compose file and the database do not change.

@@ -143,7 +143,7 @@ def test_export_import_roundtrip(client):
     exp = client.get("/api/devices/export")
     assert "attachment" in exp.headers["content-disposition"]
     data = exp.json()
-    assert data["version"] == 4
+    assert data["version"] == 5
     assert [c["name"] for c in data["cameras"]] == ["A", "B"]
     assert "id" not in data["cameras"][0]
     assert data["stations"][0]["sources"] == [{"device": "A", "ok": "pass", "nok": "fail", "count": "count",

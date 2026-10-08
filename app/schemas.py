@@ -210,7 +210,11 @@ class StationExportItem(BaseModel):
 
 class JobExportItem(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    # seconds per piece; in files before version 5 (1.15) the only cycle time
     ideal_cycle_s: Optional[float] = Field(default=None, gt=0, le=86400)
+    # since 1.15: the cycle time as set, seconds per shot of pieces_per_shot pieces
+    shot_s: Optional[float] = Field(default=None, gt=0, le=86400)
+    pieces_per_shot: Optional[int] = Field(default=None, ge=1, le=1000)
     # since 1.12: how camera pictures make pieces (app.pieces)
     piece_rule: Optional[dict] = None
 
@@ -218,7 +222,9 @@ class JobExportItem(BaseModel):
 class DeviceImport(BaseModel):
     """An export file. "cameras" holds the devices (the name of the list in
     every version); "stations" is there from version 2 (1.5), "jobs" from
-    version 3 (1.7); version 4 (1.8) lists the stations' sources."""
+    version 3 (1.7); version 4 (1.8) lists the stations' sources; version 5
+    (1.15) has every job (also ones without settings) with its cycle time per
+    shot."""
 
     version: int = 1
     cameras: list[DeviceExportItem]

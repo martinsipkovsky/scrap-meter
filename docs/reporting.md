@@ -16,7 +16,7 @@ tokens (device logins, user passwords, notification settings).
 |---|---|
 | `powerbi_station_comments` | Comments written on the stations, with the job and OK / NOK / scrap at that moment |
 | `powerbi_stations` | The stations and their settings; `ideal_cycle_s` is the one of the current job |
-| `powerbi_jobs` | Every job the stations have counted, with its ideal cycle time |
+| `powerbi_jobs` | Every job (counted, or added on the Jobs tab), with its ideal cycle time and the cycle time per shot |
 | `powerbi_job_totals` | OK / NOK per station and job since counting started (device counts plus manual entries) |
 | `powerbi_readings` | Every reading and manual entry (the history behind the chart and the statistics) |
 | `powerbi_daily_stations` | Every day per station: OK / NOK, scrap, parts left out, production time, availability, performance, quality, OEE, comments |
@@ -95,7 +95,9 @@ Raw data tab and are part of backups.
 `updated_at_utc`, `ideal_cycle_s` (the job's ideal cycle time).
 
 **`powerbi_jobs`**: `job`, `ideal_cycle_s` (seconds per piece; empty when not
-set), `updated_at_utc`. Join it to `powerbi_readings` or `powerbi_job_totals`
+set), `updated_at_utc`, `shot_s` (since 1.15: the cycle time as set, seconds
+per shot; empty when not set), `pieces_per_shot` (pieces one shot makes;
+`ideal_cycle_s` = `shot_s` / `pieces_per_shot`). Join it to `powerbi_readings` or `powerbi_job_totals`
 on `job`.
 
 **`powerbi_stations`**: `station_id`, `station_name`, `current_job`,

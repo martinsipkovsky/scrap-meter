@@ -267,14 +267,21 @@ class SourceState(Base):
 class Job(Base):
     """A job (product, recipe) the stations count, by name: the names in
     CounterState.job_name / Reading.job_name. Made when a station first counts
-    a job; holds the job's ideal cycle time for the OEE performance factor."""
+    a job, or added on the Jobs tab before production; holds the job's cycle
+    time for the OEE performance factor and its piece rule."""
 
     __tablename__ = "jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    # ideal seconds per piece at full speed (None = not set)
+    # ideal seconds per piece at full speed (None = not set): always
+    # shot_s / pieces_per_shot, kept here so OEE, daily data and reports read
+    # one value
     ideal_cycle_s: Mapped[Optional[float]] = mapped_column(nullable=True)
+    # since 1.15: the cycle time as set, X seconds per shot (machine cycle)
+    # making Y pieces (cavities); 1.14 values became X s per 1 piece
+    shot_s: Mapped[Optional[float]] = mapped_column(nullable=True)
+    pieces_per_shot: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=1)
     # how pictures make pieces (app.pieces.normalize); None = 1 picture, 1 piece
     piece_rule: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

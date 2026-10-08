@@ -316,7 +316,8 @@ async function load() {
   sub.innerHTML = '';
   sub.append((d.devices.length ? 'Devices: ' + d.devices.join(', ') : 'Manual entries only') +
     (d.stats_default === 'exclude' ? ' · not in statistics totals' : '') +
-    (d.job_cycle_s ? ' · ideal cycle ' + d.job_cycle_s + ' s / piece for job ' + d.current_job : ''));
+    (d.job_shot_s ? ' · cycle time of job ' + d.current_job + ': ' + d.job_shot_s + ' s per shot of ' + d.job_pieces_per_shot +
+      (d.job_pieces_per_shot > 1 ? ' pieces (' + +d.job_cycle_s.toFixed(3) + ' s / piece)' : ' piece') : ''));
   const act = activeLine(d);
   if (act) sub.append(act);
   renderSources(d);

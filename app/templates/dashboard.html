@@ -4,22 +4,11 @@
 <div class="toolbar">
   <div>
     <h1>Dashboard</h1>
-    <p class="lead">Live OK / NOK counters per station. Grayed stations are not in production. Click a station for its OK/NOK chart.</p>
+    <p class="lead">Live OK / NOK counters per station, with each station's availability, performance and quality over the last 24 hours and its cycle time (actual vs. set, for the current job). Grayed stations are not in production. Click a station for its OK/NOK chart and comments.</p>
   </div>
   <button class="btn secondary small" onclick="load()">Refresh now</button>
 </div>
 <div id="cards" class="grid"></div>
-
-<div class="modal-back" id="commentsModal" onclick="if (event.target === this) closeModal('commentsModal')">
-  <div class="modal" style="width:620px">
-    <h2 id="commentsTitle">Comments</h2>
-    <div id="commentsBody"></div>
-    <div class="actions" style="margin-top:12px">
-      <a class="btn secondary" id="commentsStation" href="#">Open station</a>
-      <button class="btn secondary" onclick="closeModal('commentsModal')">Close</button>
-    </div>
-  </div>
-</div>
 
 <div class="card oee-panel pinned" id="oeePanel" aria-label="OEE and totals of the last 24 hours">
   <div class="toolbar" style="margin-bottom:10px">
@@ -49,9 +38,13 @@
 <script>
 async function load() {
   const cards = document.getElementById('cards');
-  let data;
+  let data, oeeData = null;
+  const oeeReq = getJSON('/api/data/oee?hours=24').catch(() => null);
   try { data = await getJSON('/api/data/summary'); }
   catch (e) { cards.innerHTML = ''; cards.append(el('div', { class: 'empty' }, e.message)); return; }
+  oeeData = await oeeReq;
+  const figures = {};
+  for (const s of (oeeData ? oeeData.stations : [])) figures[s.id] = s;
   cards.innerHTML = '';
   if (!data.length) { cards.append(el('div', { class: 'empty' }, 'No stations yet. Add a device under Devices, then a station under Stations.')); }
   for (const d of data) {
@@ -82,31 +75,30 @@ async function load() {
     }
     if (job && !d.connected && d.last_error) body.push(el('div', { class: 'muted', style: 'margin-top:4px;color:var(--warn)' }, d.last_error));
     if (d.production_state === 'idle') body.push(el('div', { class: 'muted', style: 'margin-top:4px' }, idleText(d)));
-    body.push(commentLine(d));
+    if (figures[d.id]) body.push(oeeMini(figures[d.id]));
     cards.append(el('a', { class: 'card clickable' + (d.in_production ? '' : ' not-producing'), href: '/station/' + d.id }, ...body));
   }
-  loadOee();
+  if (oeeData) showOee(oeeData);
 }
 
-const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
-function commentLine(d) {
-  const c = d.latest_comment;
-  const btn = el('button', { class: 'btn secondary small', title: 'Write or read comments',
-    onclick: (e) => { e.preventDefault(); e.stopPropagation(); openComments(d); } }, c ? 'Comments' : '+ Comment');
-  if (!c) return el('div', { class: 'card-comment comment-head' }, el('span', {}, 'No comments yet'), btn);
-  return el('div', { class: 'card-comment' },
-    el('div', { class: 'comment-head' }, el('strong', {}, c.author || '—'),
-      el('span', { title: new Date(c.created_at).toLocaleString() }, fmtDateTime(c.created_at)),
-      el('span', {}, '· scrap ' + fmtPct(c.scrap_rate)), btn),
-    el('div', { class: 'comment-text', title: c.text }, c.text));
-}
-function openComments(d) {
-  document.getElementById('commentsTitle').textContent = 'Comments · ' + d.name;
-  document.getElementById('commentsStation').href = '/station/' + d.id;
-  const b = document.getElementById('commentsBody'); b.innerHTML = '';
-  b.append(commentsPanel(d.id, { isAdmin: IS_ADMIN, onChange: load }));
-  openModal('commentsModal');
-  b.querySelector('textarea').focus();
+const secs = (x) => x === null || x === undefined ? '—' : (x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2)) + ' s';
+function oeeMini(f) {
+  const c = f.cycle, n = c.pieces_per_shot || 1;
+  const box = (label, value, sub, title) => el('div', { title: title || '' },
+    el('div', { class: 'label' }, label), el('div', { class: 'value' }, value), sub ? el('div', { class: 'sub' }, sub) : null);
+  const missing = f.jobs_without_cycle_time;
+  const perfTitle = f.performance === null && missing.length
+    ? 'No cycle time set for: ' + missing.join(', ') + ' (Jobs tab)' : 'Ideal time of the pieces made / production time';
+  // per shot when a shot makes several pieces, else per piece
+  const unit = n > 1 ? 'per shot of ' + n : 'per piece';
+  const actual = n > 1 ? c.actual_shot_s : c.actual_cycle_s;
+  const cycleTitle = 'Job ' + c.job + ': actual = production time / pieces over the last 24 h' +
+    (n > 1 ? ' x ' + n + ' pieces per shot' : '') + (c.shot_s ? '; set ' + c.shot_s + ' s per shot of ' + n : '; no cycle time set (Jobs tab)');
+  return el('div', { class: 'oee-mini' },
+    box('Availability', pct(f.availability), null, 'Time in production / 24 h'),
+    box('Performance', pct(f.performance), null, perfTitle),
+    box('Quality', pct(f.quality), null, 'OK / all pieces'),
+    box('Cycle time', secs(actual), (c.shot_s ? 'set ' + secs(c.shot_s) : 'not set') + ' · ' + unit, cycleTitle));
 }
 
 const pct = (x) => x === null || x === undefined ? '—' : (x * 100).toFixed(1) + '%';
@@ -126,9 +118,7 @@ function gauge(value) {
     `<text x="60" y="58" text-anchor="middle" font-size="18" font-weight="700" fill="${v === null ? 'var(--text-dim)' : 'var(--text)'}">${v === null ? '—' : (v * 100).toFixed(0) + '%'}</text>`;
 }
 
-async function loadOee() {
-  let r;
-  try { r = await getJSON('/api/data/oee?hours=24'); } catch (e) { return; }
+function showOee(r) {
   const o = r.overall, t = r.totals;
   gauge(o.oee);
   document.getElementById('oA').textContent = pct(o.availability);
@@ -141,9 +131,9 @@ async function loadOee() {
   ts.className = 'stat value ' + (t.total ? scrapClass(t.nok / t.total) : '');
   const missing = o.jobs_without_cycle_time;
   document.getElementById('oeeNote').textContent = !r.stations.length ? ''
-    : o.stations === 0 ? 'OEE needs ideal cycle times per job (Jobs list on the Stations tab); shown: availability and quality.'
+    : o.stations === 0 ? 'OEE needs ideal cycle times per job (Jobs tab); shown: availability and quality.'
       + (missing.length ? ' Jobs without one: ' + missing.join(', ') + '.' : '')
-    : missing.length ? 'Performance leaves out jobs without an ideal cycle time: ' + missing.join(', ') + ' (set them on the Stations tab).'
+    : missing.length ? 'Performance leaves out jobs without an ideal cycle time: ' + missing.join(', ') + ' (set them on the Jobs tab).'
     : 'Availability counts the whole 24 h as planned time.';
   const tb = document.getElementById('oeeRows'); tb.innerHTML = '';
   for (const s of r.stations) {
@@ -156,7 +146,7 @@ async function loadOee() {
       el('td', {}, s.performance !== null
         ? el('span', {}, pct(s.performance), s.jobs_without_cycle_time.length
           ? el('div', { class: 'muted', title: 'Pieces of these jobs are left out of performance' }, 'without ' + s.jobs_without_cycle_time.join(', ')) : null)
-        : s.jobs_without_cycle_time.length ? el('span', { class: 'muted', title: 'Set the job\'s ideal cycle time in the Jobs list on the Stations tab' }, 'no cycle time: ' + s.jobs_without_cycle_time.join(', '))
+        : s.jobs_without_cycle_time.length ? el('span', { class: 'muted', title: 'Set the job\'s cycle time on the Jobs tab' }, 'no cycle time: ' + s.jobs_without_cycle_time.join(', '))
         : el('span', { class: 'muted' }, '—')),
       el('td', {}, pct(s.quality)),
       el('td', {}, el('strong', {}, pct(s.oee)))));

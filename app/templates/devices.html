@@ -19,12 +19,7 @@
 </table>
 <div id="empty" class="empty" style="display:none">No devices yet.</div>
 
-<div class="section" style="margin-top:22px">
-  <h2 style="margin:0">Jobs: pictures and pieces</h2>
-  <p class="lead">When a camera takes several pictures of one piece (two sides, several cavities), set per job how many pictures make a piece and when the piece is OK. The dashboard, statistics, OEE and reports then count real pieces. Ideal cycle times are on the <a href="/stations">Stations</a> tab.</p>
-  <table><thead><tr><th>Job</th><th>Pieces</th><th>Running on</th></tr></thead><tbody id="jobRows"></tbody></table>
-  <div id="jobsEmpty" class="empty" style="display:none">No jobs yet: a job appears when a station first counts it.</div>
-</div>
+<p class="muted" style="margin-top:20px">How pictures make pieces, and the cycle times, are set per job on the <a href="/jobs">Jobs</a> tab.</p>
 
 <div class="modal-back" id="modal">
   <div class="modal">
@@ -375,20 +370,5 @@ Counters and history are not touched.`)) return;
 }
 
 (async () => { await loadProtocols(); load(); setInterval(load, 5000); })();
-
-// ---- jobs: piece rules ---------------------------------------------------------
-async function loadJobs() {
-  let list;
-  try { list = await getJSON('/api/jobs'); } catch (e) { return; }
-  const tb = document.getElementById('jobRows');
-  tb.innerHTML = '';
-  document.getElementById('jobsEmpty').style.display = list.length ? 'none' : 'block';
-  for (const j of list) tb.append(el('tr', {},
-    el('td', {}, el('strong', {}, j.name)),
-    el('td', {}, pieceRuleCell(j, CAN_MANAGE, loadJobs)),
-    el('td', {}, j.running_on.length ? j.running_on.join(', ') : el('span', { class: 'muted' }, '—'))));
-}
-loadJobs();
-setInterval(() => { if (!document.querySelector('.modal-back.open')) loadJobs(); }, 5000);
 </script>
 {% endblock %}

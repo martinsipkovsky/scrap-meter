@@ -172,11 +172,12 @@ def export_devices(db: Session = Depends(get_db), _: User = Depends(require_perm
         out_stations.append({**{f: getattr(st, f) for f in STATION_FIELDS}, "sources": sources,
                              "hmi_windows": hmi.windows(st)})
     jobs.sync(db)
-    out_jobs = [{"name": j.name, "ideal_cycle_s": j.ideal_cycle_s, "piece_rule": j.piece_rule}
+    out_jobs = [{"name": j.name, "ideal_cycle_s": j.ideal_cycle_s, "shot_s": j.shot_s,
+                 "pieces_per_shot": j.pieces_per_shot or 1, "piece_rule": j.piece_rule}
                 for j in db.query(Job).order_by(Job.name)]
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M")
     return JSONResponse(
-        {"version": 4, "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        {"version": 5, "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
          "cameras": cameras, "stations": out_stations, "jobs": out_jobs},
         headers={"Content-Disposition": f'attachment; filename="scrap-meter-devices-{stamp}.json"'},
     )
@@ -296,9 +297,16 @@ def import_devices(
         for n in sorted({n for n in job_names if job_names.count(n) > 1}):
             errors.append(f"job {n} is listed more than once")
         for item in payload.jobs:
-            if item.ideal_cycle_s:
-                jobs.set_cycle(db, item.name.strip(), item.ideal_cycle_s)
+            name = item.name.strip()
+            if item.shot_s or item.ideal_cycle_s:
+                if item.shot_s:  # version 5: per shot
+                    jobs.set_cycle(db, name, item.shot_s, item.pieces_per_shot or 1)
+                else:  # older files: seconds per piece
+                    jobs.set_cycle(db, name, item.ideal_cycle_s, 1)
                 jobs_set.append(item.name)
+            elif name and not db.query(Job.id).filter(Job.name == name).first():
+                db.add(Job(name=name, pieces_per_shot=item.pieces_per_shot or 1))  # added before production
+                db.flush()
             if item.piece_rule:
                 try:
                     jobs.set_piece_rule(db, item.name.strip(), pieces.normalize(item.piece_rule))

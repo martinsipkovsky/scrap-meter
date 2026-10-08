@@ -3,10 +3,12 @@
 A job is a name the stations count under (CounterState.job_name,
 Reading.job_name): the job value a device supplies, a station's default job,
 or the job of a manual entry. Every job a station has counted is listed on
-the Stations tab, where an admin sets its ideal cycle time, the seconds one
-piece takes at full speed. Rows are added by ``sync`` when the list is read
-and on startup, never while a reading is recorded, so two writers can't
-collide there.
+the Jobs tab, where jobs can also be added before production starts. Its
+cycle time is set as X seconds per shot (one machine cycle) making Y pieces
+(cavities); the ideal time per piece, X / Y, is what OEE performance uses
+(Job.ideal_cycle_s). Rows of counted jobs are added by ``sync`` when the list
+is read and on startup, never while a reading is recorded, so two writers
+can't collide there.
 
 Up to 1.6 the cycle time was set per station; ``upgrade`` copies it to the
 jobs each station has run, once per database.
@@ -27,6 +29,7 @@ from .models import CounterState, Job, Meta, SourceState, Station, utcnow
 log = logging.getLogger("cognex.jobs")
 
 UPGRADE_KEY = "jobs_v1"
+MAX_PIECES_PER_SHOT = 1000
 
 
 def cycle_times(db: Session) -> dict[str, float]:
@@ -77,6 +80,9 @@ def listing(db: Session) -> list[dict]:
         "id": j.id,
         "name": j.name,
         "ideal_cycle_s": j.ideal_cycle_s,
+        # a time per piece set another way (Raw data tab) reads as 1 piece per shot
+        "shot_s": j.shot_s if j.shot_s is not None else j.ideal_cycle_s,
+        "pieces_per_shot": (j.pieces_per_shot or 1) if j.shot_s is not None else 1,
         "piece_rule": j.piece_rule,
         "piece_rule_text": pieces.describe(j.piece_rule),
         "open_pieces": open_pieces.get(j.name, []),
@@ -102,13 +108,35 @@ def set_piece_rule(db: Session, name: str, rule: dict | None) -> Job:
     return job
 
 
-def set_cycle(db: Session, name: str, seconds: float | None) -> Job:
+def apply_cycle(job: Job, shot_s: float | None, pieces_per_shot: int | None = 1) -> None:
+    """Set X seconds per shot making Y pieces (None clears the cycle time;
+    the pieces per shot are kept then)."""
+    y = int(pieces_per_shot or 1)
+    if not 1 <= y <= MAX_PIECES_PER_SHOT:
+        raise ValueError(f"pieces per shot must be 1 - {MAX_PIECES_PER_SHOT}")
+    job.pieces_per_shot = y
+    job.shot_s = shot_s
+    job.ideal_cycle_s = round(shot_s / y, 6) if shot_s else None
+
+
+def set_cycle(db: Session, name: str, shot_s: float | None, pieces_per_shot: int | None = 1) -> Job:
+    """``shot_s`` seconds per shot of ``pieces_per_shot`` pieces; a bare
+    per-piece time (1.14 and older) is ``shot_s`` with 1 piece per shot."""
     job = db.query(Job).filter(Job.name == name).first()
     if job is None:
         job = Job(name=name)
         db.add(job)
-    job.ideal_cycle_s = seconds
+    apply_cycle(job, shot_s, pieces_per_shot)
     return job
+
+
+def fill_shots(engine: Engine) -> None:
+    """Jobs from 1.14 or older (or restored from such a backup) have only a
+    time per piece: it becomes X seconds per shot of 1 piece."""
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE jobs SET shot_s = ideal_cycle_s, pieces_per_shot = 1 "
+                          "WHERE shot_s IS NULL AND ideal_cycle_s IS NOT NULL"))
+        conn.execute(text("UPDATE jobs SET pieces_per_shot = 1 WHERE pieces_per_shot IS NULL"))
 
 
 def copy_station_cycles(db: Session, picks: list[tuple[dt.datetime, str, str, float]]) -> list[str]:
@@ -141,6 +169,7 @@ def upgrade(engine: Engine) -> int:
     jobs each station has run. Runs once per database (recorded in the meta
     table; restoring an older backup runs it again on that data). Returns the
     number of jobs given a cycle time."""
+    fill_shots(engine)
     with engine.connect() as conn:
         if conn.execute(text("SELECT 1 FROM meta WHERE key = :k"), {"k": UPGRADE_KEY}).first():
             with Session(bind=engine) as db:

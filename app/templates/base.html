@@ -13,6 +13,7 @@
     'dashboard': '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
     'stations': '<path d="M3 21V10l5 3V10l5 3V10l5 3V4h3v17z"/><path d="M3 21h18"/>',
     'devices': '<rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8 6l1.5-2.5h5L16 6"/>',
+    'jobs': '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M3 13h18"/>',
     'data': '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
     'scrap': '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     'notifications': '<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 21a2 2 0 0 0 4 0"/>',
@@ -37,6 +38,7 @@
         {{ link('/', 'dashboard', 'Dashboard') }}
         {{ link('/stations', 'stations', 'Stations') }}
         {{ link('/devices', 'devices', 'Devices') }}
+        {{ link('/jobs', 'jobs', 'Jobs') }}
         {% endif %}
         {% if user.has_permission('view_data') %}
         {{ link('/data', 'data', 'Data log') }}

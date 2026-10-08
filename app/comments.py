@@ -8,7 +8,6 @@ Reports read them through the powerbi_station_comments view (app.reporting).
 """
 from __future__ import annotations
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import stations
@@ -46,15 +45,3 @@ def out(c: StationComment) -> dict:
         "author": c.author,
         "created_at": c.created_at,
     }
-
-
-def latest(db: Session, station_ids: list[int]) -> dict[int, StationComment]:
-    """The newest comment of each station."""
-    if not station_ids:
-        return {}
-    # comments are only ever added with the current time, so the highest id is the newest
-    newest = (db.query(func.max(StationComment.id)).filter(StationComment.station_id.in_(station_ids))
-              .group_by(StationComment.station_id))
-    rows = db.query(StationComment).filter(StationComment.id.in_(newest)).all()
-    return {c.station_id: c for c in rows}
-

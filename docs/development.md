@@ -39,6 +39,20 @@ The tests cover the counter logic, production state, the SLMP frames, the OPC UA
 client (against `tests/opcua_sim.py`), the TCP and UDP listeners, the
 statistics, and the API end to end. They use simulated devices only.
 
+The tests run on SQLite. On PostgreSQL, Scrap statistics and the OEE add up
+the readings in the database (`scrap_stats.station_groups`); the scripts below
+check that path and the app's speed on a large database. Run them in the web
+container of a throwaway stack with an empty database (another
+`COMPOSE_PROJECT_NAME`, `WEB_PORT` and `LISTEN_PORTS`), never on real data:
+
+- `tests/perf_seed.py`: stations, jobs and weeks of readings (`--stations 8 --days 28`).
+- `tests/perf_bench.py`: time and SQL statements of every page and GET API.
+- `tests/perf_compare.py`: the statistics and OEE at a fixed moment as JSON;
+  run it with the old and the new image on the same database and compare.
+- `tests/perf_poll.py`: the cost of one device read (the poller's work).
+
+The scripts need `PYTHONPATH=/srv` when run from `/srv/tests`.
+
 ## Project layout
 
 ```

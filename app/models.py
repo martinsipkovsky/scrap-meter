@@ -44,6 +44,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     JSON,
     String,
@@ -391,6 +392,8 @@ class Reading(Base):
     """
 
     __tablename__ = "readings"
+    # one station's readings over a time range (statistics, OEE, charts)
+    __table_args__ = (Index("ix_readings_station_created", "station_id", "created_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     station_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stations.id"), index=True, nullable=True)

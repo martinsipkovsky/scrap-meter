@@ -73,8 +73,9 @@ def migrate_schema(bind: Engine | None = None) -> list[str]:
     """Add columns that exist on the models but not yet in the database.
 
     ``create_all`` only creates missing tables; an existing install keeps its
-    old tables, so new nullable/defaulted columns are added here. Returns the
-    list of "table.column" entries that were added.
+    old tables, so new nullable/defaulted columns and new indexes are added
+    here. Returns the list of "table.column" / "table.index" entries that
+    were added.
     """
     bind = bind or engine
     added: list[str] = []
@@ -97,8 +98,14 @@ def migrate_schema(bind: Engine | None = None) -> list[str]:
                     ddl += " DEFAULT '" + default.replace("'", "''") + "'"
                 conn.execute(text(ddl))
                 added.append(f"{table.name}.{col.name}")
+            # indexes added to a model later (create_all skips existing tables)
+            have = {i["name"] for i in insp.get_indexes(table.name)}
+            for index in table.indexes:
+                if index.name not in have:
+                    index.create(conn)
+                    added.append(f"{table.name}.{index.name}")
     for name in added:
-        log.info("schema migration: added column %s", name)
+        log.info("schema migration: added %s", name)
     return added
 
 

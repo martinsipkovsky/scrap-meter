@@ -4,6 +4,10 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.18.1 — 2026-10-08
+- Faster: Scrap statistics open about four to five times faster on a large database, and the dashboard's OEE bar, refreshed every 5 seconds, costs a fifth of what it did or less. The station view's chart loads faster over long periods. Nothing on the screens changes.
+- The database gets an index on each station's readings by time; it is added once at the first start of this version.
+
 ## 1.18.0 — 2026-10-08
 - The dashboard plays a chime when a station starts or leaves production, or its devices go offline or come back. Muted stations stay quiet, and several changes at once chime once.
 - A Sound switch at the top of the dashboard turns it off or on; each browser remembers its choice (on by default). Until the page has been clicked once the switch says so, because browsers block sound before that.

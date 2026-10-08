@@ -1,22 +1,10 @@
 """Tests for the reset-proof counter deltas."""
-from app.counters import Sample, compute_delta, deltas
-
-
-def test_compute_delta_normal():
-    assert compute_delta(10, 4) == 6
-
-
-def test_compute_delta_reset_to_zero():
-    # camera reset: previous 100, now 3 -> the 3 new parts count, nothing lost
-    assert compute_delta(3, 100) == 3
-
-
-def test_compute_delta_same():
-    assert compute_delta(5, 5) == 0
+from app.counters import Sample, deltas
 
 
 def test_deltas_normal_and_after_reset():
     assert deltas((10, 2, 12), (25, 5, 30)) == (15, 3, 18)
+    assert deltas((5, 1, 6), (5, 1, 6)) == (0, 0, 0)
     # camera counters reset to a low value: the new values are all new pieces
     assert deltas((25, 5, 30), (4, 1, 5)) == (4, 1, 5)
 

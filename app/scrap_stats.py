@@ -19,7 +19,9 @@ included the reading (Reading.included). Those parts are reported under
 left_out.excluded_stations. ``counted_pass`` / ``counted_fail`` on a station
 row are its parts that are in the overall figures.
 
-``station_parts`` walks one station's readings; app.oee uses it too.
+``station_parts`` walks one station's readings; ``station_groups`` adds
+them up per job and quarter of an hour (in the database on PostgreSQL), and
+is what this page and app.oee use.
 
 ``report`` adds what the page shows on top: the previous period of the same
 length (the change of each figure) and the scrap alert thresholds (the days
@@ -33,6 +35,7 @@ import datetime as dt
 import io
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from . import production
@@ -131,6 +134,134 @@ def station_parts(db: Session, station: Station, start: dt.datetime, end: dt.dat
                "excluded": bool(r.excluded), "included": bool(r.included), "in_production": bool(in_prod)}
 
 
+# readings are added up per quarter of an hour (UTC): every time zone's offset
+# is a multiple of 15 minutes, so a quarter never straddles two local hours
+QUARTER = dt.timedelta(minutes=15)
+_EPOCH = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
+
+
+def _quarter(t: dt.datetime) -> int:
+    return (t - _EPOCH) // QUARTER
+
+
+def _group_key(job, quarter, excluded, included, in_production) -> tuple:
+    return job, quarter, bool(excluded), bool(included), bool(in_production)
+
+
+def _new_group(key: tuple) -> dict:
+    job, quarter, excluded, included, in_production = key
+    return {"job": job, "t": _EPOCH + quarter * QUARTER, "excluded": excluded, "included": included,
+            "in_production": in_production, "ok": 0, "nok": 0, "with_parts": 0, "with_total": 0, "production": dt.timedelta()}
+
+
+def _groups_python(db: Session, station: Station, start: dt.datetime, end: dt.datetime) -> list[dict]:
+    cap = dt.timedelta(minutes=max(1, station.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN))
+    groups: dict[tuple, dict] = {}
+    for r in station_parts(db, station, start, end):
+        key = _group_key(r["job"], _quarter(r["t"]), r["excluded"], r["included"], r["in_production"])
+        g = groups.get(key) or groups.setdefault(key, _new_group(key))
+        g["ok"] += r["ok"]
+        g["nok"] += r["nok"]
+        if r["ok"] or r["nok"]:
+            g["with_parts"] += 1
+        if r["ok"] + r["nok"]:
+            g["with_total"] += 1
+        if r["prev_t"] is not None:
+            g["production"] += min(r["t"] - max(r["prev_t"], start), cap)
+    return list(groups.values())
+
+
+# One station's readings in [start, end) added up like ``_groups_python``:
+# per job, quarter of an hour and flags, with the time since each device
+# reading's previous one (from ``start`` at most, capped at the idle timeout)
+# in microseconds (``:clamp``: the start of the whole range, when only a later
+# part of it is read here). ``prev_t`` is the latest device reading before (entries
+# made by hand don't count); ``legacy`` counts readings from before 1.8, whose
+# pieces need the reading before them (see ``station_groups``). Epoch
+# seconds as double precision resolve today's times to well under a
+# microsecond, so the rounded microseconds are exact (and faster than numeric).
+_GROUPS_SQL = text("""
+WITH r AS (
+  SELECT created_at, job_name, manual IS TRUE AS manual, ok_added, nok_added, raw_pass, raw_fail,
+         excluded, included, in_production,
+         max(CASE WHEN manual IS NOT TRUE THEN created_at END)
+           OVER (ORDER BY created_at, id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_t
+  FROM readings
+  WHERE station_id = :sid AND created_at < :end
+    AND created_at >= coalesce((SELECT max(created_at) FROM readings
+                                WHERE station_id = :sid AND manual IS NOT TRUE AND created_at < :start), :start)
+), p AS (
+  SELECT created_at, job_name, manual, excluded, included, prev_t,
+         manual OR in_production AS in_production,
+         CASE WHEN manual THEN raw_pass ELSE ok_added END AS ok,
+         CASE WHEN manual THEN raw_fail ELSE coalesce(nok_added, 0) END AS nok,
+         NOT manual AND (ok_added IS NULL OR in_production IS NULL) AS legacy
+  FROM r WHERE created_at >= :start
+)
+SELECT job_name, floor(date_part('epoch', created_at) / 900)::bigint,
+       coalesce(excluded, false), coalesce(included, false), coalesce(in_production, false),
+       sum(ok), sum(nok),
+       sum(CASE WHEN ok <> 0 OR nok <> 0 THEN 1 ELSE 0 END),
+       sum(CASE WHEN ok + nok <> 0 THEN 1 ELSE 0 END),
+       sum(CASE WHEN manual OR prev_t IS NULL THEN 0 ELSE
+           least(round((date_part('epoch', created_at) - date_part('epoch', greatest(prev_t, :clamp))) * 1000000),
+                 :cap_us) END)::bigint,
+       sum(CASE WHEN legacy THEN 1 ELSE 0 END)
+FROM p
+GROUP BY 1, 2, 3, 4, 5
+""")
+
+
+def _groups_sql(db: Session, station: Station, start: dt.datetime, end: dt.datetime,
+                clamp: dt.datetime | None = None) -> list[dict] | None:
+    """``_groups_python`` in the database (PostgreSQL), or None when a reading
+    in the range is from before 1.8. ``clamp``: see _GROUPS_SQL."""
+    cap = dt.timedelta(minutes=max(1, station.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN))
+    groups = []
+    for job, quarter, excluded, included, in_prod, ok, nok, with_parts, with_total, prod_us, legacy in db.execute(
+            _GROUPS_SQL, {"sid": station.id, "start": start, "end": end, "clamp": clamp or start, "cap_us": cap // dt.timedelta(microseconds=1)}):
+        if legacy:
+            return None
+        g = _new_group(_group_key(job, quarter, excluded, included, in_prod))
+        g.update(ok=int(ok), nok=int(nok), with_parts=int(with_parts), with_total=int(with_total),
+                 production=dt.timedelta(microseconds=int(prod_us)))
+        groups.append(g)
+    return groups
+
+
+def station_groups(db: Session, station: Station, start: dt.datetime, end: dt.datetime) -> list[dict]:
+    """The station's readings in [start, end) added up per job, quarter of an
+    hour (``t``, its start), ``excluded``, ``included`` and ``in_production``
+    (as ``station_parts`` gives them): ``ok``, ``nok``, ``with_parts`` /
+    ``with_total`` (the readings that counted parts / a non-zero OK + NOK)
+    and ``production`` (the time since each device reading's previous one,
+    from ``start`` at most and capped at the station's idle timeout, as
+    app.oee counts production time)."""
+    if db.get_bind().dialect.name != "postgresql":
+        return _groups_python(db, station, start, end)
+    groups = _groups_sql(db, station, start, end)
+    if groups is not None:
+        return groups
+    # readings from before 1.8 in the range: up to the last of them one by
+    # one, the readings after it in the database
+    last = (db.query(func.max(Reading.created_at))
+            .filter(Reading.station_id == station.id, Reading.manual.isnot(True),
+                    Reading.created_at >= start, Reading.created_at < end,
+                    (Reading.ok_added.is_(None)) | (Reading.in_production.is_(None)))
+            .scalar())
+    split = min(_aware(last) + dt.timedelta(microseconds=1), end)
+    merged: dict[tuple, dict] = {}
+    for g in _groups_python(db, station, start, split) + (_groups_sql(db, station, split, end, start) or []):
+        key = _group_key(g["job"], _quarter(g["t"]), g["excluded"], g["included"], g["in_production"])
+        m = merged.get(key)
+        if m is None:
+            merged[key] = g
+        else:
+            for k in ("ok", "nok", "with_parts", "with_total", "production"):
+                m[k] += g[k]
+    return list(merged.values())
+
+
 def compute(db: Session, first_day: dt.date, last_day: dt.date, tz: dt.tzinfo) -> dict:
     start, end = day_bounds(first_day, last_day, tz)
 
@@ -159,13 +290,12 @@ def compute(db: Session, first_day: dt.date, last_day: dt.date, tz: dt.tzinfo) -
         by_default = st.excluded_by_default
         srow = per_station[st.id] = _row(station_id=st.id, station=st.name, excluded_by_default=by_default,
                                          counted_pass=0, counted_fail=0)
-        for r in station_parts(db, st, start, end):
+        for r in station_groups(db, st, start, end):
             d_ok, d_nok, t = r["ok"], r["nok"], r["t"]
-            if not (d_ok or d_nok):
+            if not r["with_parts"]:
                 continue
             if r["excluded"]:
                 targets = (left_out["excluded"],)
-                left_out["excluded"]["readings"] += 1
             elif not r["in_production"]:
                 targets = (left_out["not_in_production"],)
             else:

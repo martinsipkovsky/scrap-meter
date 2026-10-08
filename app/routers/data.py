@@ -99,10 +99,11 @@ def oee_last_24h(
     return oee.compute(db, hours=hours)
 
 
-def ok_nok_buckets(readings: list[Reading], start: dt.datetime, end: dt.datetime, bucket_s: int) -> list[dict]:
+def ok_nok_buckets(readings: list, start: dt.datetime, end: dt.datetime, bucket_s: int) -> list[dict]:
     """OK/NOK parts produced per time bucket (app.scrap_stats.parts).
 
-    ``readings`` must be oldest first; one from before ``start`` only serves
+    ``readings`` (Reading rows, or rows of scrap_stats.PART_COLUMNS and
+    created_at) must be oldest first; one from before ``start`` only serves
     as baseline. A bar's ok / nok include corrections (negative manual
     entries), which corr_ok / corr_nok also show on their own.
     """
@@ -144,7 +145,8 @@ def station_view(
     window = (end - start).total_seconds()
     bucket_s = next((b for b in _BUCKETS if window / b <= _MAX_BARS), _BUCKETS[-1])
 
-    q = db.query(Reading).filter(Reading.station_id == station_id)
+    # only the columns the bars need (not the readings' extra values)
+    q = db.query(*scrap_stats.PART_COLUMNS, Reading.created_at).filter(Reading.station_id == station_id)
     baseline = (q.filter(Reading.created_at < start, Reading.manual.isnot(True))
                 .order_by(Reading.created_at.desc()).first())
     rows = q.filter(Reading.created_at >= start).order_by(Reading.created_at.asc(), Reading.id.asc()).all()

@@ -60,18 +60,6 @@ def sample_values(sample: Sample) -> dict:
     return values
 
 
-def compute_delta(raw_now: int, raw_prev: int) -> int:
-    """Non-negative increment for a single counter, treating a drop as a reset.
-
-    For a source's pass/fail/count triple use ``deltas``, which detects the
-    reset across all of them (see module docstring).
-    """
-    if raw_now >= raw_prev:
-        return raw_now - raw_prev
-    # counter was reset on the device; everything now is new
-    return max(raw_now, 0)
-
-
 def deltas(prev: tuple[int, int, int], now: tuple[int, int, int]) -> tuple[int, int, int]:
     """(pass, fail, count) made between two reads of one device's counters.
 

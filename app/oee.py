@@ -21,7 +21,7 @@ per shot of Y pieces, so X / Y s per piece) next to the actual one over the
 window, the production time on that job divided by its pieces (times Y for
 the actual time per shot).
 
-Parts are counted like Scrap statistics (app.scrap_stats.station_parts):
+Parts are counted like Scrap statistics (app.scrap_stats.station_groups):
 excluded readings and parts made while not in production are left out. The
 overall figures and the OK / NOK totals cover the stations included in the
 statistics (Station.stats_default); the overall OEE covers those of them
@@ -34,9 +34,9 @@ import datetime as dt
 
 from sqlalchemy.orm import Session
 
-from . import jobs, production, stations
+from . import jobs, stations
 from .models import Job, Station, utcnow
-from .scrap_stats import station_parts
+from .scrap_stats import station_groups
 
 
 def _ratio(a: float, b: float) -> float | None:
@@ -64,38 +64,37 @@ def station_figures(db: Session, st: Station, start: dt.datetime, end: dt.dateti
         cycles = jobs.cycle_times(db)
     if shots is None:
         shots = shot_settings(db)
-    cap = dt.timedelta(minutes=max(1, st.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN))
     window = (end - start).total_seconds()
     ok = nok = 0
     prod = dt.timedelta()
     timed = dt.timedelta()  # production time on jobs with a cycle time
-    ideal = 0.0  # ideal seconds of the parts made on those jobs
+    timed_parts: dict[str, int] = {}  # parts made per job with a cycle time
     missing: set[str] = set()  # jobs without a cycle time that were produced
     job_now = st.current_job or st.default_job
     now_prod = dt.timedelta()  # production time and pieces of the current job
     now_parts = 0
-    for r in station_parts(db, st, start, end):
+    for r in station_groups(db, st, start, end):
         if r["excluded"] or not r["in_production"]:
             continue
         ct = cycles.get(r["job"])
-        if r["prev_t"] is not None:
-            gap = min(r["t"] - max(r["prev_t"], start), cap)
-            prod += gap
-            if ct:
-                timed += gap
-            if r["job"] == job_now:
-                now_prod += gap
+        gap = r["production"]
+        prod += gap
+        if ct:
+            timed += gap
         if r["job"] == job_now:
+            now_prod += gap
             now_parts += r["ok"] + r["nok"]
         ok += r["ok"]
         nok += r["nok"]
         if ct:
-            ideal += ct * (r["ok"] + r["nok"])
-        elif r["ok"] + r["nok"]:
+            timed_parts[r["job"]] = timed_parts.get(r["job"], 0) + r["ok"] + r["nok"]
+        elif r["with_total"]:
             missing.add(r["job"])
     prod_s = min(prod.total_seconds(), window)
     timed_s = min(timed.total_seconds(), window)
     parts = ok + nok
+    # ideal seconds of the parts made on jobs with a cycle time
+    ideal = sum(cycles[j] * n for j, n in timed_parts.items())
     ideal = max(ideal, 0.0)  # corrections may take more back than was made
     availability = _ratio(prod_s, window)
     quality = _quality(ok, parts)

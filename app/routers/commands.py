@@ -1,5 +1,5 @@
-"""WhatsApp group commands (see app.commands): the prefix, the commands, a
-preview of a reply, and the log of handled commands."""
+"""Chat commands (see app.commands): the prefix, the commands, the chats they
+can answer in, a preview of a reply, and the log of handled commands."""
 from __future__ import annotations
 
 from typing import Optional
@@ -9,9 +9,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import commands
+from ..notifiers import discord, signal
+from ..notifiers.base import NotifierError
+from ..notifiers.whatsapp_linked import link as whatsapp_link
 from ..database import get_db
 from ..dependencies import require_permission
-from ..models import ChatCommand, CommandLog, User
+from ..models import ChatCommand, CommandLog, NotificationProvider, User
 
 router = APIRouter(prefix="/api/notifications/commands", tags=["commands"])
 
@@ -74,6 +77,36 @@ def overview(db: Session = Depends(get_db), _: User = Depends(_perm)):
         "periods": commands.PERIODS,
         "placeholders": commands.PLACEHOLDERS,
     }
+
+
+@router.get("/chats")
+def chats(db: Session = Depends(get_db), _: User = Depends(_perm)):
+    """The groups and channels a command can answer in: WhatsApp groups of
+    the linked phone, channels of the Discord bots, Signal groups."""
+    found, problems = [], []
+    if whatsapp_link.state == "connected":
+        try:
+            found += [{"id": g["id"], "name": g["name"], "messenger": "WhatsApp"} for g in whatsapp_link.groups()]
+        except NotifierError as exc:
+            problems.append(f"WhatsApp: {exc}")
+    for p in db.query(NotificationProvider).filter(NotificationProvider.kind == "discord").order_by(NotificationProvider.id):
+        cfg = p.config or {}
+        if discord.mode(cfg) != "bot":
+            continue
+        for ch in discord.channel_list(cfg.get("channel_ids") or cfg.get("channel_id")):
+            name = ch
+            try:
+                name = discord.channel_name(cfg, ch)
+            except NotifierError as exc:
+                problems.append(f"Discord '{p.name}', channel {ch}: {exc}")
+            found.append({"id": ch, "name": name, "messenger": f"Discord ({p.name})"})
+    if signal.base_url():
+        try:
+            if signal.number():
+                found += [{"id": g["id"], "name": g["name"], "messenger": "Signal"} for g in signal.groups()]
+        except NotifierError as exc:
+            problems.append(f"Signal: {exc}")
+    return {"chats": found, "problems": problems}
 
 
 @router.put("/prefix")

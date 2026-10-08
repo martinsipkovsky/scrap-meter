@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # Start the linked WhatsApp client (if a phone was linked) with the app.
     whatsapp_enabled: bool = True
 
+    # signal-cli-rest-api next to the app (deploy/docker-compose.signal.yml),
+    # e.g. http://signal:8080; empty = Signal is not set up (app.notifiers.signal)
+    signal_api_url: str = ""
+
     # Read-only database login for Power BI (Postgres only, see app.reporting).
     # Made or updated on startup when a password is set; it may only read the
     # powerbi_* views.

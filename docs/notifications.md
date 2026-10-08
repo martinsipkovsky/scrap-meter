@@ -105,8 +105,10 @@ production state, OK / NOK and scrap. `!status line 1` answers for the stations
 whose name contains "line 1" only, and `!help` lists the commands allowed in
 that group.
 
-Commands are set up in the **WhatsApp commands** section of the Notifications
-tab. A `status` command is there from the start.
+Commands are set up in the **Chat commands** section of the Notifications
+tab. They work the same in [Discord](#discord) channels of a bot and
+[Signal](#signal) groups of the linked Signal phone; **Answers in** lists the
+WhatsApp groups, Discord channels and Signal groups to choose from. A `status` command is there from the start.
 
 - **Prefix**: a message only counts as a command when it starts with it (`!`
   by default; 1-3 characters starting with a symbol, e.g. `/` or `#cm`), so
@@ -216,6 +218,72 @@ is, the app asks Telegram for the bot's new messages (`getUpdates`), so the bot
 must not have a webhook set or be read by another program at the same time.
 Step 3 then shows nothing new: find chat ids before choosing the room, or with
 the room set to another chat.
+
+## Discord
+
+The Discord provider (`app/notifiers/discord.py`) has two modes.
+
+**Bot** (default): a Discord bot posts into channels of your server and reads
+them, so chat commands (`!status`, `!mute Line 1`) and the
+[Chat room](user-guide.md#chat-room) work in those channels.
+
+1. Open the Discord developer portal (discord.com/developers/applications),
+   **New Application**, then **Bot**: copy the token (**Reset Token**).
+2. On the same Bot page turn on **Message Content Intent** (Privileged
+   Gateway Intents). Without it the bot gets messages without their text and
+   cannot answer commands or show messages in the Chat room.
+3. **OAuth2 → URL Generator**: scope `bot`, permissions *View Channels*,
+   *Send Messages* and *Read Message History*. Open the URL and add the bot
+   to your server.
+4. In Discord turn on **Developer Mode** (Settings → Advanced), then right
+   click a channel → **Copy Channel ID**.
+5. Add a provider of kind **Discord**:
+
+```json
+{"mode": "bot", "bot_token": "MTIz...", "channel_ids": ["1234567890123456789"]}
+```
+
+The app reads the channels by asking Discord for new messages every few
+seconds; it starts with the newest message, so nothing written before the app
+started is answered. Messages longer than Discord's 2000 characters are sent
+in parts.
+
+**Webhook**: only sends, no bot. In the channel's settings → Integrations →
+Webhooks → **New Webhook** → **Copy Webhook URL**:
+
+```json
+{"mode": "webhook", "webhook_url": "https://discord.com/api/webhooks/..."}
+```
+
+## Signal
+
+Signal has no bot API. The app sends through
+[signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api), which
+runs next to it as its own container and is linked to a phone as a secondary
+device, like Signal Desktop. Alerts are sent from that phone's number, and
+the app reads the groups the phone is in for chat commands and the Chat room.
+A spare number is a good idea, as with WhatsApp.
+
+Setup on the server, once:
+
+1. Copy `deploy/docker-compose.signal.yml` next to `docker-compose.yml` and
+   start both: `docker compose -f docker-compose.yml -f docker-compose.signal.yml up -d`
+   (or rename it to `docker-compose.override.yml` if you have no override
+   file yet; then a plain `docker compose up -d` reads it). It adds the
+   `signal` container (no port is published) and sets `SIGNAL_API_URL` for
+   the app. Keep using the same command for later updates.
+2. On the Notifications tab, **Signal phone → Link phone** shows a QR code.
+   On the phone open Signal → Settings → **Linked devices** → **Link new
+   device** and scan it.
+3. **Show groups** lists the phone's groups; **Send alerts here** adds a
+   provider for one. A provider can also be written by hand:
+
+```json
+{"to": ["group.abc123=", "+421900123456"]}
+```
+
+To unlink, remove *Scrap Meter* from the phone's Linked devices. The link is
+kept in the `signal_data` volume.
 
 ## Credentials
 

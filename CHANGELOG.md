@@ -4,6 +4,11 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.20.0 — 2026-10-08
+- Discord as a provider: a bot sends alerts into channels and reads them, so `!status`, `!mute` and the other chat commands work there and a channel can be the Chat room. A webhook mode only sends.
+- Signal as a provider, through signal-cli in its own optional container (`deploy/docker-compose.signal.yml`): link a phone with a QR code on the Notifications tab, then send alerts to its groups, answer chat commands there and use a group as the Chat room.
+- The command section is now "Chat commands" and lists WhatsApp groups, Discord channels and Signal groups to answer in.
+
 ## 1.19.0 — 2026-10-08
 - New Settings tab at the end of the menu: dark, light or system mode, five colour schemes, compact density, text size, date and time format, the start page after signing in, the dashboard's refresh and sound, and a folded menu. Each user's choices follow them to every browser; an administrator sets the defaults for everyone.
 - Dashboard blocks no longer show error messages. While a station has a problem, its pill shows a short code instead of the production state, red for an error and amber while it waits (`W01` waiting for the device, `E03` timeout, ...); hover it for the message. The station view shows the code with the full message, and the user guide lists every code.

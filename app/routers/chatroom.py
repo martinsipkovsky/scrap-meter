@@ -53,12 +53,14 @@ def set_room(payload: Optional[RoomIn] = None, db: Session = Depends(get_db), us
         return get_room(db, user)
     if payload.kind not in chatroom.KINDS:
         raise HTTPException(400, f"kind must be one of {sorted(chatroom.KINDS)}")
-    if payload.kind == "telegram":
+    with_provider = payload.kind in ("telegram", "discord")  # the bot that reads and writes the chat
+    if with_provider:
         p = db.get(NotificationProvider, payload.provider_id) if payload.provider_id is not None else None
-        if p is None or p.kind != "telegram":
-            raise HTTPException(400, "A Telegram room needs the id of a Telegram provider")
+        if p is None or p.kind != payload.kind:
+            label = chatroom.KINDS[payload.kind]
+            raise HTTPException(400, f"A {label} room needs the id of a {label} provider")
     room = {"kind": payload.kind, "chat": payload.chat.strip(), "name": payload.name.strip() or payload.chat.strip(),
-            "provider_id": payload.provider_id if payload.kind == "telegram" else None}
+            "provider_id": payload.provider_id if with_provider else None}
     chatroom.set_room(room)
     return get_room(db, user)
 

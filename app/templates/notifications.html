@@ -2,7 +2,7 @@
 {% block title %}Notifications · Scrap Meter{% endblock %}
 {% block content %}
 <h1>Notifications</h1>
-<p class="lead">Send alerts to WhatsApp, Telegram (or any webhook) on high scrap, fail counts or disconnects.</p>
+<p class="lead">Send alerts to WhatsApp, Telegram, Discord, Signal (or any webhook) on high scrap, fail counts or disconnects.</p>
 
 <div class="section">
   <div class="toolbar"><h2 style="border:none">WhatsApp phone</h2><div class="actions" id="waActions"></div></div>
@@ -23,9 +23,29 @@
   </div>
 </div>
 
+<div class="section" id="sigSection">
+  <div class="toolbar"><h2 style="border:none">Signal phone</h2><div class="actions" id="sigActions"></div></div>
+  <div class="card">
+    <div id="sigState" class="muted">Loading…</div>
+    <div id="sigQr" style="display:none;margin-top:12px">
+      <img id="sigQrImg" alt="Signal QR code" style="background:#fff;border-radius:8px;width:240px;height:240px" />
+      <ol class="muted" style="margin:10px 0 0 18px;padding:0;line-height:1.6">
+        <li>On your phone open Signal, then <strong>Settings → Linked devices → Link new device</strong> (+).</li>
+        <li>Scan this QR code. Press <strong>New QR code</strong> if it has expired.</li>
+      </ol>
+    </div>
+    <div id="sigGroups" style="display:none;margin-top:14px">
+      <table><thead><tr><th>Group</th><th>Group id</th><th></th></tr></thead><tbody id="sigGroupRows"></tbody></table>
+    </div>
+    <p class="hint" style="margin-top:12px">Signal has no bot API: the app sends through signal-cli, linked to your phone as a secondary device (like Signal Desktop), from your number.
+      It runs as its own container, see <code>deploy/docker-compose.signal.yml</code>.</p>
+  </div>
+</div>
+
 <div class="section">
   <div class="toolbar"><h2 style="border:none">Providers</h2><button class="btn small" onclick="newProvider()">+ Add provider</button></div>
-  <p class="hint" style="margin:-4px 0 10px">A provider is one destination: a WhatsApp group, a Telegram chat, a webhook. Rules pick which providers get their messages.</p>
+  <p class="hint" style="margin:-4px 0 10px">A provider is one destination: a WhatsApp group, a Telegram chat, Discord channels, a Signal group, a webhook. Rules pick which providers get their messages.
+    A Discord bot needs <strong>Message Content Intent</strong> turned on in the Discord developer portal (Bot page) to read commands and the Chat room.</p>
   <table><thead><tr><th>Name</th><th>Kind</th><th>Sends to</th><th>Enabled</th><th></th></tr></thead><tbody id="provRows"></tbody></table>
   <div id="provEmpty" class="empty" style="display:none">No providers. Add one to deliver alerts.</div>
 </div>
@@ -38,8 +58,8 @@
 </div>
 
 <div class="section">
-  <div class="toolbar"><h2 style="border:none">WhatsApp commands</h2><button class="btn small" onclick="newCommand()">+ Add command</button></div>
-  <p class="hint" style="margin:-4px 0 10px">Anyone in an allowed group can send a command, e.g. <code id="c_example">!status</code> or <code>!status Line 1</code> for one station; the linked phone answers in the group.
+  <div class="toolbar"><h2 style="border:none">Chat commands</h2><button class="btn small" onclick="newCommand()">+ Add command</button></div>
+  <p class="hint" style="margin:-4px 0 10px">Anyone in an allowed WhatsApp or Signal group or Discord channel can send a command, e.g. <code id="c_example">!status</code> or <code>!status Line 1</code> for one station; the app answers there.
     <code>!help</code> lists the commands. Only messages that start with the prefix count.</p>
   <div class="row" style="max-width:420px;align-items:end">
     <div><label>Prefix</label><input id="c_prefix" maxlength="3" /></div>
@@ -219,6 +239,57 @@ async function waUseGroup(g) {
     toast('Provider added. Use Test send to try it.'); load();
   } catch (e) { toast(e.message, true); }
 }
+// ---- linked Signal phone ----
+let sigTimer = null, sigQrShown = false;
+async function sigLoad() {
+  let s;
+  try { s = await getJSON('/api/notifications/signal'); } catch (e) { return; }
+  const state = document.getElementById('sigState'), acts = document.getElementById('sigActions');
+  const badge = (cls, text) => el('span', { class: 'badge ' + cls, style: 'margin-right:8px' }, text);
+  state.innerHTML = ''; acts.innerHTML = '';
+  if (s.state === 'linked') {
+    sigQrShown = false; document.getElementById('sigQr').style.display = 'none';
+    state.append(badge('ok', 'Linked'), 'Sending from ' + s.number + '.');
+    acts.append(el('button', { class: 'btn secondary small', onclick: sigGroups }, 'Show groups'));
+  } else if (s.state === 'not_set_up') {
+    state.append(badge('off', 'Not set up'), 'Start the Signal service next to the app (deploy/docker-compose.signal.yml) to use Signal.');
+  } else if (s.state === 'unreachable') {
+    state.append(badge('bad', 'Error'), s.error);
+  } else {
+    state.append(badge(sigQrShown ? 'warn' : 'off', sigQrShown ? 'Waiting for scan' : 'Not linked'),
+      sigQrShown ? 'Scan the QR code with the phone whose number should send the alerts.' : 'No phone is linked. Press Link phone and scan the QR code with Signal.');
+    acts.append(el('button', { class: 'btn small', onclick: sigLink }, sigQrShown ? 'New QR code' : 'Link phone'));
+  }
+  if (s.state !== 'linked') document.getElementById('sigGroups').style.display = 'none';
+  clearTimeout(sigTimer);
+  sigTimer = setTimeout(sigLoad, sigQrShown ? 3000 : 15000);
+}
+function sigLink() {
+  sigQrShown = true;
+  document.getElementById('sigQrImg').src = '/api/notifications/signal/qr?t=' + Date.now();
+  document.getElementById('sigQr').style.display = 'block';
+  sigLoad();
+}
+async function sigGroups() {
+  const box = document.getElementById('sigGroups'), rows = document.getElementById('sigGroupRows');
+  rows.innerHTML = ''; box.style.display = 'block';
+  rows.append(el('tr', {}, el('td', { colspan: 3, class: 'muted' }, 'Loading groups…')));
+  let groups;
+  try { groups = await getJSON('/api/notifications/signal/groups'); }
+  catch (e) { rows.innerHTML = ''; rows.append(el('tr', {}, el('td', { colspan: 3, class: 'muted' }, e.message))); return; }
+  rows.innerHTML = '';
+  if (!groups.length) rows.append(el('tr', {}, el('td', { colspan: 3, class: 'muted' }, 'This number is in no groups.')));
+  for (const g of groups) rows.append(el('tr', {},
+    el('td', {}, g.name), el('td', {}, el('code', {}, g.id)),
+    el('td', {}, el('button', { class: 'btn secondary small', onclick: () => sigUseGroup(g) }, 'Send alerts here'))));
+}
+async function sigUseGroup(g) {
+  try {
+    await postJSON('/api/notifications/providers', { name: 'Signal: ' + g.name, kind: 'signal', enabled: true, config: { to: [g.id] } });
+    toast('Provider added. Use Test send to try it.'); load();
+  } catch (e) { toast(e.message, true); }
+}
+
 let CONDS = [], SEVS = [], PROVIDERS = [], editingRule = null, editingProvider = null;
 const condOf = key => CONDS.find(c => c.key === key) || {};
 const isPct = key => key === 'scrap_rate';
@@ -227,6 +298,9 @@ const fmtThreshold = (key, v) => isPct(key) ? (+(v * 100).toFixed(2)) + '%' : St
 function providerTarget(p) {
   const c = p.config || {};
   if (p.kind === 'telegram') return 'chat ' + [].concat(c.chat_ids || c.chat_id || []).join(', ');
+  if (p.kind === 'discord') return c.mode === 'webhook' || (c.webhook_url && !c.bot_token) ? 'webhook'
+    : 'channel ' + [].concat(c.channel_ids || c.channel_id || []).join(', ');
+  if (p.kind === 'signal') return [].concat(c.to || []).map(groupName).join(', ');
   if (c.transport === 'linked') return [].concat(c.to || []).join(', ');
   return c.transport || '';
 }
@@ -426,11 +500,21 @@ async function delRule(id) { if (confirm('Delete rule?')) { await delJSON('/api/
 
 // ---- WhatsApp commands ----
 let CMD = { prefix: '!', commands: [], periods: {}, placeholders: {} }, editingCommand = null, WA_GROUPS = null;
+// the groups and channels commands can answer in (WhatsApp, Discord, Signal), with their names
+async function commandChats() {
+  if (WA_GROUPS === null) {
+    try { const r = await getJSON('/api/notifications/commands/chats'); WA_GROUPS = r.chats; WA_PROBLEMS = r.problems; }
+    catch (e) { WA_GROUPS = []; WA_PROBLEMS = [e.message]; }
+  }
+  return WA_GROUPS;
+}
+let WA_PROBLEMS = [];
 const OUTCOME = { answered: ['ok', 'answered'], unknown: ['warn', 'unknown'], not_allowed: ['off', 'not allowed here'],
   too_fast: ['off', 'too fast'], failed: ['bad', 'failed'] };
 
 async function loadCommands() {
   try { CMD = await getJSON('/api/notifications/commands'); } catch (e) { return; }
+  await commandChats();  // names of the chosen groups and channels
   const pre = document.getElementById('c_prefix');
   if (document.activeElement !== pre) pre.value = CMD.prefix;
   document.getElementById('c_example').textContent = CMD.prefix + 'status';
@@ -440,7 +524,7 @@ async function loadCommands() {
     el('td', {}, el('code', {}, CMD.prefix + c.keyword), c.description ? el('div', { class: 'hint' }, c.description) : null),
     el('td', { class: 'muted' }, c.period === 'hours' ? 'last ' + c.hours + ' h' : c.period === 'today' ? 'today' : 'dashboard counters',
       c.active_days ? el('div', { class: 'hint' }, 'stations active in the last ' + (c.active_days === 1 ? 'day' : c.active_days + ' days')) : null),
-    el('td', { class: 'muted' }, (c.group_ids || []).length ? c.group_ids.map(groupName).join(', ') : 'All groups'),
+    el('td', { class: 'muted' }, (c.group_ids || []).length ? c.group_ids.map(groupName).join(', ') : 'All groups and channels'),
     el('td', {}, el('span', { class: 'badge ' + (c.enabled ? 'ok' : 'off') }, c.enabled ? 'on' : 'off')),
     el('td', {}, el('div', { class: 'actions' },
       el('button', { class: 'btn secondary small', onclick: () => editCommand(c) }, 'Edit'),
@@ -504,19 +588,21 @@ async function fillCommandForm(c) {
     (c && c.timezone !== tz ? '; now ' + c.timezone : '') + '.';
   onPeriod();
   const box = document.getElementById('c_groups');
-  box.innerHTML = 'Loading the groups of the linked phone…';
-  if (WA_GROUPS === null) { try { WA_GROUPS = await getJSON('/api/notifications/whatsapp/groups'); } catch (e) { WA_GROUPS = []; } }
+  box.innerHTML = 'Loading the groups and channels…';
+  await commandChats();
   const chosen = new Set(d.group_ids || []);
   const groups = [...WA_GROUPS];
   for (const id of chosen) if (!groups.find(g => g.id === id)) groups.push({ id, name: id });
   box.innerHTML = '';
-  if (!groups.length) box.append('No groups found: link a phone above to choose groups. Without a choice the command answers in every group.');
+  if (!groups.length) box.append('No groups found: link a WhatsApp or Signal phone above, or add a Discord bot provider, to choose. Without a choice the command answers in every group and channel.');
   for (const g of groups) {
     const cb = el('input', { type: 'checkbox', 'data-group': g.id, style: 'width:auto;margin:0' });
     cb.checked = chosen.has(g.id);
-    box.append(el('label', { style: 'display:flex;gap:8px;align-items:center;margin:4px 0;font-weight:normal' }, cb, g.name));
+    box.append(el('label', { style: 'display:flex;gap:8px;align-items:center;margin:4px 0;font-weight:normal' }, cb, g.name,
+      g.messenger ? el('span', { class: 'muted' }, g.messenger) : null));
   }
-  if (groups.length) box.append(el('div', { class: 'hint' }, 'None ticked = every group the phone is in.'));
+  for (const pr of WA_PROBLEMS || []) box.append(el('div', { class: 'hint', style: 'color:var(--warn)' }, pr));
+  if (groups.length) box.append(el('div', { class: 'hint' }, 'None ticked = every group and channel the app reads.'));
 }
 function commandBody() {
   return {
@@ -561,6 +647,7 @@ async function delCommand(c) {
 
 load();
 waLoad();
+sigLoad();
 loadCommands();
 setInterval(load, 8000);
 setInterval(loadCommands, 10000);

@@ -1,6 +1,7 @@
 """The Chat room tab: one messenger chat (a WhatsApp group the linked phone is
-in, or a Telegram chat of a Telegram provider's bot) that every user with the
-chat_room permission can read and write in from the web.
+in, a Telegram chat of a Telegram provider's bot, a Discord channel of a
+Discord bot, or a Signal group of the linked Signal phone) that every user
+with the chat_room permission can read and write in from the web.
 
 * An administrator picks the room on the tab (settings key ``chat_room``:
   {"kind", "chat", "name", "provider_id"}). Changing it keeps the history; the
@@ -19,6 +20,8 @@ chat_room permission can read and write in from the web.
   messages (getUpdates, long polling). In a group, a bot only gets every
   message when its privacy mode is off (@BotFather, /setprivacy) or it is an
   admin of the group; otherwise only commands and replies to it.
+* Discord and Signal messages come from app.messengers (``on_message``),
+  which also hands them to the commands.
 """
 from __future__ import annotations
 
@@ -32,7 +35,7 @@ from sqlalchemy.orm import Session
 from . import settings_store
 from .models import ChatMessage, Meta, NotificationProvider, User, utcnow
 from .notifiers import base as notifier_base
-from .notifiers import telegram
+from .notifiers import discord, signal, telegram
 from .notifiers.base import NotifierError
 
 log = logging.getLogger("cognex.chatroom")
@@ -40,7 +43,7 @@ log = logging.getLogger("cognex.chatroom")
 ROOM_KEY = "chat_room"
 UPGRADE_KEY = "chat_room_v1"
 MAX_TEXT = 4000
-KINDS = {"whatsapp": "WhatsApp", "telegram": "Telegram"}
+KINDS = {"whatsapp": "WhatsApp", "telegram": "Telegram", "discord": "Discord", "signal": "Signal"}
 
 _room: dict | None = None
 _room_loaded = False
@@ -103,12 +106,37 @@ def options(db: Session) -> dict:
                 problems.append(f"Telegram '{p.name}', chat {chat}: {exc}")
             found.append({"kind": "telegram", "chat": chat, "name": name, "provider_id": p.id,
                           "messenger": f"Telegram ({p.name})"})
+    for p in (db.query(NotificationProvider).filter(NotificationProvider.kind == "discord")
+              .order_by(NotificationProvider.id)):
+        cfg = p.config or {}
+        if discord.mode(cfg) != "bot":
+            continue
+        for chat in discord.channel_list(cfg.get("channel_ids") or cfg.get("channel_id")):
+            name = chat
+            try:
+                name = discord.channel_name(cfg, chat)
+            except NotifierError as exc:
+                problems.append(f"Discord '{p.name}', channel {chat}: {exc}")
+            found.append({"kind": "discord", "chat": chat, "name": name, "provider_id": p.id,
+                          "messenger": f"Discord ({p.name})"})
+    sig = signal.status()
+    if sig["state"] == "linked":
+        try:
+            for g in signal.groups(refresh=True):
+                found.append({"kind": "signal", "chat": g["id"], "name": g["name"], "provider_id": None,
+                              "messenger": "Signal (linked phone)"})
+        except NotifierError as exc:
+            problems.append(f"Signal: {exc}")
+    elif sig["state"] == "unreachable":
+        problems.append(sig["error"])
     return {"options": found, "problems": problems}
 
 
 def messenger_count(db: Session) -> int:
-    """Messengers the room can use: the linked WhatsApp phone and Telegram providers."""
-    n = db.query(NotificationProvider).filter(NotificationProvider.kind == "telegram").count()
+    """Messengers the room can use: the linked WhatsApp and Signal phones,
+    Telegram providers and Discord bots."""
+    n = db.query(NotificationProvider).filter(NotificationProvider.kind.in_(("telegram", "discord"))).count()
+    n += 1 if signal.base_url() else 0
     return n + (1 if _whatsapp_link().state not in ("not_linked", "unknown") else 0)
 
 
@@ -123,12 +151,20 @@ def status(db: Session) -> dict:
         if link.state != "connected":
             problem = "WhatsApp is not connected" + (f": {link.error}" if link.error else
                                                      " (link a phone on the Notifications page).")
+    elif r["kind"] == "signal":
+        s = signal.status()
+        if s["state"] != "linked":
+            problem = s["error"] or "Signal is not linked (link a phone on the Notifications page)."
+        else:
+            problem = _reader().errors.get("signal")
     else:
         p = _provider(db, r)
         if p is None:
-            problem = "The Telegram provider of this room was deleted. Pick the room again."
-        elif telegram_reader.error:
+            problem = f"The {KINDS[r['kind']]} provider of this room was deleted. Pick the room again."
+        elif r["kind"] == "telegram" and telegram_reader.error:
             problem = telegram_reader.error
+        elif r["kind"] == "discord":
+            problem = _reader().errors.get(f"discord:{p.id}:{r['chat']}")
     return {"room": {**r, "messenger": KINDS[r["kind"]]}, "connected": problem is None, "problem": problem,
             "messengers": messenger_count(db)}
 
@@ -196,6 +232,23 @@ def on_whatsapp_message(msg: dict) -> None:
     commands.handle_message(msg)
 
 
+def on_message(kind: str, msg: dict) -> None:
+    """A Discord or Signal message (app.messengers): kept when it is in the room."""
+    if _is_room(kind, msg.get("chat", "")):
+        import datetime as dt
+
+        created = dt.datetime.fromtimestamp(float(msg["ts"]), dt.timezone.utc) if msg.get("ts") else utcnow()
+        _store(kind, str(msg["chat"]).strip(), direction="in", author=msg.get("sender_name") or msg.get("sender"),
+               text=(msg.get("text") or "")[:MAX_TEXT], status="received", external_id=str(msg.get("id") or "") or None,
+               created_at=created)
+
+
+def _reader():
+    from .messengers import reader
+
+    return reader
+
+
 def on_sent(kind: str, chat: str, text: str) -> None:
     """The app sent a message (an alert or a command reply): kept when it went to the room."""
     if _is_room(kind, chat):
@@ -217,28 +270,41 @@ def send(db: Session, user: User, text: str) -> dict:
     try:
         if r["kind"] == "whatsapp":
             _whatsapp_link().send(r["chat"], f"*{user.username}:* {text}", report=False)
+        elif r["kind"] == "signal":
+            signal.send_to(r["chat"], f"{user.username}: {text}", report=False)
         else:
             p = _provider(db, r)
             if p is None:
-                raise NotifierError("The Telegram provider of this room was deleted.")
-            telegram.send_to(p.config or {}, r["chat"], f"{user.username}: {text}", report=False)
+                raise NotifierError(f"The {KINDS[r['kind']]} provider of this room was deleted.")
+            if r["kind"] == "discord":
+                discord.send_to(p.config or {}, r["chat"], f"**{user.username}:** {text}", report=False)
+            else:
+                telegram.send_to(p.config or {}, r["chat"], f"{user.username}: {text}", report=False)
     except NotifierError as exc:
         msg.status, msg.error = "failed", str(exc)
     db.add(msg)
     db.commit()
     db.refresh(msg)
-    if msg.status == "sent" and r["kind"] == "whatsapp":
-        _answer_command(r, user, text)
+    if msg.status == "sent" and r["kind"] != "telegram":
+        _answer_command(db, r, user, text)
     return _out(msg)
 
 
-def _answer_command(r: dict, user: User, text: str) -> None:
+def _answer_command(db: Session, r: dict, user: User, text: str) -> None:
     """A web message such as "!status" is answered in the chat like one typed there."""
-    from . import commands
+    from . import commands, messengers
 
     if commands.parse(text, commands.get_prefix()) is None:
         return
-    msg = {"chat": r["chat"], "chat_name": r.get("name"), "sender_name": user.username, "text": text}
+    msg = {"chat": r["chat"], "chat_name": r.get("name"), "sender_name": user.username, "text": text,
+           "kind": r["kind"]}
+    if r["kind"] == "signal":
+        msg["reply"] = messengers.reply_signal(r["chat"])
+    elif r["kind"] == "discord":
+        p = _provider(db, r)
+        if p is None:
+            return
+        msg["reply"] = messengers.reply_discord(dict(p.config or {}), r["chat"])
     threading.Thread(target=commands.handle_message, args=(msg,), name="chatroom-command", daemon=True).start()
 
 

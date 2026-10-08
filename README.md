@@ -6,7 +6,7 @@ cameras, PLCs, OPC UA servers and other counters), by polling them or by
 letting them push their results, and counts them per **station**: a station
 takes its OK, NOK and job from one or several devices (or from manual
 entries). It keeps **reset-proof running totals** per station and job, shows
-OEE, logs everything to a database, and sends alerts to WhatsApp or Telegram
+OEE, logs everything to a database, and sends alerts to WhatsApp, Telegram, Discord or Signal
 groups when scrap is high, a device drops off the network, or something else
 you choose happens.
 
@@ -80,15 +80,16 @@ versions keep working.
   station, job and day with an Excel export. Time out of production, readings
   a user excluded and stations set to *Exclude* (such as a test rig) are left
   out of the overall figures.
-- **Chat room:** one WhatsApp group or Telegram chat that every user can read
+- **Chat room:** one WhatsApp, Signal or Telegram group or Discord channel that every user can read
   and write in from the web, with the user's name in front and the history
   kept; an administrator picks the chat.
 - **Alerts:** rules for scrap rate (with per-station thresholds), fail count,
   disconnects, production and job changes, backup results and app updates,
   each with a level (info / warning / alert) and its own destinations:
   WhatsApp sent from your own number (linked device, unofficial), Telegram
-  bots, webhooks, Green API or Meta Cloud API.
-- **WhatsApp group commands:** `!status` (or your own commands) in a group
+  and Discord bots, Discord webhooks, Signal (through signal-cli, optional
+  container), webhooks, Green API or Meta Cloud API.
+- **Chat commands:** `!status` (or your own commands) in a WhatsApp or Signal group or Discord channel
   answers with live production state, OK / NOK and scrap per station;
   each command can list only the stations active in the last N days.
   `!mute <station>` silences a station's alerts until its job changes, like
@@ -135,7 +136,7 @@ small simulation server (see [Protocols](docs/protocols.md#opc-ua-client-opcua))
 | [User guide](docs/user-guide.md) | Devices and stations, dashboard and OEE, comments, manual entries, production state, data, statistics, users, export/import, the Raw data tab |
 | [Protocols](docs/protocols.md) | How to connect each device type, with every config field |
 | [Reports: Power BI, Excel and SQL](docs/reporting.md) | Reading the data with Power BI (Desktop and scheduled refresh), Excel or SQL; the views and example queries |
-| [Notifications](docs/notifications.md) | Alert rules, WhatsApp (linked phone) and Telegram delivery |
+| [Notifications](docs/notifications.md) | Alert rules, WhatsApp (linked phone), Telegram, Discord and Signal delivery |
 | [Development](docs/development.md) | Running locally, tests, project layout, adding a protocol |
 | [Known issues and limitations](docs/known-issues.md) | What is untested or doesn't work yet |
 

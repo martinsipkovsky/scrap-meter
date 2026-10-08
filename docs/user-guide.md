@@ -599,25 +599,27 @@ and statistics setting from the file.
 ## Chat room
 
 One messenger chat that everyone can read and write in from the web: a
-WhatsApp group the linked phone is in, or a Telegram chat of a Telegram
-provider's bot. It is in the left menu for users with the `chat_room`
+WhatsApp or Signal group the linked phone is in, a Telegram chat of a
+Telegram provider's bot, or a Discord channel of a Discord bot provider. It is in the left menu for users with the `chat_room`
 permission (every user has it unless an administrator takes it away).
 
 - An **administrator** picks the chat with **Choose the chat room** (later
-  **Change room**). The list shows the WhatsApp groups of the linked phone
-  and the chat ids of each Telegram provider. Without a linked phone or a
-  Telegram provider the tab says so and points to the Notifications tab.
+  **Change room**). The list shows the WhatsApp and Signal groups of the
+  linked phones, the chat ids of each Telegram provider and the channels of
+  each Discord bot. Without any of them the tab says so and points to the
+  Notifications tab.
   Changing the room keeps the old room's messages; **No chat room** removes it.
 - The tab shows the messages written in the chat, what users sent from the
   web, and what the app sent there itself (alerts and command replies, marked
   *Scrap Meter*). New messages appear on their own; **Show older messages**
   loads the history, which is kept in the database.
 - A message from the web goes out with the user's name in front: on WhatsApp
-  as "*Martin:* text" from the linked phone, on Telegram as "Martin: text" from
-  the bot. Enter sends, Shift+Enter starts a new line. A message that could not
+  as "*Martin:* text" from the linked phone, on Discord as "**Martin:** text"
+  from the bot, on Telegram and Signal as "Martin: text".
+  Discord and Signal messages reach the tab within a few seconds. Enter sends, Shift+Enter starts a new line. A message that could not
   be sent stays in the list, marked in red with the reason.
-- In a WhatsApp room, chat commands work from the web too: `!status` written
-  here is answered in the group, like one typed there. Commands written in the
+- In a WhatsApp, Discord or Signal room, chat commands work from the web too:
+  `!status` written here is answered in the chat, like one typed there. Commands written in the
   group are answered as before.
 - Photos, videos and files without a caption show as "[photo]", "[video]" or
   "[file]".
@@ -627,8 +629,10 @@ permission (every user has it unless an administrator takes it away).
 
 ## Notifications tab
 
-Alert rules (per station or for all stations), delivery providers, the linked
-WhatsApp phone and the commands it answers in WhatsApp groups (e.g. `!status`).
+Alert rules (per station or for all stations), delivery providers (WhatsApp,
+Telegram, Discord, Signal, webhooks), the linked WhatsApp and Signal phones,
+and the chat commands answered in WhatsApp and Signal groups and Discord
+channels (e.g. `!status`).
 See [Notifications](notifications.md).
 
 ## Users and permissions

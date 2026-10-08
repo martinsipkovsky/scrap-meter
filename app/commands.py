@@ -1,13 +1,15 @@
-"""Chat commands: a WhatsApp group message such as "!status" or "!status Line 1"
-is answered with live figures from the app.
+"""Chat commands: a group message such as "!status" or "!status Line 1" is
+answered with live figures from the app, in WhatsApp groups of the linked
+phone, Discord channels of a Discord bot and Signal groups of the linked
+Signal phone (app.messengers).
 
 * A message is a command only when it starts with the prefix ("!" by
   default, changeable on the Notifications page), so normal chat never
   triggers anything.
 * The word after the prefix is the command's keyword. Anything after it
   narrows the reply to the stations whose name contains it.
-* Each command lists the groups it answers in (none = every group the linked
-  phone is in). Private chats are never answered.
+* Each command lists the groups / channels it answers in (none = every one
+  the app reads). Private chats are never answered.
 * A command can list only the stations that were in production at some point
   in the last N days (active_days; none = every station).
 * "help" is built in (unless a command with that keyword exists) and lists the
@@ -322,8 +324,10 @@ def _too_fast(chat: str) -> bool:
 
 
 def handle_message(msg: dict) -> None:
-    """Called for each WhatsApp group message (on the client's own thread, via
-    app.chatroom): answer a command in the group and log it."""
+    """Called for each group message (on the messenger's own thread, via
+    app.chatroom or app.messengers): answer a command in the group and log it.
+    ``msg["reply"]`` sends the answer (Discord, Signal); without it the linked
+    WhatsApp phone answers."""
     from .database import SessionLocal
     from .notifiers.whatsapp_linked import link
 
@@ -352,7 +356,10 @@ def handle_message(msg: dict) -> None:
             outcome, reply = "too_fast", None
         if reply:
             try:
-                link.send(msg["chat"], reply)
+                if msg.get("reply"):
+                    msg["reply"](reply)
+                else:
+                    link.send(msg["chat"], reply)
             except Exception as exc:  # noqa: BLE001
                 outcome, error = "failed", str(exc)
         db.add(CommandLog(

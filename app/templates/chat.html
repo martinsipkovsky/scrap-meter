@@ -10,7 +10,7 @@
 <div id="noRoom" class="card" style="display:none">
   <div id="noMessenger" style="display:none">
     <h3>No messenger is added</h3>
-    <p class="muted" style="font-size:14px">The chat room uses a messenger the app already sends alerts with: link a WhatsApp phone or add a Telegram provider
+    <p class="muted" style="font-size:14px">The chat room uses a messenger the app already sends alerts with: link a WhatsApp or Signal phone, or add a Telegram or Discord bot provider
       {% if user.has_permission('manage_notifications') %}on the <a href="/notifications">Notifications</a> page{% else %}(an administrator does it on the Notifications page){% endif %}.</p>
   </div>
   <div id="pickHere" style="display:none">
@@ -124,9 +124,12 @@ async function loadRoom() {
   document.getElementById('pickHere').style.display = !room && s.messengers ? 'block' : 'none';
   document.getElementById('chatBox').style.display = room ? 'flex' : 'none';
   if (room) {
-    document.getElementById('sendHint').textContent = room.kind === 'whatsapp'
-      ? 'Sent from the linked WhatsApp phone as "*' + NAME + ':* your text". Chat commands such as !status are answered in the group.'
-      : 'Sent by the Telegram bot as "' + NAME + ': your text". The bot only sees every message of a group when its privacy mode is off (@BotFather, /setprivacy) or it is an admin there.';
+    document.getElementById('sendHint').textContent = {
+      whatsapp: 'Sent from the linked WhatsApp phone as "*' + NAME + ':* your text". Chat commands such as !status are answered in the group.',
+      signal: 'Sent from the linked Signal phone as "' + NAME + ': your text". Chat commands such as !status are answered in the group.',
+      discord: 'Sent by the Discord bot as "' + NAME + ': your text". Chat commands such as !status are answered in the channel. New messages show within a few seconds.',
+      telegram: 'Sent by the Telegram bot as "' + NAME + ': your text". The bot only sees every message of a group when its privacy mode is off (@BotFather, /setprivacy) or it is an admin there.',
+    }[room.kind] || '';
   }
   if (changed) {
     document.getElementById('chatList').innerHTML = ''; lastId = firstId = null;
@@ -188,7 +191,7 @@ async function openChooser() {
   }
   if (!options.length) sel.append(el('option', { value: '' }, 'No chats found'));
   hint.textContent = (r.problems.length ? r.problems.join(' ') + ' ' : '') +
-    'WhatsApp lists the groups the linked phone is in; Telegram lists the chat ids of each Telegram provider.';
+    'WhatsApp and Signal list the groups the linked phone is in; Telegram and Discord list the chats and channels of each bot provider.';
 }
 async function saveRoom(o) {
   const err = document.getElementById('chooserError');

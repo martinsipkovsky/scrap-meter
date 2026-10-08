@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from .base import Notifier, NotifierError
+from .discord import DiscordNotifier
+from .signal import SignalNotifier
 from .telegram import TelegramNotifier
 from .whatsapp import WhatsAppNotifier
 
-_NOTIFIERS: dict[str, type[Notifier]] = {n.key: n for n in (WhatsAppNotifier, TelegramNotifier)}
+_NOTIFIERS: dict[str, type[Notifier]] = {n.key: n for n in (WhatsAppNotifier, TelegramNotifier, DiscordNotifier, SignalNotifier)}
 
 
 def available() -> dict[str, type[Notifier]]:

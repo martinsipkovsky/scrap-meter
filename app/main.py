@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from . import __version__, chatroom, commands, daily, jobs, powerbi_access, reporting, settings_store, stations
+from . import __version__, chatroom, commands, daily, jobs, messengers, powerbi_access, reporting, settings_store, stations
 from .notifications import startup_notice
 from .config import settings
 from .database import Base, SessionLocal, active_url, engine, migrate_schema
@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI):
             settings_store.save("app_version", __version__)
         startup_notice(__version__, previous)
         daily.scheduler.start()  # daily data for reports
+        messengers.reader.start()  # Discord channels and Signal groups: commands and the Chat room
     backup_scheduler.start()
     chatroom.install()  # the Chat room keeps its chat's messages and hands "!status" to the commands
     if settings.whatsapp_enabled:
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI):
     yield
     whatsapp_link.stop()
     chatroom.telegram_reader.stop()
+    messengers.reader.stop()
     daily.scheduler.stop()
     powerbi_access.forwarder.stop()
     backup_scheduler.stop()

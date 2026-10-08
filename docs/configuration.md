@@ -17,6 +17,7 @@ working directory.
 | `LISTEN_PORTS` | `5100-5119` | Port range, TCP and UDP, for devices that push data |
 | `DATA_DIR` | `./data` (`/srv/data` in Docker) | Where the Database tab saves its settings (database choice, FTP backup settings, backups taken before an import), and the OPC UA client certificate (`opcua/`) |
 | `WHATSAPP_ENABLED` | `true` | Reconnect a linked WhatsApp phone when the app starts (see [Notifications](notifications.md#linked-send-from-your-own-number-no-extra-service)) |
+| `SIGNAL_API_URL` | empty | The signal-cli-rest-api service for Signal, e.g. `http://signal:8080`; set by `deploy/docker-compose.signal.yml` (see [Notifications](notifications.md#signal)) |
 | `POWERBI_PASSWORD` | empty | Older Power BI setup (since 1.11 it is switched on on the Database tab instead): when set (PostgreSQL only), the read-only login gets this password. See [Reports](reporting.md). |
 | `POWERBI_USER` | `powerbi` | Name of that login |
 | `POWERBI_DB_PORT` | none | Port the database is published on for reports; shown on the Database tab |

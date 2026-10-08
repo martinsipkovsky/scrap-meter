@@ -1,14 +1,15 @@
-"""Notification rules, providers, logs, a test-send endpoint and the linked
-WhatsApp phone (QR login, groups, log out)."""
+"""Notification rules, providers, logs, a test-send endpoint, the linked
+WhatsApp phone (QR login, groups, log out) and the linked Signal phone."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from .. import notifications, notifiers
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import NotificationLog, NotificationProvider, NotificationRule, User
+from ..notifiers import signal
 from ..notifiers.base import NotifierError
 from ..notifiers.whatsapp_linked import link as whatsapp_link
 from ..schemas import ProviderCreate, ProviderUpdate, RuleCreate, RuleUpdate
@@ -189,6 +190,29 @@ def whatsapp_logout(_: User = Depends(require_permission("manage_notifications")
 def whatsapp_groups(_: User = Depends(require_permission("manage_notifications"))):
     try:
         return whatsapp_link.groups()
+    except NotifierError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+# ---- linked Signal phone (signal-cli-rest-api, app.notifiers.signal) -------------
+@router.get("/signal")
+def signal_status(_: User = Depends(require_permission("manage_notifications"))):
+    return signal.status()
+
+
+@router.get("/signal/qr")
+def signal_qr(_: User = Depends(require_permission("manage_notifications"))):
+    """A QR code (PNG) to link the Signal service to a phone."""
+    try:
+        return Response(signal.qr_png(), media_type="image/png", headers={"Cache-Control": "no-store"})
+    except NotifierError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.get("/signal/groups")
+def signal_groups(_: User = Depends(require_permission("manage_notifications"))):
+    try:
+        return signal.groups(refresh=True)
     except NotifierError as exc:
         raise HTTPException(409, str(exc)) from exc
 

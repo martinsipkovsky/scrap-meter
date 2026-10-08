@@ -1,0 +1,31 @@
+# Optional: Signal for alerts, chat commands and the Chat room (since 1.20).
+# Signal has no bot API, so a signal-cli-rest-api container runs next to the
+# app and is linked to a phone as a secondary device (QR code on the
+# Notifications page). Nothing changes for servers that don't use Signal.
+#
+# Put this file next to docker-compose.yml and start both:
+#   docker compose -f docker-compose.yml -f docker-compose.signal.yml up -d
+# (or rename it to docker-compose.override.yml, which docker compose reads
+# by itself, if you have no override file yet).
+#
+# The Signal service is only reachable from the app (no port is published).
+# Its link to the phone is kept in the signal_data volume; to unlink, remove
+# "Scrap Meter" from Signal → Settings → Linked devices on the phone.
+services:
+  signal:
+    image: bbernhard/signal-cli-rest-api:latest
+    restart: unless-stopped
+    environment:
+      MODE: native  # fast answers; the app reads new messages every few seconds
+    volumes:
+      - signal_data:/home/.local/share/signal-cli
+
+  web:
+    environment:
+      SIGNAL_API_URL: http://signal:8080
+    depends_on:
+      signal:
+        condition: service_started
+
+volumes:
+  signal_data:

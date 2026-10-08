@@ -88,6 +88,7 @@ app/
   commands.py        WhatsApp group commands ("!status"): parsing, replies, log
   chatroom.py        the Chat room tab: one WhatsApp group or Telegram chat for the web
   mute.py            muted station alerts (!mute, the Scrap warnings switch), StationEvent
+  messengers.py      reads Discord channels and Signal groups (commands, Chat room)
   ui_settings.py     Settings tab: each user's look and behaviour, defaults for everyone
   changelog.py       the Changelog page, read from CHANGELOG.md
   auth.py            password hashing and signed session cookies
@@ -95,14 +96,15 @@ app/
   seed.py            first admin account
   templating.py      Jinja2 setup, cache-busted static URLs
   protocols/         one file per device protocol (opcua.py: OPC UA client)
-  notifiers/         one file per notification transport (whatsapp, telegram;
+  notifiers/         one file per notification transport (whatsapp, telegram, discord, signal;
                      whatsapp_linked runs the linked-phone client process)
   routers/           auth, account, users, devices, stations, comments, data,
                      notifications, commands, database_admin, backup_admin, rawdb, pages
   templates/         dark-mode Jinja2 pages
   static/            style.css, app.js
 deploy/              compose file for a prebuilt image, and the optional
-                     docker-compose.powerbi.yml (database port for reports)
+                     docker-compose.powerbi.yml (database port for reports),
+                     docker-compose.signal.yml (optional Signal service)
 tests/               pytest suite; opcua_sim.py is an OPC UA simulation server
 ```
 

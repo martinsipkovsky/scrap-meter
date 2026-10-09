@@ -4,6 +4,9 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.24.0 — 2026-10-09
+- New **System** tab for administrators, above Settings: CPU, memory, disk use (the app's disk and the data volume), the database size and response time, network interfaces with their traffic, uptime, the versions of the system, Python and the app, the listening ports and which device uses each, and the poller (devices online, read errors, last read). Live values refresh every 5 seconds; graphs of CPU, memory, disk, database size, network traffic and devices cover the last hour up to 7 days, from one sample a minute.
+
 ## 1.23.0 — 2026-10-09
 - New switch on the Notifications tab, **Send alerts only when the station is in production**, on by default (also after the update). While a station is idle or stopped, its alerts are not sent: no more "device disconnected" messages when a camera drops its connection after the shift. The alert log lists them as *skipped*. A device that drops while its station is in production still sends the alert, "Station stopped, idle or back in production" is still sent, and chat commands always answer.
 

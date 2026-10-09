@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}System · Scrap Meter{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div><h1>System</h1><p class="lead">How the computer and the app are doing: live values, refreshed every 5 seconds, and graphs of the last 7 days (one sample a minute).</p></div>
+</div>
+
+<div class="tiles sys-tiles">
+  <div class="card tile"><div class="tile-label">CPU</div><div class="tile-value" id="tCpu">—</div><div class="tile-delta muted" id="dCpu"></div></div>
+  <div class="card tile"><div class="tile-label">Memory</div><div class="tile-value" id="tMem">—</div><div class="tile-delta muted" id="dMem"></div></div>
+  <div class="card tile"><div class="tile-label">Disk</div><div class="tile-value" id="tDisk">—</div><div class="tile-delta muted" id="dDisk"></div></div>
+  <div class="card tile"><div class="tile-label">Database</div><div class="tile-value" id="tDb">—</div><div class="tile-delta muted" id="dDb"></div></div>
+  <div class="card tile"><div class="tile-label">Network</div><div class="tile-value sys-net" id="tNet">—</div><div class="tile-delta muted" id="dNet"></div></div>
+  <div class="card tile"><div class="tile-label">Devices</div><div class="tile-value" id="tDev">—</div><div class="tile-delta muted" id="dDev"></div></div>
+</div>
+
+<div class="card section-card">
+  <div class="card-head">
+    <h2>Graphs</h2>
+    <div class="seg" id="range">
+      <button data-h="1">1 h</button><button data-h="6">6 h</button><button data-h="24" class="on">24 h</button><button data-h="168">7 days</button>
+    </div>
+  </div>
+  <div id="histEmpty" class="empty" style="display:none">No samples yet. The app stores one a minute while it runs; the first appears shortly after a start.</div>
+  <div class="sys-charts" id="charts"></div>
+</div>
+
+<div class="sys-grid">
+  <div class="card section-card"><div class="card-head"><h2>Computer and app</h2></div><table class="kv"><tbody id="hostRows"></tbody></table></div>
+  <div class="card section-card"><div class="card-head"><h2>Database</h2></div><table class="kv"><tbody id="dbRows"></tbody></table></div>
+</div>
+
+<div class="card section-card">
+  <div class="card-head"><h2>Disks</h2></div>
+  <div class="table-scroll"><table><thead><tr><th>Mounted at</th><th>Used</th><th>Free</th><th>Size</th><th>Use</th></tr></thead><tbody id="diskRows"></tbody></table></div>
+</div>
+
+<div class="card section-card">
+  <div class="card-head"><h2>Network interfaces</h2></div>
+  <div class="table-scroll"><table><thead><tr><th>Interface</th><th>State</th><th>Addresses</th><th>Receiving</th><th>Sending</th><th>Received</th><th>Sent</th><th>Errors / drops</th></tr></thead><tbody id="nicRows"></tbody></table></div>
+</div>
+
+<div class="sys-grid">
+  <div class="card section-card">
+    <div class="card-head"><h2>Listening ports</h2><span class="muted" id="portRange"></span></div>
+    <div class="table-scroll"><table><thead><tr><th>Port</th><th>Kind</th><th>Used by</th></tr></thead><tbody id="portRows"></tbody></table></div>
+    <div id="portEmpty" class="empty" style="display:none">No device listens on a port.</div>
+  </div>
+  <div class="card section-card">
+    <div class="card-head"><h2>Poller</h2></div>
+    <table class="kv"><tbody id="pollRows"></tbody></table>
+    <div id="pollErrors" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<style>
+  .sys-tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  @media (max-width: 1200px) { .sys-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .sys-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .sys-tiles .tile-value { font-size: 26px; }
+  .sys-tiles .tile-value.sys-net { font-size: 18px; line-height: 1.6; }
+  .sys-charts { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
+  .sys-chart h3 { font-size: 13px; margin: 0 0 4px; color: var(--text-dim); font-weight: 600; }
+  .sys-chart .chart-wrap svg { height: 170px; }
+  .sys-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
+  table.kv td:first-child { color: var(--text-dim); width: 38%; }
+  .bar-cell { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+  .bar-cell .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
+  .bar-cell .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar-cell .bar i.warn { background: var(--warn); }
+  .bar-cell .bar i.bad { background: var(--bad); }
+</style>
+{% endblock %}
+{% block scripts %}
+<script>
+let LIVE = null, HIST = null, HOURS = 24;
+
+function bytes(n) {
+  if (n === null || n === undefined) return '—';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
+  while (Math.abs(n) >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i ? n.toFixed(n < 10 ? 1 : 0) : Math.round(n)) + ' ' + u[i];
+}
+function rate(n) { return n === null || n === undefined ? '—' : bytes(n) + '/s'; }
+function pct(n) { return n === null || n === undefined ? '—' : n.toFixed(n < 10 ? 1 : 0) + '%'; }
+function span(fromIso) {
+  if (!fromIso) return '—';
+  let s = Math.max(0, (Date.now() - new Date(fromIso)) / 1000);
+  const d = Math.floor(s / 86400); s -= d * 86400;
+  const h = Math.floor(s / 3600); s -= h * 3600;
+  const m = Math.floor(s / 60);
+  return (d ? d + ' d ' : '') + (d || h ? h + ' h ' : '') + m + ' min';
+}
+function level(p) { return p >= 90 ? 'bad' : p >= 75 ? 'warn' : ''; }
+function barCell(p) {
+  return el('div', { class: 'bar-cell' }, el('div', { class: 'bar' }, el('i', { class: level(p), style: 'width:' + Math.min(100, p) + '%' })),
+    el('span', { class: 'tnum' }, pct(p)));
+}
+function kv(tbody, rows) {
+  tbody.innerHTML = '';
+  for (const [k, v] of rows) tbody.append(el('tr', {}, el('td', {}, k), el('td', {}, v === null || v === undefined || v === '' ? '—' : v)));
+}
+
+function renderLive() {
+  const s = LIVE;
+  document.getElementById('tCpu').textContent = pct(s.cpu.percent);
+  document.getElementById('dCpu').textContent = s.cpu.cores + ' cores' + (s.cpu.load ? ' · load ' + s.cpu.load.join(' / ') : '');
+  document.getElementById('tMem').textContent = pct(s.memory.percent);
+  document.getElementById('dMem').textContent = bytes(s.memory.used) + ' of ' + bytes(s.memory.total) + ' · app ' + bytes(s.memory.app_rss);
+  const root = s.disks[0];
+  document.getElementById('tDisk').textContent = root ? pct(root.percent) : '—';
+  document.getElementById('dDisk').textContent = root ? bytes(root.free) + ' free of ' + bytes(root.total) : '';
+  document.getElementById('tDb').textContent = bytes(s.database.size_bytes);
+  document.getElementById('dDb').textContent = s.database.connected ? 'connected · ' + s.database.latency_ms + ' ms' : 'not connected';
+  document.getElementById('tNet').innerHTML = '↓ ' + rate(s.network.rx_rate) + '<br>↑ ' + rate(s.network.tx_rate);
+  document.getElementById('dNet').textContent = s.network.interfaces.filter(n => n.up && n.name !== 'lo').length + ' interfaces up';
+  const p = s.poller;
+  document.getElementById('tDev').textContent = p.connected + ' / ' + p.enabled;
+  document.getElementById('dDev').textContent = p.read_errors ? p.read_errors + ' with read errors' : 'online / enabled';
+  document.getElementById('tDev').className = 'tile-value' + (p.read_errors ? ' fail' : '');
+
+  const h = s.host;
+  kv(document.getElementById('hostRows'), [
+    ['Host name', h.hostname],
+    ['System', h.os + (h.distro ? ' · ' + h.distro : '') + ' · ' + h.machine],
+    ['Python', h.python],
+    ['Scrap Meter', h.app_version],
+    ['Computer up', span(h.boot_time) + ' (since ' + fmtFull(h.boot_time) + ')'],
+    ['App up', span(h.app_started) + ' (since ' + fmtFull(h.app_started) + ')'],
+    ['App memory', bytes(s.memory.app_rss) + ' · ' + s.memory.app_threads + ' threads'],
+    ['Swap', s.memory.swap_total ? bytes(s.memory.swap_used) + ' of ' + bytes(s.memory.swap_total) : 'none'],
+    ['Runs in', h.in_container ? 'a Docker container (values as the container sees them)' : 'directly on the computer'],
+  ]);
+  const d = s.database;
+  kv(document.getElementById('dbRows'), [
+    ['State', el('span', { class: 'badge ' + (d.connected ? 'ok' : 'bad') }, d.connected ? 'connected' : 'not connected')],
+    ['Server', d.server], ['Size', bytes(d.size_bytes)],
+    ['Response', d.latency_ms === null ? null : d.latency_ms + ' ms'],
+    ['Error', d.error],
+  ]);
+
+  const dr = document.getElementById('diskRows'); dr.innerHTML = '';
+  for (const x of s.disks) dr.append(el('tr', {},
+    el('td', {}, x.path === '/' ? '/ (app)' : x.path + ' (data volume)' + (x.same_as_root ? ', same disk' : '')),
+    el('td', { class: 'num' }, bytes(x.used)), el('td', { class: 'num' }, bytes(x.free)), el('td', { class: 'num' }, bytes(x.total)),
+    el('td', {}, barCell(x.percent))));
+
+  const nr = document.getElementById('nicRows'); nr.innerHTML = '';
+  for (const n of s.network.interfaces) nr.append(el('tr', {},
+    el('td', {}, n.name), el('td', {}, el('span', { class: 'badge ' + (n.up ? 'ok' : 'off') }, n.up ? 'up' : 'down'),
+      n.speed_mbps ? ' ' + n.speed_mbps + ' Mbit/s' : ''),
+    el('td', { class: 'muted' }, n.addresses.join(', ') || '—'),
+    el('td', { class: 'num' }, rate(n.rx_rate)), el('td', { class: 'num' }, rate(n.tx_rate)),
+    el('td', { class: 'num' }, bytes(n.rx_bytes)), el('td', { class: 'num' }, bytes(n.tx_bytes)),
+    el('td', { class: 'num' + (n.errors || n.drops ? '' : ' muted') }, n.errors + ' / ' + n.drops)));
+
+  document.getElementById('portRange').textContent = 'range ' + s.listen_ports;
+  const pr = document.getElementById('portRows'); pr.innerHTML = '';
+  document.getElementById('portEmpty').style.display = s.listeners.length ? 'none' : 'block';
+  for (const l of s.listeners) pr.append(el('tr', {},
+    el('td', { class: 'num' }, String(l.port)), el('td', {}, l.kind),
+    el('td', {}, l.device_id ? el('a', { href: '/devices' }, l.device_name || ('device ' + l.device_id)) : (l.kind === 'Power BI' ? 'Power BI access (Database tab)' : '—'))));
+
+  kv(document.getElementById('pollRows'), [
+    ['State', el('span', { class: 'badge ' + (p.running ? 'ok' : (p.poll_enabled ? 'bad' : 'off')) },
+      p.running ? 'running' : (p.poll_enabled ? 'stopped' : 'off (POLL_ENABLED=false)'))],
+    ['Devices', p.devices + ' (' + p.enabled + ' enabled)'],
+    ['Online', String(p.connected)],
+    ['Read errors', String(p.read_errors)],
+    ['Last read', p.last_read_at ? fmtFull(p.last_read_at) + ' (' + fmtAgo(p.last_read_at) + ')' : null],
+  ]);
+  const pe = document.getElementById('pollErrors'); pe.innerHTML = '';
+  for (const e of p.errors) pe.append(el('div', { class: 'hint' }, el('strong', {}, e.name + ': '), e.error));
+}
+
+const CHARTS = [
+  { title: 'CPU', unit: '%', max: 100, series: [{ key: 'cpu_percent', label: 'CPU', color: 'var(--accent)' }] },
+  { title: 'Memory', unit: '%', max: 100, series: [{ key: 'mem_percent', label: 'Memory used', color: 'var(--accent)' }],
+    extra: (p) => 'app ' + bytes(p.app_rss) },
+  { title: 'Disk use', unit: '%', max: 100, series: [{ key: 'disk_percent', label: 'App disk', color: 'var(--accent)' },
+    { key: 'data_disk_percent', label: 'Data volume', color: 'var(--warn)' }] },
+  { title: 'Database size', fmt: bytes, bytes: true, series: [{ key: 'db_bytes', label: 'Size', color: 'var(--accent)' }] },
+  { title: 'Network traffic', fmt: rate, bytes: true, series: [{ key: 'net_rx', label: 'Receiving', color: 'var(--accent)' },
+    { key: 'net_tx', label: 'Sending', color: 'var(--ok)' }] },
+  { title: 'Devices', fmt: (v) => String(Math.round(v)), series: [{ key: 'devices_ok', label: 'Online', color: 'var(--ok)' },
+    { key: 'read_errors', label: 'Read errors', color: 'var(--bad)' }] },
+];
+
+function niceMax(v) {
+  if (!(v > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+function drawChart(cfg, idx) {
+  const svg = document.getElementById('c' + idx), tip = document.getElementById('t' + idx);
+  const pts = HIST.points, n = pts.length;
+  const W = svg.getBoundingClientRect().width || 500, H = 170, L = 58, R = 10, T = 10, B = 24;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const fmt = cfg.fmt || ((v) => Math.round(v) + (cfg.unit || ''));
+  const vals = pts.flatMap(p => cfg.series.map(s => p[s.key])).filter(v => v !== null && v !== undefined);
+  const peak = Math.max(0, ...vals) * 1.1;
+  // byte values get round steps in KB / MB / GB
+  const base = cfg.bytes && peak > 0 ? Math.pow(1024, Math.max(0, Math.floor(Math.log(peak) / Math.log(1024)))) : 1;
+  const top = cfg.max || niceMax(peak / base) * base;
+  const pw = W - L - R, ph = H - T - B;
+  const t0 = new Date(pts[0].t).getTime(), t1 = Math.max(t0 + 1, new Date(pts[n - 1].t).getTime());
+  const x = (p) => L + ((new Date(p.t).getTime() - t0) / (t1 - t0)) * pw;
+  const y = (v) => T + ph - (Math.min(v, top) / top) * ph;
+  let out = '';
+  for (let i = 0; i <= 4; i++) {
+    const v = top * i / 4;
+    out += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>`;
+    out += `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" fill="var(--text-dim)" font-size="10" class="tnum">${fmt(v)}</text>`;
+  }
+  const ticks = Math.max(2, Math.floor(pw / 90));
+  for (let i = 0; i <= ticks; i++) {
+    const t = new Date(t0 + (t1 - t0) * i / ticks);
+    const label = HOURS > 24 ? fmtDate(t, { year: false }) : fmtClock(t);
+    out += `<text x="${L + pw * i / ticks}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === ticks ? 'end' : 'middle'}" fill="var(--text-dim)" font-size="10">${label}</text>`;
+  }
+  // a gap of more than 3 samples (the app was off) breaks the line
+  const gap = HIST.sample_s * 1000 * 3 * Math.max(1, Math.round(n > 1 ? (t1 - t0) / (n - 1) / (HIST.sample_s * 1000) : 1));
+  for (const s of cfg.series) {
+    let d = '', prev = null;
+    for (const p of pts) {
+      const v = p[s.key];
+      if (v === null || v === undefined) { prev = null; continue; }
+      const t = new Date(p.t).getTime();
+      d += (prev === null || t - prev > gap ? 'M' : 'L') + x(p).toFixed(1) + ' ' + y(v).toFixed(1);
+      prev = t;
+    }
+    out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round"/>`;
+  }
+  out += `<line class="hair" y1="${T}" y2="${T + ph}" stroke="var(--text-dim)" stroke-width="1" opacity="0"/>`;
+  svg.innerHTML = out;
+  const hair = svg.querySelector('.hair');
+  svg.onmousemove = (e) => {
+    const r0 = svg.getBoundingClientRect(), px = (e.clientX - r0.left) * (W / r0.width);
+    const tt = t0 + Math.max(0, Math.min(1, (px - L) / pw)) * (t1 - t0);
+    let best = pts[0];
+    for (const p of pts) if (Math.abs(new Date(p.t) - tt) < Math.abs(new Date(best.t) - tt)) best = p;
+    hair.setAttribute('x1', x(best)); hair.setAttribute('x2', x(best)); hair.setAttribute('opacity', '.6');
+    tip.innerHTML = '';
+    tip.append(el('strong', {}, fmtFull(best.t)));
+    for (const s of cfg.series) tip.append(el('br'), el('span', {}, s.label + ': ' + (best[s.key] === null ? '—' : fmt(best[s.key]))));
+    if (cfg.extra) tip.append(el('br'), el('span', { class: 'muted' }, cfg.extra(best)));
+    tip.style.display = 'block';
+    const left = (x(best) / W) * r0.width + 12;
+    tip.style.left = Math.max(0, Math.min(left, r0.width - tip.offsetWidth - 4)) + 'px';
+    tip.style.top = '4px';
+  };
+  svg.onmouseleave = () => { tip.style.display = 'none'; hair.setAttribute('opacity', '0'); };
+}
+
+function renderCharts() {
+  const box = document.getElementById('charts');
+  const any = HIST && HIST.points.length > 1;
+  document.getElementById('histEmpty').style.display = any ? 'none' : 'block';
+  box.style.display = any ? '' : 'none';
+  if (!any) return;
+  if (!box.children.length) CHARTS.forEach((c, i) => box.append(el('div', { class: 'sys-chart' },
+    el('h3', {}, c.title),
+    el('div', { class: 'chart-wrap' }, (() => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.id = 'c' + i;
+      s.setAttribute('role', 'img'); s.setAttribute('aria-label', c.title + ' over time'); return s; })(), el('div', { class: 'chart-tip', id: 't' + i })),
+    el('div', { class: 'legend' }, ...c.series.map(s => el('span', {}, el('i', { style: 'background:' + s.color }), s.label))))));
+  CHARTS.forEach(drawChart);
+}
+
+async function loadLive() {
+  try { LIVE = await getJSON('/api/system'); renderLive(); } catch (e) { toast(e.message, true); }
+}
+async function loadHistory() {
+  try { HIST = await getJSON('/api/system/history?hours=' + HOURS); renderCharts(); } catch (e) { toast(e.message, true); }
+}
+document.querySelectorAll('#range button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#range button').forEach(x => x.classList.toggle('on', x === b));
+  HOURS = +b.dataset.h; loadHistory();
+});
+window.addEventListener('resize', () => { if (HIST) renderCharts(); });
+loadLive(); loadHistory();
+setInterval(loadLive, 5000);
+setInterval(loadHistory, 60000);
+</script>
+{% endblock %}

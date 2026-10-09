@@ -19,8 +19,9 @@ The [user guide](../user-guide.md) has every detail.
 12. [Settings and developer options](settings.md)
 13. [Database, backups and Power BI](database.md)
 14. [Raw data](raw-data.md)
-15. [Users and permissions](users.md)
-16. [Error codes](error-codes.md)
+15. [System](system.md)
+16. [Users and permissions](users.md)
+17. [Error codes](error-codes.md)
 
 The Tutorial link under the version number at the bottom of the left menu
 opens these pages inside the app, so they also work without internet.

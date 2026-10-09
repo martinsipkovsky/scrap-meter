@@ -43,6 +43,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -719,3 +720,28 @@ class DbAuditLog(Base):
     undo_of: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     undone_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+# --------------------------------------------------------------------------- #
+# System tab (app.system_info)
+# --------------------------------------------------------------------------- #
+
+
+class SystemSample(Base):
+    """How the computer and the app were doing, once a minute, kept 7 days."""
+
+    __tablename__ = "system_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    cpu_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    load1: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    mem_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    app_rss: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # bytes
+    disk_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    data_disk_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    db_bytes: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    net_rx: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # bytes per second
+    net_tx: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    devices_ok: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    read_errors: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

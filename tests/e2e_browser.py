@@ -13,7 +13,7 @@ import json
 from playwright.sync_api import sync_playwright
 
 PAGES = ["/", "/stations", "/station/{sid}", "/devices", "/jobs", "/data", "/scrap", "/chat", "/notifications",
-         "/users", "/database", "/rawdb", "/settings", "/account", "/changelog", "/tutorial", "/tutorial/oee",
+         "/users", "/database", "/rawdb", "/system", "/settings", "/account", "/changelog", "/tutorial", "/tutorial/oee",
          "/tutorial/docs/user-guide"]
 
 # the colour contrast of the page's text against its background (WCAG); a

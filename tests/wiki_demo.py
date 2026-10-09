@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import math
 
 from app import chatroom, comments, commands, dev_options, stations
 from app.auth import hash_password
 from app.database import SessionLocal
-from app.models import ChatCommand, ChatMessage, Device, NotificationProvider, NotificationRule, Station, User, utcnow
+from app.models import ChatCommand, ChatMessage, Device, NotificationProvider, NotificationRule, Station, SystemSample, User, utcnow
 from app.production import stop
 
 
@@ -77,6 +78,13 @@ def main() -> None:
         db.add(ChatMessage(kind="discord", chat="222222222222222222", direction=direction, author=author, text=text,
                            status="received" if direction == "in" else "sent",
                            created_at=now - dt.timedelta(minutes=minutes)))
+    db.commit()
+    # a day of System tab samples, so its graphs have lines
+    for i in range(1, 24 * 60, 2):
+        db.add(SystemSample(created_at=now - dt.timedelta(minutes=i), cpu_percent=9 + 5 * math.sin(i / 90) + (i % 7),
+                            load1=0.6, mem_percent=38 + (i % 50) / 25, app_rss=118e6, disk_percent=31,
+                            data_disk_percent=31, db_bytes=640e6 - i * 9e3, net_rx=24e3 + (i % 13) * 900,
+                            net_tx=11e3 + (i % 11) * 500, devices_ok=4, read_errors=1))
     db.commit()
     dev_options.save({"whatsapp_linked": False, "signal": False})
     print("demo ready")

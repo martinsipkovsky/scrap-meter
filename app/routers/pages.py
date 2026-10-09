@@ -90,6 +90,13 @@ def rawdb_page(request: Request, user: User = Depends(require_user)):
     return templates.TemplateResponse(request, "rawdb.html", _ctx(request, user, page="rawdb"))
 
 
+@router.get("/system", response_class=HTMLResponse)
+def system_page(request: Request, user: User = Depends(require_user)):
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Only administrators can see the system values")
+    return templates.TemplateResponse(request, "system.html", _ctx(request, user, page="system"))
+
+
 @router.get("/changelog", response_class=HTMLResponse)
 def changelog_page(request: Request, user: User = Depends(require_user)):
     return templates.TemplateResponse(request, "changelog.html",

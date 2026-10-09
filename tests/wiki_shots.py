@@ -70,6 +70,7 @@ def main() -> None:
         shot("users", "/users")
         shot("database", "/database", wait=3500)
         shot("raw-data", "/rawdb", wait=3000)
+        shot("system", "/system", wait=3500)
         shot("changelog", "/changelog")
         browser.close()
 

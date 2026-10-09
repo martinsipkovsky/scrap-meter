@@ -759,3 +759,33 @@ settings (an OPC UA login) are masked; saving a masked password keeps the
 stored one. The SQL box refuses those tables and columns and the backup and
 database settings, as well as server functions that reach outside the data
 (reading files, sleeping, and so on). The change log is read-only.
+
+## System tab
+
+Administrators see a *System* tab above Settings: how the computer and the
+app are doing, for a quick look when the app feels slow or a device stops
+reading.
+
+- **Tiles** at the top: CPU use (with the cores and the load), memory in use
+  (and how much the app itself uses), the app's disk, the database size and
+  its response time, network traffic in and out, and the devices online out
+  of those enabled (red when some have read errors). They refresh every
+  5 seconds.
+- **Graphs** of CPU, memory, disk use (the app's disk and the data volume),
+  the database size, network traffic and devices online / with read errors,
+  over 1 hour, 6 hours, 24 hours or 7 days. The app stores one sample a minute
+  while it runs (table `system_samples`) and deletes samples older than
+  7 days. A gap in a line is time the app was not running. Hover a graph to
+  read the values at that time.
+- **Computer and app:** host name, operating system, Python and app version,
+  how long the computer and the app have been up, swap.
+- **Database:** connected or not, the server version, size and response time.
+- **Disks**, **Network interfaces** (state, addresses, current traffic, totals,
+  errors and drops), **Listening ports** (each port a device listens on, with
+  the device, and the Power BI port when it is on) and the **Poller** (running,
+  devices, online, read errors with their messages, the last read).
+
+In Docker the values are what the app's container sees: CPU, memory and
+uptime are the host's (with Docker Desktop, its virtual machine's), the
+network is the container's own interface, and the disk is the one Docker
+keeps the container on. No change to `docker-compose.yml` is needed.

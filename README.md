@@ -100,6 +100,9 @@ versions keep working.
 - **Changelog:** the version at the bottom of the menu opens the list of
   changes in every release ([CHANGELOG.md](CHANGELOG.md)).
 - **Users and permissions:** login required, with granular permissions per user.
+- **System tab** for admins: CPU, memory, disks, database size, network
+  traffic, uptime, versions, listening ports and poller health, live and as
+  graphs over up to 7 days.
 - **Raw data tab** for admins: every table page by page with search, filters
   and sorting, type-aware inline editing, a change log with undo, and a
   read-only SQL box. Secrets stay hidden.
@@ -138,7 +141,7 @@ small simulation server (see [Protocols](docs/protocols.md#opc-ua-client-opcua))
 | [Configuration](docs/configuration.md) | Environment variables and the Database tab |
 | [Test report](docs/TEST_REPORT.md) | What was tested in the latest release, how, and what could not be tested |
 | [Tutorial](docs/wiki/README.md) | Short pages with pictures on every part of the app (also in the app, under the version number) |
-| [User guide](docs/user-guide.md) | Devices and stations, dashboard and OEE, comments, manual entries, production state, data, statistics, users, export/import, the Raw data tab |
+| [User guide](docs/user-guide.md) | Devices and stations, dashboard and OEE, comments, manual entries, production state, data, statistics, users, export/import, the Raw data and System tabs |
 | [Protocols](docs/protocols.md) | How to connect each device type, with every config field |
 | [Reports: Power BI, Excel and SQL](docs/reporting.md) | Reading the data with Power BI (Desktop and scheduled refresh), Excel or SQL; the views and example queries |
 | [Notifications](docs/notifications.md) | Alert rules, WhatsApp (linked phone), Telegram, Discord and Signal delivery |

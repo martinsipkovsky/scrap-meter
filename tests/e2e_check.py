@@ -21,7 +21,7 @@ import traceback
 import httpx
 
 RESULTS: list[dict] = []
-ADMIN_ONLY = ["/api/database", "/api/rawdb/tables"]
+ADMIN_ONLY = ["/api/database", "/api/rawdb/tables", "/api/system"]
 
 
 class Fail(Exception):
@@ -460,6 +460,15 @@ def main() -> None:
         send("POST", "/api/database/reading/daily/rebuild")
         send("PUT", "/api/database/reading/access", {"enabled": False})
         k.detail = f"{n} rows in powerbi_readings; users table refused"
+    with check("System", "Live values, listening ports, poller and the sampled history") as k:
+        s = get("/api/system")
+        assert s["database"]["connected"] and s["database"]["server"].startswith("PostgreSQL")
+        assert s["poller"]["running"] and s["poller"]["enabled"] >= 10
+        ports = {p["port"] for p in s["listeners"]}
+        assert {TCP_PORT, UDP_PORT, SLMP_PORT} <= ports, ports
+        h = wait(lambda: (lambda x: x if x["points"] else None)(get("/api/system/history", params={"hours": 1})), timeout=90)
+        k.detail = (f"CPU {s['cpu']['percent']}% of {s['cpu']['cores']} cores, memory {s['memory']['percent']}%, "
+                    f"db {s['database']['size_bytes'] // 1048576} MB, ports {sorted(ports)}, {len(h['points'])} samples")
     with check("Raw data", "Tables, rows, edit a value, change log, undo, read-only SQL") as k:
         rows = get("/api/rawdb/tables/stations/rows", params={"limit": 5})
         key = rows["rows"][0]["id"] if "rows" in rows else rows["items"][0]["id"]

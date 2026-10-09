@@ -1,8 +1,15 @@
 # Notifications and commands
 
-The Notifications tab (permission *manage_notifications*) has three parts.
+The Notifications tab (permission *manage_notifications*) has alert
+settings and three parts.
 
 ![Notifications tab](images/notifications.png)
+
+**Alert settings**: with *Send alerts only when the station is in
+production* on (the default), a station that is idle or stopped sends no
+alerts, for example when a camera disconnects after the shift. The alert log
+at the bottom lists them as *skipped*. "Station stopped, idle or back in
+production" is still sent and chat commands always answer.
 
 **Providers** are where messages go: Discord channels (a bot, or a webhook
 that only sends), Telegram chats, a webhook, and with the

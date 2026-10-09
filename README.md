@@ -89,7 +89,9 @@ versions keep working.
   each with a level (info / warning / alert) and its own destinations:
   WhatsApp sent from your own number (linked device, unofficial), Telegram
   and Discord bots, Discord webhooks, Signal (through signal-cli, optional
-  container), webhooks, Green API or Meta Cloud API.
+  container), webhooks, Green API or Meta Cloud API. By default a station
+  that is idle or stopped sends no alerts (a camera dropping its link after
+  the shift); the alert log lists them as skipped.
 - **Chat commands:** `!status` (or your own commands) in a WhatsApp or Signal group or Discord channel
   answers with live production state, OK / NOK and scrap per station;
   each command can list only the stations active in the last N days.

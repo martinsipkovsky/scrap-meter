@@ -19,6 +19,7 @@ def _setup(client):
     _, sid = add_station_device(client, "Line 1", {"jobs": ["J1"], "parts_per_poll": 10, "fail_ratio": 0.5,
                                                     "reset_every": 0, "job_change_every": 0})
     add_station_device(client, "Line 2", {"jobs": ["J1"]})
+    client.post(f"/api/stations/{sid}/production/start")  # alerts go out only during production
     db = SessionLocal()
     try:
         if not db.query(ChatCommand).count():  # seeded once per test run

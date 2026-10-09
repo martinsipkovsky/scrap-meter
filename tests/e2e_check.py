@@ -331,14 +331,21 @@ def main() -> None:
         sent = wait(lambda: [s for s in fake.get("/fake/sent").json() if "scrap" in (s["text"] or "").lower()
                              and "E2E simulator" in (s["text"] or "")], timeout=40)
         k.detail = sent[0]["text"][:120]
-    with check("Notifications", "Disconnect rule sends an alert for the broken device") as k:
+    with check("Notifications", "Alerts only in production (default): the idle broken device's alert is skipped and logged") as k:
+        assert get("/api/notifications/policy") == {"production_only": True}
         send("PATCH", f"/api/devices/{ids['broken'][0]}", {"enabled": True})
         send("POST", "/api/notifications/rules", {"name": "E2E offline", "condition": "disconnected", "severity": "warning",
                                                  "provider_ids": [p1["id"]], "cooldown": 0, "enabled": True,
                                                  "station_id": ids["broken"][1]}, expect=201)
+        row = wait(lambda: next((r for r in get("/api/notifications/logs") if r["skipped"]
+                                 and "E2E broken" in r["message"]), None), timeout=40)
+        assert not [s for s in fake.get("/fake/sent").json() if "E2E broken" in (s["text"] or "")]
+        k.detail = row["detail"][:120]
+    with check("Notifications", "Switch off: the disconnect rule sends an alert for the broken device") as k:
+        send("PUT", "/api/notifications/policy", {"production_only": False})
         sent = wait(lambda: [s for s in fake.get("/fake/sent").json() if "E2E broken" in (s["text"] or "")], timeout=40)
+        send("PUT", "/api/notifications/policy", {"production_only": True})
         k.detail = sent[0]["text"][:120]
-        assert get("/api/notifications/logs")
     with check("Chat commands", "!status in a Discord channel is answered there") as k:
         fake.post("/fake/discord/111111111111111111", json={"author": "Eva", "content": "!status E2E simulator"})
         reply = wait(lambda: [s for s in fake.get("/fake/sent").json() if s["to"] == "111111111111111111"

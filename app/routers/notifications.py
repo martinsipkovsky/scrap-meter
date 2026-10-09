@@ -220,6 +220,19 @@ def signal_groups(_: User = Depends(require_permission("manage_notifications")))
         raise HTTPException(409, str(exc)) from exc
 
 
+# ---- settings -------------------------------------------------------------
+@router.get("/policy")
+def get_policy(_: User = Depends(require_permission("manage_notifications"))):
+    return notifications.policy()
+
+
+@router.put("/policy")
+def put_policy(body: dict, _: User = Depends(require_permission("manage_notifications"))):
+    if "production_only" in body and not isinstance(body["production_only"], bool):
+        raise HTTPException(400, "production_only must be true or false")
+    return notifications.save_policy(body)
+
+
 # ---- logs -----------------------------------------------------------------
 @router.get("/logs")
 def list_logs(limit: int = 100, db: Session = Depends(get_db), _: User = Depends(require_permission("manage_notifications"))):
@@ -229,6 +242,7 @@ def list_logs(limit: int = 100, db: Session = Depends(get_db), _: User = Depends
             "id": r.id,
             "message": r.message,
             "delivered": r.delivered,
+            "skipped": bool(r.skipped),
             "detail": r.detail,
             "created_at": r.created_at,
         }

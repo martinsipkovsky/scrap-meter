@@ -110,6 +110,7 @@ def test_production_change_and_job_change_events(client, sent):
             "name": cond, "condition": cond, "cooldown": 0, "severity": "info"}).status_code == 201
     did, sid = add_station_device(client, "CamJ", {"jobs": ["A", "B"], "parts_per_poll": 5, "reset_every": 0,
                                                    "job_change_every": 2})
+    client.post(f"/api/stations/{sid}/production/start")  # alerts go out only during production
     for _ in range(3):
         client.post(f"/api/devices/{did}/poll")
     client.post(f"/api/stations/{sid}/production/stop")

@@ -1,4 +1,4 @@
-# Test report: Scrap Meter 1.22.1
+# Test report: Scrap Meter 1.23.0
 
 Date: 2026-10-09. Tested on the development PC (Windows 11, Docker 29.8,
 Docker Compose 5.5) with the image built from this repository.
@@ -7,9 +7,13 @@ Docker Compose 5.5) with the image built from this repository.
 
 | Run | Result |
 |---|---|
-| Automated test suite (pytest, 28 files) | **197 passed**, 0 failed |
-| End-to-end check of every tab through the app's API, on a throwaway stack with simulated devices | **55 passed**, 0 failed |
+| Automated test suite (pytest, 29 files) | **203 passed**, 0 failed |
+| End-to-end check of every tab through the app's API, on a throwaway stack with simulated devices | **56 passed**, 0 failed |
 | Browser check of 18 pages in dark mode, light mode and at phone width | **54 passed**, 0 failed |
+
+Re-run for 1.23.0 (alerts only during production): the end-to-end check now
+confirms that the idle station's disconnect alert is skipped and logged, and
+that it is sent once the switch is off.
 
 The first end-to-end run found four problems in the app. They were fixed in
 1.22.1 before the final runs above (see [Fixed during this run](#fixed-during-this-run)).

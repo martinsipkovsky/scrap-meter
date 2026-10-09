@@ -46,6 +46,18 @@ def _dev_options_on():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _alert_policy_default():
+    # alerts only during production is on by default (never saved); clear what
+    # a test saved and the skipped-alert memory
+    from app import notifications, settings_store
+
+    settings_store.save(notifications.POLICY_KEY, None)
+    notifications._policy = None
+    notifications._skip_logged.clear()
+    yield
+
+
 @pytest.fixture()
 def client():
     # fresh schema per test

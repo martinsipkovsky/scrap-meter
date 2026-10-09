@@ -4,6 +4,9 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.23.0 — 2026-10-09
+- New switch on the Notifications tab, **Send alerts only when the station is in production**, on by default (also after the update). While a station is idle or stopped, its alerts are not sent: no more "device disconnected" messages when a camera drops its connection after the shift. The alert log lists them as *skipped*. A device that drops while its station is in production still sends the alert, "Station stopped, idle or back in production" is still sent, and chat commands always answer.
+
 ## 1.22.1 — 2026-10-09
 - Fixes from the full test run: a device that was just added shows the amber `W01` (waiting) instead of a red code until it is read for the first time; on phones, wide tables scroll sideways instead of making the whole page wider; the marks in the Scrap statistics day map stay readable in light mode; the guides opened from the Tutorial fit a phone screen.
 

@@ -87,7 +87,7 @@
   "area": "Devices",
   "check": "simulator: the device delivers values and its station counts",
   "ok": true,
-  "detail": "values {\"pass\": 34, \"fail\": 2, \"count\": 36, \"job\": \"SIM_A\"}, job SIM_A, OK 30"
+  "detail": "values {\"pass\": 38, \"fail\": 2, \"count\": 40, \"job\": \"SIM_A\"}, job SIM_A, OK 34"
  },
  {
   "area": "Devices",
@@ -105,13 +105,13 @@
   "area": "Devices",
   "check": "modbus: the device delivers values and its station counts",
   "ok": true,
-  "detail": "values {\"pass\": 129, \"fail\": 10, \"count\": 139, \"job\": \"MB_JOB\"}, job MB_JOB, OK 48"
+  "detail": "values {\"pass\": 132, \"fail\": 11, \"count\": 143, \"job\": \"MB_JOB\"}, job MB_JOB, OK 51"
  },
  {
   "area": "Devices",
   "check": "profinet: the device delivers values and its station counts",
   "ok": true,
-  "detail": "values {\"pass\": 129, \"fail\": 10, \"count\": 139, \"job\": \"PN_JOB\"}, job PN_JOB, OK 48"
+  "detail": "values {\"pass\": 132, \"fail\": 11, \"count\": 143, \"job\": \"PN_JOB\"}, job PN_JOB, OK 51"
  },
  {
   "area": "Devices",
@@ -141,7 +141,7 @@
   "area": "Devices",
   "check": "opcua: the device delivers values and its station counts",
   "ok": true,
-  "detail": "values {\"ns=2;s=Line1.Fail\": 3, \"ns=2;s=Line1.Pass\": 109, \"ns=2;s=Line1.Job\": \"JOB_A\"}, job JOB_A, OK 46"
+  "detail": "values {\"ns=2;s=Line1.Fail\": 7, \"ns=2;s=Line1.Pass\": 98, \"ns=2;s=Line1.Job\": \"JOB_A\"}, job JOB_A, OK 38"
  },
  {
   "area": "Stations",
@@ -177,13 +177,13 @@
   "area": "Dashboard",
   "check": "Summary and OEE answer for every station",
   "ok": true,
-  "detail": "15 stations, overall OEE {'availability': 0.5226, 'performance': 0.4964, 'quality': 0.9466, 'oee': 0.2456, 'stations': 3, 'without_cycle_time': ['E2E broken', 'E2E datachannel', 'E2E modbus', 'E2E native', 'E2E opcua', 'E2E profinet', 'E2E simulator', 'E2E slmp', 'E2E slmp_listen', 'E2E tcp_listen', 'E2E udp_listen'], 'jobs_without_cycle_time': ['DC_JOB', 'JOB_A', 'MB_JOB', 'NM_JOB', 'PLC_JOB', 'P"
+  "detail": "15 stations, overall OEE {'availability': 0.534, 'performance': 0.4952, 'quality': 0.9293, 'oee': 0.2457, 'stations': 3, 'without_cycle_time': ['E2E broken', 'E2E datachannel', 'E2E modbus', 'E2E native', 'E2E opcua', 'E2E profinet', 'E2E simulator', 'E2E slmp', 'E2E slmp_listen', 'E2E tcp_listen', 'E2E udp_listen'], 'jobs_without_cycle_time': ['DC_JOB', 'JOB_A', 'MB_JOB', 'NM_JOB', 'PLC_JOB', 'PN"
  },
  {
   "area": "Stations",
   "check": "Station view with its chart over 1 h to 7 days",
   "ok": true,
-  "detail": "OK 33 / NOK 3 over 7 days"
+  "detail": "OK 34 / NOK 2 over 7 days"
  },
  {
   "area": "Jobs",
@@ -195,7 +195,7 @@
   "area": "OEE",
   "check": "A cycle time gives the simulator station a performance figure",
   "ok": true,
-  "detail": "A 0.0002 P 4.2783 Q 0.9167 OEE 0.0008"
+  "detail": "A 0.0002 P 4.1988 Q 0.9444 OEE 0.0008"
  },
  {
   "area": "Manual entries",
@@ -213,13 +213,13 @@
   "area": "Data log",
   "check": "Readings, exclude and include one, exclude a period",
   "ok": true,
-  "detail": "period: {'changed': 11}"
+  "detail": "period: {'changed': 12}"
  },
  {
   "area": "Scrap statistics",
   "check": "Today's figures add up and the Excel file downloads",
   "ok": true,
-  "detail": "overall OK 3187 NOK 157 (stations 3187), xlsx 8450 B"
+  "detail": "overall OK 3367 NOK 228 (stations 3367), xlsx 8483 B"
  },
  {
   "area": "Notifications",
@@ -237,19 +237,25 @@
   "area": "Notifications",
   "check": "Scrap rate rule sends an alert to Discord",
   "ok": true,
-  "detail": "🚨 ALERT · High scrap on 'E2E simulator' job 'SIM_A': 21.4% (3/14) >= 0.0%"
+  "detail": "\ud83d\udea8 ALERT \u00b7 High scrap on 'E2E simulator' job 'SIM_A': 22.2% (4/18) >= 0.0%"
  },
  {
   "area": "Notifications",
-  "check": "Disconnect rule sends an alert for the broken device",
+  "check": "Alerts only in production (default): the idle broken device's alert is skipped and logged",
   "ok": true,
-  "detail": "⚠️ WARNING · Station 'E2E broken' is disconnected: Device 'E2E broken': TCP read failed: [Errno 111] Connection refused"
+  "detail": "Not sent: station 'E2E broken' is not in production (idle); alerts go out only during production (Notifications settings"
+ },
+ {
+  "area": "Notifications",
+  "check": "Switch off: the disconnect rule sends an alert for the broken device",
+  "ok": true,
+  "detail": "\u26a0\ufe0f WARNING \u00b7 Station 'E2E broken' is disconnected: Device 'E2E broken': TCP read failed: [Errno 111] Connection refused"
  },
  {
   "area": "Chat commands",
   "check": "!status in a Discord channel is answered there",
   "ok": true,
-  "detail": "📊 Status 09.10.2026 08:13 / E2E simulator: ▶ in production, job SIM_A /    OK 15 · NOK 3 · scrap 16.7% / Total: OK 15 · NOK 3 "
+  "detail": "\ud83d\udcca Status 09.10.2026 08:56 / E2E simulator: \u25b6 in production, job SIM_A /    OK 22 \u00b7 NOK 4 \u00b7 scrap 15.4% / Total: OK 22 \u00b7 NOK 4 "
  },
  {
   "area": "Chat commands",
@@ -261,7 +267,7 @@
   "area": "Chat commands",
   "check": "Prefix change, preview, the chats list and !help",
   "ok": true,
-  "detail": "4 chats; preview {\"reply\": \"\\ud83d\\udcca Status 09.10.2026 08:14\\nE2E broken: \\u23f8 idle, job \\u"
+  "detail": "4 chats; preview {\"reply\": \"\\ud83d\\udcca Status 09.10.2026 08:56\\nE2E broken: \\u23f8 idle, job \\u"
  },
  {
   "area": "Chat room",
@@ -303,25 +309,25 @@
   "area": "Database",
   "check": "Database tab, backup download, import of that backup",
   "ok": true,
-  "detail": " restored; readings 96307 -> 96308"
+  "detail": " restored; readings 96890 -> 96891"
  },
  {
   "area": "Database",
   "check": "FTP backup: settings, test and a run to the FTP server",
   "ok": true,
-  "detail": "{\"at\": \"2026-10-09T08:14:18.822232+00:00\", \"trigger\": \"manual\", \"ok\": true, \"file\": \"cognex-backup-20261009-081418.json.gz\", \"size\": 1246052, \"deleted\": 0, \"seconds\": 0.9, \"message\": \"Uploaded cognex-"
+  "detail": "{\"at\": \"2026-10-09T08:56:47.853038+00:00\", \"trigger\": \"manual\", \"ok\": true, \"file\": \"cognex-backup-20261009-085647.json.gz\", \"size\": 1258835, \"deleted\": 0, \"seconds\": 1.0, \"message\": \"Uploaded cognex-"
  },
  {
   "area": "Power BI",
   "check": "Power BI access on: the read-only login reads the views through the port",
   "ok": true,
-  "detail": "96314 rows in powerbi_readings; users table refused"
+  "detail": "96897 rows in powerbi_readings; users table refused"
  },
  {
   "area": "Raw data",
   "check": "Tables, rows, edit a value, change log, undo, read-only SQL",
   "ok": true,
-  "detail": "SQL {\"columns\": [\"n\"], \"rows\": [[96321]], \"truncated\": false, \"limit\": 500}; DELETE refused (400)"
+  "detail": "SQL {\"columns\": [\"n\"], \"rows\": [[96904]], \"truncated\": false, \"limit\": 500}; DELETE refused (400)"
  },
  {
   "area": "Pages",

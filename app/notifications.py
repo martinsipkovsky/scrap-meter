@@ -17,6 +17,12 @@ Two kinds of condition:
 Rules for all stations can override their threshold per station
 (rule.thresholds = {"<station id>": value}). A station whose alerts are muted
 (app.mute) gets none.
+
+With "Send alerts only when the station is in production" on (the default,
+settings_store key alert_policy), alerts about a station that is idle or
+stopped are not sent but written to the alert log as skipped, at most once per
+rule cooldown. production_change itself is still sent: it is the message that
+says the station left or rejoined production. Chat commands answer regardless.
 """
 from __future__ import annotations
 
@@ -26,7 +32,7 @@ import threading
 
 from sqlalchemy.orm import Session
 
-from . import notifiers, production
+from . import notifiers, production, settings_store
 from .models import (
     NotificationLog,
     NotificationProvider,
@@ -58,6 +64,55 @@ SEVERITIES = {"info": "ℹ️ INFO", "warning": "⚠️ WARNING", "alert": "🚨
 # app_started is sent this long after startup, so the WhatsApp client has
 # reconnected by then
 STARTUP_NOTICE_DELAY = 60
+
+POLICY_KEY = "alert_policy"
+# event conditions sent whatever the station's production state
+_ALWAYS_SENT = {"production_change"}
+_policy: dict | None = None
+# (rule id, station id) -> when a skipped alert was last written to the log
+_skip_logged: dict[tuple[int, int], dt.datetime] = {}
+
+
+def policy() -> dict:
+    """{"production_only": bool}; on when never saved (also on an upgrade)."""
+    global _policy
+    if _policy is None:
+        stored = settings_store.load(POLICY_KEY) or {}
+        _policy = {"production_only": bool(stored.get("production_only", True))}
+    return dict(_policy)
+
+
+def save_policy(values: dict) -> dict:
+    global _policy
+    new = {"production_only": bool(values.get("production_only", policy()["production_only"]))}
+    settings_store.save(POLICY_KEY, new)
+    _policy = new
+    return dict(new)
+
+
+def _held_back(station: Station | None, condition: str) -> bool:
+    """Not sent: the station is not in production and alerts go out only then."""
+    return (station is not None and condition not in _ALWAYS_SENT
+            and policy()["production_only"] and not production.in_production(station))
+
+
+def _skip(db: Session, rule: NotificationRule, station: Station, message: str, now: dt.datetime) -> None:
+    """Log a held-back alert as skipped, once per rule cooldown (a device that
+    stays offline is checked after every failed read)."""
+    key = (rule.id, station.id)
+    last = _skip_logged.get(key)
+    gap = rule.cooldown or 0
+    if not CONDITIONS.get(rule.condition, {}).get("event"):
+        gap = max(gap, 60)
+    if last is not None and (now - last).total_seconds() < gap:
+        return
+    _skip_logged[key] = now
+    state = production.state(station)
+    db.add(NotificationLog(
+        rule_id=rule.id, message=format_message(message, rule.severity), delivered=False, skipped=True,
+        detail=f"Not sent: station '{station.name}' is not in production ({state}); "
+               "alerts go out only during production (Notifications settings)"))
+    db.commit()
 
 
 def _cooldown_ok(rule: NotificationRule, now: dt.datetime) -> bool:
@@ -189,7 +244,9 @@ def evaluate_station(db: Session, station: Station) -> None:
     online = stations.status(station, stations.devices_of(db, [station]))
     for rule in _rules(db, ["scrap_rate", "fail_count", "disconnected"], station):
         met, message = _condition_met(rule, station, active_state, online)
-        if met and _cooldown_ok(rule, now):
+        if met and _held_back(station, rule.condition):
+            _skip(db, rule, station, message, now)
+        elif met and _cooldown_ok(rule, now):
             _fire(db, rule, message, now)
 
 
@@ -199,8 +256,11 @@ def emit(db: Session, condition: str, message: str, station: Station | None = No
     if station is not None and station.alerts_muted:
         return
     now = utcnow()
+    held_back = _held_back(station, condition)
     for rule in _rules(db, [condition], station):
-        if _cooldown_ok(rule, now):
+        if held_back:
+            _skip(db, rule, station, message, now)
+        elif _cooldown_ok(rule, now):
             _fire(db, rule, message, now)
 
 

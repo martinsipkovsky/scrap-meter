@@ -49,6 +49,13 @@
 {% endif %}
 
 <div class="section">
+  <h2>Alert settings</h2>
+  <label style="display:flex;align-items:center;gap:8px;font-weight:normal"><input type="checkbox" id="pol_production" style="width:auto;margin:0" onchange="savePolicy()"/> Send alerts only when the station is in production</label>
+  <p class="hint" style="margin:6px 0 0">On: alerts about an idle or stopped station (device offline, job change, scrap) are not sent; the alert log lists them as skipped.
+    "Station stopped, idle or back in production" is still sent, and chat commands always answer.</p>
+</div>
+
+<div class="section">
   <div class="toolbar"><h2 style="border:none">Providers</h2><button class="btn small" onclick="newProvider()">+ Add provider</button></div>
   <p class="hint" style="margin:-4px 0 10px">A provider is one destination: a WhatsApp group, a Telegram chat, Discord channels, a Signal group, a webhook. Rules pick which providers get their messages.
     A Discord bot needs <strong>Message Content Intent</strong> turned on in the Discord developer portal (Bot page) to read commands and the Chat room.</p>
@@ -432,7 +439,8 @@ async function load() {
   for (const l of logs) lr.append(el('tr', {},
     el('td', { class: 'muted' }, fmtFull(l.created_at)),
     el('td', {}, l.message),
-    el('td', {}, el('span', { class: 'badge ' + (l.delivered ? 'ok' : 'bad') }, l.delivered ? 'yes' : 'no')),
+    el('td', {}, l.skipped ? el('span', { class: 'badge off' }, 'skipped')
+      : el('span', { class: 'badge ' + (l.delivered ? 'ok' : 'bad') }, l.delivered ? 'yes' : 'no')),
     el('td', { class: 'muted' }, l.detail || ''),
   ));
 }
@@ -554,6 +562,18 @@ async function loadCommands() {
 }
 function groupName(id) { const g = (WA_GROUPS || []).find(g => g.id === id); return g ? g.name : id; }
 
+async function loadPolicy() {
+  try { document.getElementById('pol_production').checked = (await getJSON('/api/notifications/policy')).production_only; }
+  catch (e) { /* ignore */ }
+}
+async function savePolicy() {
+  const on = document.getElementById('pol_production').checked;
+  try {
+    await api('PUT', '/api/notifications/policy', { production_only: on });
+    toast(on ? 'Alerts go out only during production' : 'Alerts go out whatever the production state');
+  } catch (e) { toast(e.message, true); loadPolicy(); }
+}
+
 async function savePrefix() {
   try { await api('PUT', '/api/notifications/commands/prefix', { prefix: document.getElementById('c_prefix').value.trim() }); toast('Prefix saved'); }
   catch (e) { toast(e.message, true); }
@@ -653,6 +673,7 @@ async function delCommand(c) {
   loadCommands();
 }
 
+loadPolicy();
 load();
 waLoad();
 sigLoad();

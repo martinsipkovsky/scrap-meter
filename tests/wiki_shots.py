@@ -17,6 +17,8 @@ from playwright.sync_api import sync_playwright
 BASE = os.environ.get("BASE", "http://web:8000")
 OUT = Path(os.environ.get("OUT", "docs/wiki/images"))
 W, H = 1280, 800
+# ONLY=notifications,settings retakes just those pictures
+ONLY = {n for n in os.environ.get("ONLY", "").split(",") if n}
 
 
 def main() -> None:
@@ -32,6 +34,8 @@ def main() -> None:
         page.mouse.click(600, 30)  # a click lets the dashboard play sound (no "click the page" hint)
 
         def shot(name: str, path: str, wait: float = 2500, full: bool = False, clip=None, before=None) -> None:
+            if ONLY and name not in ONLY:
+                return
             page.goto(BASE + path)
             page.wait_for_timeout(wait)
             page.mouse.click(700, 30)  # an empty spot: browsers allow sound after a click
@@ -59,7 +63,7 @@ def main() -> None:
         shot("chat-room", "/chat", wait=3500)
         shot("notifications", "/notifications", wait=3500)
         shot("notifications-commands", "/notifications", wait=3500,
-             before=lambda: page.locator("text=Chat commands").first.scroll_into_view_if_needed())
+             before=lambda: page.locator("h2:has-text('Chat commands')").first.scroll_into_view_if_needed())
         shot("settings", "/settings")
         shot("settings-developer", "/settings",
              before=lambda: page.locator("text=Developer options").first.scroll_into_view_if_needed())

@@ -594,6 +594,8 @@ class NotificationLog(Base):
     rule_id: Mapped[Optional[int]] = mapped_column(nullable=True)
     message: Mapped[str] = mapped_column(Text)
     delivered: Mapped[bool] = mapped_column(Boolean, default=False)
+    # not sent on purpose: the station was not in production (app.notifications)
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True

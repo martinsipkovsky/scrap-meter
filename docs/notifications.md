@@ -12,6 +12,24 @@ Alerts are set up on the *Notifications* tab in three parts:
 Every message and its delivery result is recorded in the alert log at the
 bottom of the tab.
 
+## Alerts only during production
+
+**Alert settings → Send alerts only when the station is in production** is
+on by default (also on a server updated from before 1.23). While a station is
+idle or stopped (see [production state](user-guide.md#production-state)),
+none of its alerts are sent: a device that goes offline or reconnects after
+the shift, a job change during changeover, scrap. Each one is written to the
+alert log with the result *skipped* and the reason, once per rule cooldown
+(at least once a minute for a device that stays offline). As soon as the
+station is in production again, its alerts go out as usual, so a device that
+drops during production is reported.
+
+Not affected: *Station stopped, idle or back in production* (it is the
+message about the production state itself), system messages (backups, app
+started) and chat commands such as `!status`, `!help` and `!mute`, which
+always answer. Turn the switch off to get every alert whatever the
+production state, as before 1.23.
+
 ## Rules
 
 | Send when | Kind | Fires |
@@ -46,7 +64,7 @@ rule at 5 % to the shift group and the maintenance group, disconnects to
 maintenance only, and backup and app messages to an admin chat.
 
 Scrap-rate and fail-count rules are suppressed while a station is idle or
-manually stopped. They use the counters shown on the dashboard, so
+manually stopped, whatever the switch above says. They use the counters shown on the dashboard, so
 **Reset counters** on the station view also clears them. A disconnect rule
 fires when a device the station uses is offline or can't deliver its value.
 

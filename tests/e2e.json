@@ -87,7 +87,7 @@
   "area": "Devices",
   "check": "simulator: the device delivers values and its station counts",
   "ok": true,
-  "detail": "values {\"pass\": 35, \"fail\": 5, \"count\": 40, \"job\": \"SIM_A\"}, job SIM_A, OK 32"
+  "detail": "values {\"pass\": 37, \"fail\": 3, \"count\": 40, \"job\": \"SIM_A\"}, job SIM_A, OK 33"
  },
  {
   "area": "Devices",
@@ -141,7 +141,7 @@
   "area": "Devices",
   "check": "opcua: the device delivers values and its station counts",
   "ok": true,
-  "detail": "values {\"ns=2;s=Line1.Job\": \"JOB_A\", \"ns=2;s=Line1.Pass\": 98, \"ns=2;s=Line1.Fail\": 6}, job JOB_A, OK 30"
+  "detail": "values {\"ns=2;s=Line1.Job\": \"JOB_A\", \"ns=2;s=Line1.Pass\": 119, \"ns=2;s=Line1.Fail\": 4}, job JOB_A, OK 46"
  },
  {
   "area": "Stations",
@@ -177,13 +177,13 @@
   "area": "Dashboard",
   "check": "Summary and OEE answer for every station",
   "ok": true,
-  "detail": "15 stations, overall OEE {'availability': 0.531, 'performance': 0.4977, 'quality': 0.9293, 'oee': 0.2456, 'stations': 3, 'without_cycle_time': ['E2E broken', 'E2E datachannel', 'E2E modbus', 'E2E native', 'E2E opcua', 'E2E profinet', 'E2E simulator', 'E2E slmp', 'E2E slmp_listen', 'E2E tcp_listen', 'E2E udp_listen'], 'jobs_without_cycle_time': ['DC_JOB', 'JOB_A', 'MB_JOB', 'NM_JOB', 'PLC_JOB', 'PN"
+  "detail": "15 stations, overall OEE {'availability': 0.5277, 'performance': 0.4983, 'quality': 0.93, 'oee': 0.2445, 'stations': 3, 'without_cycle_time': ['E2E broken', 'E2E datachannel', 'E2E modbus', 'E2E native', 'E2E opcua', 'E2E profinet', 'E2E simulator', 'E2E slmp', 'E2E slmp_listen', 'E2E tcp_listen', 'E2E udp_listen'], 'jobs_without_cycle_time': ['DC_JOB', 'JOB_A', 'MB_JOB', 'NM_JOB', 'PLC_JOB', 'PN_"
  },
  {
   "area": "Stations",
   "check": "Station view with its chart over 1 h to 7 days",
   "ok": true,
-  "detail": "OK 32 / NOK 4 over 7 days"
+  "detail": "OK 33 / NOK 3 over 7 days"
  },
  {
   "area": "Jobs",
@@ -195,7 +195,7 @@
   "area": "OEE",
   "check": "A cycle time gives the simulator station a performance figure",
   "ok": true,
-  "detail": "A 0.0002 P 4.2104 Q 0.8889 OEE 0.0007"
+  "detail": "A 0.0002 P 4.2213 Q 0.9167 OEE 0.0008"
  },
  {
   "area": "Manual entries",
@@ -219,7 +219,7 @@
   "area": "Scrap statistics",
   "check": "Today's figures add up and the Excel file downloads",
   "ok": true,
-  "detail": "overall OK 3546 NOK 235 (stations 3546), xlsx 8489 B"
+  "detail": "overall OK 3796 NOK 246 (stations 3796), xlsx 8483 B"
  },
  {
   "area": "Notifications",
@@ -252,10 +252,22 @@
   "detail": "\u26a0\ufe0f WARNING \u00b7 Station 'E2E broken' is disconnected: Device 'E2E broken': TCP read failed: [Errno 111] Connection refused"
  },
  {
+  "area": "Ping",
+  "check": "Devices are pinged; the Map shows server, devices, stations and their links",
+  "ok": true,
+  "detail": "E2E modbus: 0.5 ms by icmp to e2e-dev"
+ },
+ {
+  "area": "Ping",
+  "check": "Slow response rule: alert after 3 slow pings, then back to normal",
+  "ok": true,
+  "detail": "\u26a0\ufe0f WARNING \u00b7 Device 'E2E modbus' (station 'E2E modbus') responds slowly: last pings 0 ms,  / \u26a0\ufe0f WARNING \u00b7 Device 'E2E modbus' (station 'E2E modbus') responds norma"
+ },
+ {
   "area": "Chat commands",
   "check": "!status in a Discord channel is answered there",
   "ok": true,
-  "detail": "\ud83d\udcca Status 09.10.2026 09:09 / E2E simulator: \u25b6 in production, job SIM_A /    OK 23 \u00b7 NOK 3 \u00b7 scrap 11.5% / Total: OK 23 \u00b7 NOK 3 "
+  "detail": "\ud83d\udcca Status 09.10.2026 09:26 / E2E simulator: \u25b6 in production, job SIM_A /    OK 70 \u00b7 NOK 8 \u00b7 scrap 10.3% / Total: OK 70 \u00b7 NOK 8 "
  },
  {
   "area": "Chat commands",
@@ -267,7 +279,7 @@
   "area": "Chat commands",
   "check": "Prefix change, preview, the chats list and !help",
   "ok": true,
-  "detail": "4 chats; preview {\"reply\": \"\\ud83d\\udcca Status 09.10.2026 09:09\\nE2E broken: \\u23f8 idle, job \\u"
+  "detail": "4 chats; preview {\"reply\": \"\\ud83d\\udcca Status 09.10.2026 09:26\\nE2E broken: \\u23f8 idle, job \\u"
  },
  {
   "area": "Chat room",
@@ -309,31 +321,31 @@
   "area": "Database",
   "check": "Database tab, backup download, import of that backup",
   "ok": true,
-  "detail": " restored; readings 96988 -> 96989"
+  "detail": " restored; readings 96513 -> 96514"
  },
  {
   "area": "Database",
   "check": "FTP backup: settings, test and a run to the FTP server",
   "ok": true,
-  "detail": "{\"at\": \"2026-10-09T09:09:56.158964+00:00\", \"trigger\": \"manual\", \"ok\": true, \"file\": \"cognex-backup-20261009-090956.json.gz\", \"size\": 1259913, \"deleted\": 0, \"seconds\": 1.0, \"message\": \"Uploaded cognex-"
+  "detail": "{\"at\": \"2026-10-09T09:26:53.235720+00:00\", \"trigger\": \"manual\", \"ok\": true, \"file\": \"cognex-backup-20261009-092653.json.gz\", \"size\": 1257465, \"deleted\": 0, \"seconds\": 0.9, \"message\": \"Uploaded cognex-"
  },
  {
   "area": "Power BI",
   "check": "Power BI access on: the read-only login reads the views through the port",
   "ok": true,
-  "detail": "96995 rows in powerbi_readings; users table refused"
+  "detail": "96520 rows in powerbi_readings; users table refused"
  },
  {
   "area": "System",
   "check": "Live values, listening ports, poller and the sampled history",
   "ok": true,
-  "detail": "CPU 0.0% of 20 cores, memory 13.5%, db 28 MB, ports [5600, 5601, 5602], 1 samples"
+  "detail": "CPU 0.0% of 20 cores, memory 13.4%, db 28 MB, ports [5600, 5601, 5602], 2 samples"
  },
  {
   "area": "Raw data",
   "check": "Tables, rows, edit a value, change log, undo, read-only SQL",
   "ok": true,
-  "detail": "SQL {\"columns\": [\"n\"], \"rows\": [[97002]], \"truncated\": false, \"limit\": 500}; DELETE refused (400)"
+  "detail": "SQL {\"columns\": [\"n\"], \"rows\": [[96527]], \"truncated\": false, \"limit\": 500}; DELETE refused (400)"
  },
  {
   "area": "Pages",

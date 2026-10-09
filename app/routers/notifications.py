@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from .. import dev_options, notifications, notifiers
+from .. import dev_options, notifications, notifiers, ping
 from ..database import get_db
 from ..dependencies import require_permission
 from ..models import NotificationLog, NotificationProvider, NotificationRule, User
@@ -27,7 +27,9 @@ def notifier_kinds(_: User = Depends(require_permission("manage_notifications"))
 def conditions(_: User = Depends(require_permission("manage_notifications"))):
     """What a rule can send, and the severities it can be sent with."""
     return {
-        "conditions": [{"key": k, **v} for k, v in notifications.CONDITIONS.items()],
+        # a slow-response rule does nothing while Ping devices is off (Settings)
+        "conditions": [{"key": k, **v, "inactive": v.get("needs") == "ping" and not ping.enabled()}
+                       for k, v in notifications.CONDITIONS.items()],
         "severities": [{"key": k, "label": v} for k, v in notifications.SEVERITIES.items()],
     }
 

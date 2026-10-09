@@ -85,7 +85,7 @@ versions keep working.
   and write in from the web, with the user's name in front and the history
   kept; an administrator picks the chat.
 - **Alerts:** rules for scrap rate (with per-station thresholds), fail count,
-  disconnects, production and job changes, backup results and app updates,
+  disconnects, slow or missing ping replies, production and job changes, backup results and app updates,
   each with a level (info / warning / alert) and its own destinations:
   WhatsApp sent from your own number (linked device, unofficial), Telegram
   and Discord bots, Discord webhooks, Signal (through signal-cli, optional
@@ -100,6 +100,10 @@ versions keep working.
 - **Changelog:** the version at the bottom of the menu opens the list of
   changes in every release ([CHANGELOG.md](CHANGELOG.md)).
 - **Users and permissions:** login required, with granular permissions per user.
+- **Map** of the server, devices and stations with live status, problem codes
+  and ping times; click to edit, drag to arrange (saved for everyone).
+- **Ping:** every device's response time on the Map, Devices tab and station
+  view, and an alert when a device answers slowly or not at all.
 - **System tab** for admins: CPU, memory, disks, database size, network
   traffic, uptime, versions, listening ports and poller health, live and as
   graphs over up to 7 days.

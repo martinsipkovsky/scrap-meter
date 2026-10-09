@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import hmi, jobs, pieces, protocols, stations
+from .. import hmi, jobs, ping, pieces, protocols, stations
 from ..config import settings
 from ..database import get_db
 from ..dependencies import require_api_user, require_permission
@@ -55,6 +55,7 @@ def _keep_secrets(new: dict, old: dict | None) -> dict:
 def _device_out(d: Device) -> DeviceOut:
     out = DeviceOut.model_validate(d)
     out.protocol_config = masked_config(d.protocol_config)
+    out.ping = ping.result(d.id)
     return out
 
 

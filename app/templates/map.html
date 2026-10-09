@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Map · Scrap Meter{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div><h1>Map</h1><p class="lead">The Scrap Meter server, the devices it reads and the stations that count them, live. {% if user.has_permission('manage_devices') %}Click a device or station to edit it; drag to move it (saved for everyone).{% else %}Click a station to open it; drag to move things around.{% endif %}</p></div>
+  {% if user.has_permission('manage_devices') %}
+  <div class="actions">
+    <button class="btn secondary" onclick="openFrame('/devices')">+ Add device</button>
+    <button class="btn secondary" onclick="openFrame('/stations')">+ Add station</button>
+  </div>
+  {% endif %}
+</div>
+
+<div class="map-wrap" id="wrap">
+  <svg id="map" role="img" aria-label="Network map of the server, devices and stations"></svg>
+  <div class="map-tools">
+    <button class="btn secondary small" onclick="zoomBy(1.2)" title="Zoom in" aria-label="Zoom in">+</button>
+    <button class="btn secondary small" onclick="zoomBy(1 / 1.2)" title="Zoom out" aria-label="Zoom out">−</button>
+    <button class="btn secondary small" onclick="fit()">Fit</button>
+    {% if user.has_permission('manage_devices') %}<button class="btn secondary small" onclick="resetLayout()" title="Forget the dragged positions">Auto layout</button>{% endif %}
+  </div>
+</div>
+<div class="map-legend">
+  <span><span class="dot ok"></span> online</span>
+  <span><span class="dot" style="background:var(--warn)"></span> waiting (W codes)</span>
+  <span><span class="dot bad"></span> error (E codes)</span>
+  <span><span class="dot off"></span> disabled</span>
+  <span id="pingLegend"></span>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const CAN_MANAGE = {{ 'true' if user.has_permission('manage_devices') else 'false' }};
+const SIZE = { server: [210, 78], d: [240, 68], s: [210, 62] };
+const COL = { server: 0, d: 340, s: 700 };
+const GAP = 92;
+let G = null, POS = {}, VIEW = null, DRAG = null, SEL = null, fitted = false;
+const svg = document.getElementById('map');
+const NS = 'http://www.w3.org/2000/svg';
+
+function node(tag, attrs, ...kids) {
+  const n = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v !== null && v !== undefined) n.setAttribute(k, v);
+  for (const k of kids) if (k !== null && k !== undefined) n.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return n;
+}
+function cut(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+// automatic places: devices in the order of the stations that use them,
+// each station level with its devices; the server in the middle on the left
+function autoLayout() {
+  const st = G.stations, devs = G.devices, out = {};
+  const firstStation = (d) => { const i = st.findIndex(s => G.links.some(l => l.station_id === s.id && l.device_id === d.id)); return i < 0 ? 1e9 : i; };
+  const order = [...devs].sort((a, b) => firstStation(a) - firstStation(b) || a.name.localeCompare(b.name));
+  order.forEach((d, i) => { out['d' + d.id] = [COL.d, i * GAP]; });
+  let lastY = -GAP;
+  st.forEach((s) => {
+    const ys = G.links.filter(l => l.station_id === s.id).map(l => out['d' + l.device_id] && out['d' + l.device_id][1]).filter(y => y !== undefined);
+    let y = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : lastY + GAP;
+    y = Math.max(y, lastY + GAP * 0.8);
+    out['s' + s.id] = [COL.s, y]; lastY = y;
+  });
+  const all = Object.values(out).map(p => p[1]);
+  const mid = all.length ? (Math.min(...all) + Math.max(...all)) / 2 : 0;
+  out.server = [COL.server, mid];
+  return out;
+}
+
+function placeAll() {
+  const auto = autoLayout();
+  POS = {};
+  const saved = (key, p) => POS[key] = p || auto[key];
+  saved('server', G.server.pos);
+  for (const d of G.devices) saved('d' + d.id, d.pos);
+  for (const s of G.stations) saved('s' + s.id, s.pos);
+}
+
+function center(key) { const [w, h] = SIZE[key === 'server' ? 'server' : key[0]]; const p = POS[key]; return [p[0] + w / 2, p[1] + h / 2]; }
+
+function codeClass(code) { return code ? (code.startsWith('E') ? 'code-bad' : 'code-warn') : ''; }
+
+function draw() {
+  if (!G) return;
+  svg.innerHTML = '';
+  const links = node('g'), nodes = node('g');
+  svg.append(links, nodes);
+  // server <-> device: the network
+  for (const d of G.devices) {
+    const [x1, y1] = center('server'), [x2, y2] = center('d' + d.id);
+    const down = d.status.state === 'error';
+    const mx = (x1 + x2) / 2;
+    links.append(node('path', { class: 'map-link net' + (down ? ' down' : ''), d: `M${x1 + SIZE.server[0] / 2} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2 - SIZE.d[0] / 2} ${y2}` }));
+  }
+  // device -> station: what is counted
+  for (const l of G.links) {
+    const a = 'd' + l.device_id, b = 's' + l.station_id;
+    if (!POS[a] || !POS[b]) continue;
+    const [x1, y1] = center(a), [x2, y2] = center(b), mx = (x1 + x2) / 2;
+    links.append(node('path', { class: 'map-link', d: `M${x1 + SIZE.d[0] / 2} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2 - SIZE.s[0] / 2} ${y2}` }));
+  }
+  // server
+  {
+    const [x, y] = POS.server, [w, h] = SIZE.server;
+    const ports = G.devices.filter(d => d.listen && d.enabled).map(d => d.listen.kind + ' ' + d.listen.port);
+    nodes.append(node('g', { class: 'map-node', 'data-key': 'server', transform: `translate(${x},${y})` },
+      node('rect', { width: w, height: h, rx: 10, style: 'stroke:var(--accent)' }),
+      node('text', { x: 14, y: 24, style: 'font-weight:700;font-size:13px' }, G.server.name + ' ' + G.server.version),
+      node('text', { x: 14, y: 43, class: 'dim' }, cut(G.server.host, 30)),
+      node('text', { x: 14, y: 62, class: 'dim' }, cut(ports.length ? 'listening: ' + ports.join(', ') : 'ports ' + G.server.listen_ports, 34)),
+      node('title', {}, 'Listening ports range ' + G.server.listen_ports + (ports.length ? '\nIn use: ' + ports.join(', ') : ''))));
+  }
+  for (const d of G.devices) {
+    const [x, y] = POS['d' + d.id], [w, h] = SIZE.d, st = d.status;
+    const p = d.ping, pt = G.ping.enabled ? pingText(p) : '';
+    const pcls = !p || !p.ok ? (p && p.ok === false ? 'none' : 'dim') : (p.ms >= 300 ? 'slow' : 'dim');
+    const where = d.listen ? d.address + (d.listen.peer ? ' · from ' + d.listen.peer : '') : d.address;
+    nodes.append(node('g', { class: 'map-node' + (SEL === 'd' + d.id ? ' sel' : ''), 'data-key': 'd' + d.id, transform: `translate(${x},${y})` },
+      node('rect', { width: w, height: h, rx: 8 }),
+      node('circle', { cx: 16, cy: 20, r: 6, class: 'st-' + st.state }),
+      node('text', { x: 30, y: 24, style: 'font-weight:600' }, cut(d.name, 22)),
+      st.code ? node('text', { x: w - 12, y: 24, 'text-anchor': 'end', class: codeClass(st.code) }, st.code) : null,
+      node('text', { x: 14, y: 43, class: 'dim' }, cut(where, 36)),
+      node('text', { x: 14, y: 59, class: 'dim' }, cut(protoName(d.protocol), 22)),
+      pt ? node('text', { x: w - 12, y: 59, 'text-anchor': 'end', class: pcls === 'dim' ? 'dim' : pcls }, pt) : null,
+      node('title', {}, d.name + '\n' + where + '\n' + protoName(d.protocol) + (st.message ? '\n' + (st.code ? st.code + ': ' : '') + st.message : '\nonline') +
+        (p && p.target ? '\nping ' + pingText(p) + ' (' + (p.method === 'tcp' ? 'TCP connect to ' : 'ICMP to ') + p.target + ')' : ''))));
+  }
+  for (const s of G.stations) {
+    const [x, y] = POS['s' + s.id], [w, h] = SIZE.s;
+    const state = s.code ? (s.code.startsWith('E') ? 'error' : 'waiting') : 'ok';
+    const prod = { running: '▶ in production', idle: '⏸ idle', stopped: '■ stopped' }[s.production_state] || s.production_state;
+    nodes.append(node('g', { class: 'map-node' + (SEL === 's' + s.id ? ' sel' : ''), 'data-key': 's' + s.id, transform: `translate(${x},${y})` },
+      node('rect', { width: w, height: h, rx: 8, style: 'stroke-dasharray:0' }),
+      node('circle', { cx: 16, cy: 20, r: 6, class: 'st-' + state }),
+      node('text', { x: 30, y: 24, style: 'font-weight:600' }, cut(s.name, 20)),
+      s.code ? node('text', { x: w - 12, y: 24, 'text-anchor': 'end', class: codeClass(s.code) }, s.code) : null,
+      node('text', { x: 14, y: 44, class: 'dim' }, cut(prod + (s.current_job ? ' · ' + s.current_job : ''), 32) + (s.alerts_muted ? ' · muted' : '')),
+      node('title', {}, s.name + '\n' + prod + (s.current_job ? ', job ' + s.current_job : '') + (s.problem ? '\n' + s.problem : ''))));
+  }
+  if (!VIEW || !fitted) { fit(); fitted = true; } else applyView();
+}
+
+let PROTOS = {};
+function protoName(key) { return PROTOS[key] || key; }
+
+// ---- view: pan and zoom ----------------------------------------------------
+function bounds() {
+  const xs = [], ys = [];
+  for (const [k, p] of Object.entries(POS)) { const [w, h] = SIZE[k === 'server' ? 'server' : k[0]]; xs.push(p[0], p[0] + w); ys.push(p[1], p[1] + h); }
+  return xs.length ? [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] : [0, 0, 800, 400];
+}
+function fit() {
+  const [x0, y0, x1, y1] = bounds(), r = svg.getBoundingClientRect();
+  const pad = 40, w = x1 - x0 + pad * 2, h = y1 - y0 + pad * 2;
+  const scale = Math.max(w / Math.max(r.width, 1), h / Math.max(r.height, 1), 1 / 1.4);
+  const vw = r.width * scale, vh = r.height * scale;
+  VIEW = [x0 - pad - (vw - w) / 2, y0 - pad - (vh - h) / 2, vw, vh];
+  applyView();
+}
+function applyView() { svg.setAttribute('viewBox', VIEW.map(v => v.toFixed(1)).join(' ')); }
+function zoomBy(f, cx, cy) {
+  const [x, y, w, h] = VIEW;
+  cx = cx === undefined ? x + w / 2 : cx; cy = cy === undefined ? y + h / 2 : cy;
+  const nw = Math.min(Math.max(w / f, 200), 20000), k = nw / w;
+  VIEW = [cx - (cx - x) * k, cy - (cy - y) * k, nw, h * k];
+  applyView();
+}
+function toWorld(e) {
+  const r = svg.getBoundingClientRect();
+  return [VIEW[0] + (e.clientX - r.left) / r.width * VIEW[2], VIEW[1] + (e.clientY - r.top) / r.height * VIEW[3]];
+}
+svg.addEventListener('wheel', (e) => { e.preventDefault(); const [cx, cy] = toWorld(e); zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, cx, cy); }, { passive: false });
+
+svg.addEventListener('pointerdown', (e) => {
+  const g = e.target.closest('.map-node');
+  const [wx, wy] = toWorld(e);
+  DRAG = g ? { key: g.dataset.key, g, dx: wx - POS[g.dataset.key][0], dy: wy - POS[g.dataset.key][1], moved: false, sx: e.clientX, sy: e.clientY }
+           : { pan: true, sx: e.clientX, sy: e.clientY, view: [...VIEW], moved: false };
+  svg.setPointerCapture(e.pointerId);
+  if (!g) svg.classList.add('panning');
+});
+svg.addEventListener('pointermove', (e) => {
+  if (!DRAG) return;
+  if (Math.abs(e.clientX - DRAG.sx) + Math.abs(e.clientY - DRAG.sy) > 4) DRAG.moved = true;
+  if (!DRAG.moved) return;
+  if (DRAG.pan) {
+    const r = svg.getBoundingClientRect();
+    VIEW = [DRAG.view[0] - (e.clientX - DRAG.sx) / r.width * DRAG.view[2], DRAG.view[1] - (e.clientY - DRAG.sy) / r.height * DRAG.view[3], DRAG.view[2], DRAG.view[3]];
+    applyView();
+  } else {
+    const [wx, wy] = toWorld(e);
+    POS[DRAG.key] = [wx - DRAG.dx, wy - DRAG.dy];
+    draw();
+  }
+});
+svg.addEventListener('pointerup', async (e) => {
+  const d = DRAG; DRAG = null; svg.classList.remove('panning');
+  if (!d || d.pan) return;
+  if (d.moved) {
+    if (CAN_MANAGE) {
+      try { await api('PUT', '/api/map/layout', { positions: { [d.key]: POS[d.key] } }); } catch (err) { toast(err.message, true); }
+    }
+    return;
+  }
+  openNode(d.key);
+});
+
+function openNode(key) {
+  SEL = key; draw();
+  if (key === 'server') { location.href = {{ ('/system' if user.is_admin else '/devices') | tojson }}; return; }
+  const id = key.slice(1);
+  if (key[0] === 's') {
+    if (CAN_MANAGE) openFrame('/stations', id); else location.href = '/station/' + id;
+  } else if (CAN_MANAGE) openFrame('/devices', id);
+  else location.href = '/devices';
+}
+
+// ---- the device's or station's own edit form, from its tab, in a frame ------
+let FRAME = null;
+function openFrame(path, id) {
+  closeFrame();
+  FRAME = el('iframe', { class: 'map-frame', title: 'Edit', src: path + '?embed=1' + (id ? '&edit=' + id : '') });
+  document.body.append(FRAME);
+}
+function closeFrame() { if (FRAME) { FRAME.remove(); FRAME = null; } }
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin || !e.data || e.data.sm !== 'form-closed') return;
+  closeFrame(); SEL = null; load();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && FRAME) { closeFrame(); load(); } });
+
+async function resetLayout() {
+  if (!confirm('Put every node back in the automatic layout (for everyone)?')) return;
+  try { await api('DELETE', '/api/map/layout'); fitted = false; load(); } catch (e) { toast(e.message, true); }
+}
+
+async function load() {
+  if (DRAG) return;
+  try {
+    G = await getJSON('/api/map');
+    placeAll(); draw();
+    document.getElementById('pingLegend').textContent = G.ping.enabled
+      ? 'Ping every ' + G.ping.interval_s + ' s: time in ms, amber from 300 ms, "no reply" in red'
+      : 'Ping devices is off (Settings)';
+  } catch (e) { toast(e.message, true); }
+}
+(async () => {
+  try { for (const p of await getJSON('/api/devices/protocols')) PROTOS[p.key] = p.label; } catch (e) { /* names stay keys */ }
+  load();
+  setInterval(() => { if (!FRAME) load(); }, 5000);
+  window.addEventListener('resize', () => { if (G) fit(); });
+})();
+</script>
+{% endblock %}

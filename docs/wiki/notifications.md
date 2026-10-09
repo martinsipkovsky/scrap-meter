@@ -17,7 +17,7 @@ that only sends), Telegram chats, a webhook, and with the
 linked through a phone. **Test send** tries one.
 
 **Rules** decide what is sent and to which providers: high scrap (with
-thresholds per station), NOK count, a device offline, production started or
+thresholds per station), NOK count, a device offline or slow to answer pings, production started or
 stopped, job changes, backups and app updates. Each has a level and a
 cooldown.
 

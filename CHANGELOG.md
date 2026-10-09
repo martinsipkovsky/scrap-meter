@@ -4,6 +4,11 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.25.0 — 2026-10-09
+- New **Map** tab after Devices: the Scrap Meter server, every device with its address, protocol, status colour and problem code (as on the dashboard) and ping time, and the stations that count them, with the ports the app listens on. Click a device or station to edit it in its usual form; drag things around, and the places are kept for everyone (**Auto layout** puts them back). Works without internet.
+- The app pings every device (every 30 s by default) and shows the response time on the Map, as a new **Ping** column on the Devices tab and per device on the station view, or *no reply*. It uses ICMP, or the time to open a TCP connection to the device's port where ICMP gets no answer; a device that sends its data to the app is pinged at the address it last sent from. **Settings → Ping devices** (administrators) turns it off or changes how often.
+- New alert rule **Device slow or not answering pings**: after 3 pings in a row slower than the threshold (300 ms by default, per station if you like) or without a reply, then once more with "responds normally again" when it recovers. It follows the *only during production* switch and muting like every other alert, and shows as inactive while ping is off.
+
 ## 1.24.0 — 2026-10-09
 - New **System** tab for administrators, above Settings: CPU, memory, disk use (the app's disk and the data volume), the database size and response time, network interfaces with their traffic, uptime, the versions of the system, Python and the app, the listening ports and which device uses each, and the poller (devices online, read errors, last read). Live values refresh every 5 seconds; graphs of CPU, memory, disk, database size, network traffic and devices cover the last hour up to 7 days, from one sample a minute.
 

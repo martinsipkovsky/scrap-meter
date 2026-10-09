@@ -55,6 +55,19 @@ def _alert_policy_default():
     settings_store.save(notifications.POLICY_KEY, None)
     notifications._policy = None
     notifications._skip_logged.clear()
+    notifications._ping_alerted.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _ping_default():
+    # Ping devices on every 30 s (never saved), no results, no saved map layout
+    from app import netmap, ping, settings_store
+
+    settings_store.save(ping.KEY, None)
+    settings_store.save(netmap.KEY, None)
+    ping._settings = None
+    ping._results.clear()
     yield
 
 

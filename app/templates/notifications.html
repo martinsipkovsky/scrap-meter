@@ -329,7 +329,7 @@ function onCond(fromCondition) {
   const name = document.getElementById('r_name');
   if (fromCondition) {
     document.getElementById('r_severity').value = c.severity || 'alert';
-    document.getElementById('r_threshold').value = key === 'scrap_rate' ? 5 : (key === 'fail_count' ? 10 : 0);
+    document.getElementById('r_threshold').value = key === 'scrap_rate' ? 5 : (key === 'fail_count' ? 10 : (c.default_threshold || 0));
     document.getElementById('r_cooldown').value = c.event ? 0 : 300;
     if (!name.value || name.dataset.auto) { name.value = c.label || ''; name.dataset.auto = '1'; }
   }
@@ -425,7 +425,9 @@ async function load() {
       el('td', {}, el('span', { class: 'badge ' + (sevBadge[r.severity] || 'off') }, r.severity || 'alert')),
       el('td', { class: 'muted' }, to),
       el('td', {}, r.cooldown + 's'),
-      el('td', {}, el('span', { class: 'badge ' + (r.enabled ? 'ok' : 'off') }, r.enabled ? 'on' : 'off')),
+      el('td', {}, c.inactive && r.enabled
+        ? el('span', { class: 'badge warn', title: 'Turn on Ping devices under Settings' }, 'inactive: ping is off')
+        : el('span', { class: 'badge ' + (r.enabled ? 'ok' : 'off') }, r.enabled ? 'on' : 'off')),
       el('td', {}, el('div', { class: 'actions' },
         el('button', { class: 'btn secondary small', onclick: () => editRule(r) }, 'Edit'),
         el('button', { class: 'btn secondary small', onclick: () => toggle('rules', r) }, r.enabled ? 'Disable' : 'Enable'),

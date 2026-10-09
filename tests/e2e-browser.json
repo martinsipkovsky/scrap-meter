@@ -25,6 +25,12 @@
  },
  {
   "mode": "dark",
+  "page": "/map",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
   "page": "/jobs",
   "ok": true,
   "problems": []
@@ -139,6 +145,12 @@
  },
  {
   "mode": "light",
+  "page": "/map",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
   "page": "/jobs",
   "ok": true,
   "problems": []
@@ -248,6 +260,12 @@
  {
   "mode": "phone",
   "page": "/devices",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/map",
   "ok": true,
   "problems": []
  },

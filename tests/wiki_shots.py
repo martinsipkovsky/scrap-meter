@@ -55,6 +55,7 @@ def main() -> None:
              before=lambda: page.locator("#chart").scroll_into_view_if_needed())
         shot("stations", "/stations")
         shot("devices", "/devices")
+        shot("map", "/map", wait=3500)
         shot("jobs", "/jobs")
         shot("data-log", "/data")
         shot("scrap-statistics", "/scrap", wait=4000)

@@ -52,7 +52,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from . import mute, pieces, production
+from . import mute, ping, pieces, production
 from .counters import SAMPLE_KEYS, deltas
 from .models import CounterState, Device, Job, Meta, Reading, SourceState, Station, utcnow
 
@@ -584,6 +584,7 @@ def sources_view(db: Session, station: Station, devices: dict[int, Device], now:
             **src,
             "device": device.name if device else None,
             "connected": bool(device and device.connected),
+            "ping": ping.result(device.id) if device else None,
             "current_job": st.job if st else None,  # "job" is the value it reads it from
             "active": is_active(station, src, st, devices, now),
             "last_ok_at": _aware(st.last_ok_at) if st else None,

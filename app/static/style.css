@@ -509,3 +509,34 @@ html.hmi-max-open body { overflow: hidden; }
   .main table:not(.heat) { display: block; overflow-x: auto; max-width: 100%; }
   .main pre { max-width: 100%; overflow-x: auto; }
 }
+
+/* ---- Ping times (app.ping) ---- */
+.ping-slow { color: var(--warn); }
+.ping-none { color: var(--bad); }
+
+/* ---- A form opened from the Map in a frame (?embed=1) ---- */
+html.embed body { background: transparent; }
+html.embed .sidebar, html.embed .nav-backdrop, html.embed .main > :not(.modal-back) { display: none !important; }
+html.embed .modal-back { background: transparent; padding-top: 40px; }
+
+/* ---- Map tab ---- */
+.map-wrap { position: relative; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2);
+  height: calc(100vh - 190px); min-height: 420px; overflow: hidden; touch-action: none; }
+.map-wrap svg { width: 100%; height: 100%; display: block; cursor: grab; user-select: none; }
+.map-wrap svg.panning { cursor: grabbing; }
+.map-node { cursor: pointer; }
+.map-node rect { fill: var(--bg-3); stroke: var(--border); stroke-width: 1.5; }
+.map-node.sel rect { stroke: var(--accent); stroke-width: 2.5; }
+.map-node .st-ok { fill: var(--ok); } .map-node .st-error { fill: var(--bad); }
+.map-node .st-waiting { fill: var(--warn); } .map-node .st-off { fill: var(--text-dim); }
+.map-node text { fill: var(--text); font-size: 12px; }
+.map-node text.dim { fill: var(--text-dim); font-size: 11px; }
+.map-node text.code-bad { fill: var(--bad); font-weight: 700; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.map-node text.code-warn { fill: var(--warn); font-weight: 700; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.map-node text.slow { fill: var(--warn); } .map-node text.none { fill: var(--bad); }
+.map-link { stroke: var(--border); stroke-width: 1.5; fill: none; }
+.map-link.net { stroke: var(--text-dim); stroke-dasharray: 4 4; opacity: .7; }
+.map-link.down { stroke: var(--bad); opacity: .8; }
+.map-tools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.map-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+.map-frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 80; background: rgba(0,0,0,.55); }

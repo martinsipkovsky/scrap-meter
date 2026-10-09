@@ -58,7 +58,7 @@ from ..counters import Sample
 from .base import ProtocolDriver, ProtocolError
 from .slmp import (BIT_DEVICES, CMD_READ, CMD_WRITE, DEVICES, HEADER_LEN, REQ_SUBHEADER,
                    build_response, frame_length, parse_device, words_to_ascii, words_to_int)
-from .tcp_listener import ANY_HOST, ListenerManager
+from .tcp_listener import ANY_HOST, ListenerManager, last_peer
 
 log = logging.getLogger("cognex.slmp_server")
 
@@ -303,6 +303,7 @@ class _Handler(socketserver.BaseRequestHandler):
             log.warning("slmp_listen port %s: rejected connection from %s (allowed %s)",
                         srv.server_address[1], peer, srv.allowed_host)
             return
+        last_peer[srv.device_id] = peer
         with srv.lock:
             srv.clients += 1
         srv.manager.status(srv.device_id, True, None)

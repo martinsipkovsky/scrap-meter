@@ -14,7 +14,7 @@
 </div>
 
 <table>
-  <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Protocol</th><th>Values</th><th>Interval</th><th>Used by</th><th></th></tr></thead>
+  <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Protocol</th><th>Values</th><th>Interval</th><th>Ping</th><th>Used by</th><th></th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
 <div id="empty" class="empty" style="display:none">No devices yet.</div>
@@ -159,6 +159,7 @@ async function load() {
       el('td', {}, protoLabel(d.protocol)),
       el('td', { class: 'muted', style: 'max-width:220px' }, fmtValues(d)),
       el('td', {}, push ? 'push' : d.poll_interval + 's'),
+      el('td', {}, pingCell(d.ping)),
       el('td', {}, usedBy(d.id).join(', ') || el('span', { class: 'muted' }, 'no station')),
       el('td', {}, actions),
     ));
@@ -369,6 +370,6 @@ Counters and history are not touched.`)) return;
   } catch (e) { toast(e.message, true); }
 }
 
-(async () => { await loadProtocols(); load(); setInterval(load, 5000); })();
+(async () => { await loadProtocols(); load(); setInterval(load, 5000); embedForm(() => getJSON('/api/devices'), openForm); })();
 </script>
 {% endblock %}

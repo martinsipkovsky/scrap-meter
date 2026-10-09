@@ -32,6 +32,11 @@ def devices_page(request: Request, user: User = Depends(require_page_permission(
     return templates.TemplateResponse(request, "devices.html", _ctx(request, user, page="devices"))
 
 
+@router.get("/map", response_class=HTMLResponse)
+def map_page(request: Request, user: User = Depends(require_page_permission("view_dashboard"))):
+    return templates.TemplateResponse(request, "map.html", _ctx(request, user, page="map"))
+
+
 @router.get("/jobs", response_class=HTMLResponse)
 def jobs_page(request: Request, user: User = Depends(require_page_permission("view_dashboard"))):
     return templates.TemplateResponse(request, "jobs.html", _ctx(request, user, page="jobs"))

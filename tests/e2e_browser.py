@@ -12,7 +12,7 @@ import json
 
 from playwright.sync_api import sync_playwright
 
-PAGES = ["/", "/stations", "/station/{sid}", "/devices", "/jobs", "/data", "/scrap", "/chat", "/notifications",
+PAGES = ["/", "/stations", "/station/{sid}", "/devices", "/map", "/jobs", "/data", "/scrap", "/chat", "/notifications",
          "/users", "/database", "/rawdb", "/system", "/settings", "/account", "/changelog", "/tutorial", "/tutorial/oee",
          "/tutorial/docs/user-guide"]
 

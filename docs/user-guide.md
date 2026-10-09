@@ -171,6 +171,56 @@ on first use and kept in the data volume. If the server rejects it, download
 it with the link in the form and add it to the server's trusted certificates.
 See [Protocols](protocols.md#opc-ua-client-opcua).
 
+## Map tab
+
+The *Map*, right after Devices, draws the network: the Scrap Meter server on
+the left, the devices it reads in the middle and the stations that count them
+on the right. Dashed lines are the network between the server and a device
+(red while the device has an error), solid lines show which station counts
+which device.
+
+- **Devices** show their address (or the port they listen on and the address
+  they last sent from), the protocol, a status dot (green online, amber
+  waiting, red error, grey disabled), the problem code from the dashboard
+  ([problem codes](#problem-codes)) and the ping time (see below). Hover a node
+  for the full message.
+- **Stations** show the production state and job, and their problem code.
+- **The server** shows its version and the listening ports in use.
+- **Click** a device or station to open the same form as on the Devices or
+  Stations tab (with *manage_devices*; without it a station opens its station
+  view). **+ Add device** and **+ Add station** work as on their tabs.
+- **Drag** a node to move it; the places are kept for everyone (with
+  *manage_devices*; others can move things only for themselves until the page
+  reloads). **Auto layout** puts every node back. Drag the background to move
+  around, scroll or **+ / −** to zoom, **Fit** to see everything.
+
+The map is drawn by the app itself, with no outside library, so it works
+without internet.
+
+### Ping
+
+The app pings every enabled device every 30 seconds and shows the response
+time in ms on the Map, in the **Ping** column of the Devices tab and per
+device on the station view (Sources). Amber from 300 ms; *no reply* in red
+when nothing answered within 2 seconds; a dash when there is nothing to ping
+(a simulated device, or a listening device that has not sent anything yet).
+Hover the time to see the method and the address.
+
+- It uses ICMP (like the `ping` command). Where ICMP is not allowed or not
+  answered, the app measures the time to open a TCP connection to the
+  device's port instead; the tooltip says *TCP connect*.
+- Devices that send their data to the app (TCP / UDP listener, SLMP server)
+  are pinged at the address they last sent from.
+- **Settings → Ping devices** (administrators) turns it off for everyone or
+  changes how often (10 s to 5 min).
+- The **Device slow or not answering pings** alert rule (Notifications) sends
+  a message when a device of the station answered its last 3 pings slower
+  than the rule's threshold (300 ms by default; per station like the other
+  thresholds) or not at all, again after the cooldown while it lasts, and
+  "responds normally again" once a ping is fast again. It follows the
+  [only during production](notifications.md#alerts-only-during-production)
+  switch and muting. While ping is off the rule shows *inactive*.
+
 ## Stations tab
 
 Add a station with:
@@ -705,6 +755,12 @@ at **Built-in** uses the built-in one above. **Reset to default** sets all of
 the user's own choices back to Default. Mode, colour scheme, density and text
 size change the page at once; dates, times and the dashboard settings apply
 on the next page.
+
+### Ping devices
+
+Administrators see **Ping devices**: on by default for everyone, every
+30 seconds. Off, the app stops pinging, the ping times disappear and the
+slow-response alert rules are inactive. See [Ping](#ping).
 
 ### Developer options
 

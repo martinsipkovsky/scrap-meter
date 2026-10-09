@@ -39,7 +39,7 @@
 <div class="card" style="margin-bottom:16px" id="sourcesCard">
   <h3 style="margin:0 0 4px">Sources</h3>
   <div class="hint" style="margin-top:0;margin-bottom:8px">Each device counts on its own. A source is active while the station is in production and its OK count rose within the idle timeout.</div>
-  <table><thead><tr><th>Device</th><th>State</th><th>Job</th><th>Values</th><th>Starts production at</th></tr></thead><tbody id="srcRows"></tbody></table>
+  <table><thead><tr><th>Device</th><th>State</th><th>Ping</th><th>Job</th><th>Values</th><th>Starts production at</th></tr></thead><tbody id="srcRows"></tbody></table>
 </div>
 
 <div class="card" style="margin-bottom:16px" id="commentsCard">
@@ -218,6 +218,7 @@ function renderSources(d) {
     tb.append(el('tr', { class: s.active ? '' : 'source-idle' },
       el('td', {}, el('strong', {}, s.device || 'deleted device')),
       el('td', {}, state),
+      el('td', {}, pingCell(s.ping)),
       el('td', {}, s.current_job || '—',
         s.open_piece && (s.open_piece.ok || s.open_piece.nok)
           ? el('div', { class: 'muted' }, 'open piece: ' + s.open_piece.ok + ' OK, ' + s.open_piece.nok + ' NOK picture(s)') : null),

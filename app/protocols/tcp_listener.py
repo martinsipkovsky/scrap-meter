@@ -55,6 +55,8 @@ from .base import ProtocolDriver, ProtocolError
 log = logging.getLogger("cognex.tcp_listener")
 
 ANY_HOST = ("", "0.0.0.0", "*", "any")
+# device id -> the address the device last sent from (app.ping pings it)
+last_peer: dict[int, str] = {}
 MAX_RECORD = 8192
 
 
@@ -222,6 +224,7 @@ class _Handler(socketserver.BaseRequestHandler):
             log.warning("tcp_listen port %s: rejected connection from %s (allowed %s)",
                         srv.server_address[1], peer, srv.allowed_host)
             return
+        last_peer[srv.device_id] = peer
         with srv.lock:
             srv.clients += 1
         srv.manager.status(srv.device_id, True, None)

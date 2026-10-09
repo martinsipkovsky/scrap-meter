@@ -12,7 +12,11 @@ Two kinds of condition:
   ``evaluate_station`` after each reading or failed read, and fire again after
   the rule's cooldown for as long as they hold;
 * event conditions (production_change, job_change, backup results,
-  app_started) fire once when the thing happens, through ``emit``.
+  app_started) fire once when the thing happens, through ``emit``;
+* slow_response is checked after every ping round (app.ping, ``check_ping``):
+  a device of the station answered its last 3 pings slower than the
+  threshold (ms) or not at all. Sent again after the cooldown while it lasts,
+  and one "back to normal" message when a ping is fast again.
 
 Rules for all stations can override their threshold per station
 (rule.thresholds = {"<station id>": value}). A station whose alerts are muted
@@ -51,6 +55,9 @@ CONDITIONS: dict[str, dict] = {
                    "severity": "warning", "threshold": "parts", "station": True},
     "disconnected": {"label": "Station's device disconnected or read error", "group": "Faults",
                      "severity": "alert", "station": True},
+    "slow_response": {"label": "Device slow or not answering pings", "group": "Faults",
+                      "severity": "warning", "threshold": "ms", "default_threshold": 300, "station": True,
+                      "needs": "ping"},
     "production_change": {"label": "Station stopped, idle or back in production", "group": "Production",
                           "severity": "warning", "station": True, "event": True},
     "job_change": {"label": "Station changed job", "group": "Production",
@@ -130,6 +137,8 @@ def threshold_for(rule: NotificationRule, station: Station) -> float:
         value = rule.thresholds.get(str(station.id))
         if value is not None and value != "":
             return float(value)
+    if rule.condition == "slow_response" and not rule.threshold:
+        return float(CONDITIONS["slow_response"]["default_threshold"])
     return rule.threshold
 
 
@@ -298,6 +307,66 @@ def check_production(db: Session, station: Station) -> None:
         return
     text = _PRODUCTION_TEXT[current].format(timeout=station.idle_timeout_min or production.DEFAULT_IDLE_TIMEOUT_MIN)
     emit(db, "production_change", f"Station '{station.name}' {text}", station)
+
+
+# (rule id, station id, device id) -> when the slow-response alert was last sent
+_ping_alerted: dict[tuple[int, int, int], dt.datetime] = {}
+
+
+def _ms(v) -> str:
+    return "no reply" if v is None else f"{v:.0f} ms"
+
+
+def check_ping(db: Session) -> None:
+    """After a ping round: slow_response rules, per station and device."""
+    from . import ping, stations
+
+    now = utcnow()
+    rules = _rules(db, ["slow_response"], None)
+    if not rules:
+        _ping_alerted.clear()
+        return
+    all_stations = db.query(Station).all()
+    devices = stations.devices_of(db, all_stations)
+    for rule in rules:
+        for station in all_stations:
+            if rule.station_id is not None and rule.station_id != station.id:
+                continue
+            thr = threshold_for(rule, station)
+            for device_id in sorted(station.device_ids()):
+                device = devices.get(device_id)
+                recent = ping.recent(device_id)
+                if device is None or not recent:
+                    continue
+                key = (rule.id, station.id, device_id)
+                last3 = recent[-ping.HISTORY:]
+                bad = len(last3) == ping.HISTORY and all(v is None or v >= thr for v in last3)
+                who = f"Device '{device.name}' (station '{station.name}')"
+                if bad:
+                    sent = _ping_alerted.get(key)
+                    if sent is not None and (now - sent).total_seconds() < (rule.cooldown or 0):
+                        continue
+                    if all(v is None for v in last3):
+                        message = f"{who} does not answer pings ({ping.HISTORY} in a row)"
+                    else:
+                        message = (f"{who} responds slowly: last pings {', '.join(_ms(v) for v in last3)} "
+                                   f"(>= {thr:.0f} ms)")
+                elif key in _ping_alerted and last3[-1] is not None and last3[-1] < thr:
+                    message = f"{who} responds normally again: {_ms(last3[-1])}"
+                else:
+                    continue
+                if not bad:
+                    _ping_alerted.pop(key, None)  # recovered: "back to normal" follows a sent alert only
+                if station.alerts_muted:
+                    continue
+                if _held_back(station, rule.condition):
+                    _skip(db, rule, station, message, now)
+                    continue
+                dispatch(db, message, rule_id=rule.id, provider_ids=rule.provider_ids, severity=rule.severity)
+                rule.last_fired_at = now
+                db.commit()
+                if bad:
+                    _ping_alerted[key] = now
 
 
 def check_all_production(db: Session) -> None:

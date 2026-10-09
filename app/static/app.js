@@ -91,7 +91,30 @@ function fmtPct(x) { return (x * 100).toFixed(1) + '%'; }
 function scrapClass(rate) { return rate >= 0.05 ? 'fail' : (rate >= 0.02 ? 'warn' : 'pass'); }
 
 function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  // a form opened from the Map (?embed=1): tell the Map it is done
+  if (SM_EMBED && id === 'modal') parent.postMessage({ sm: 'form-closed' }, location.origin);
+}
+const SM_EMBED = new URLSearchParams(location.search).has('embed');
+// in a frame from the Map: open the page's own form for ?edit=<id>, or a new one
+async function embedForm(list, open) {
+  if (!SM_EMBED) return;
+  const id = new URLSearchParams(location.search).get('edit');
+  const item = id ? (await list()).find(x => x.id === +id) : undefined;
+  if (id && !item) { parent.postMessage({ sm: 'form-closed' }, location.origin); return; }
+  open(item);
+}
+// the latest ping of a device (app.ping) for a table cell or a label
+function pingText(p) {
+  if (!p || p.ok === null || p.ok === undefined) return '—';
+  return p.ok ? (p.ms < 10 ? p.ms.toFixed(1) : Math.round(p.ms)) + ' ms' : 'no reply';
+}
+function pingCell(p) {
+  const text = pingText(p);
+  const cls = !p || p.ok === null || p.ok === undefined ? 'muted' : (p.ok ? (p.ms >= 300 ? 'ping-slow' : '') : 'ping-none');
+  return el('span', { class: 'tnum ' + cls, title: p && p.target ? (p.method === 'tcp' ? 'TCP connect to ' : 'ICMP ping to ') + p.target + ' · ' + fmtFull(p.at) : 'not pinged' }, text);
+}
 
 function parseJSONField(text, fallback) {
   const t = (text || '').trim();

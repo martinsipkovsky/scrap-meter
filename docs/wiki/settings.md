@@ -11,6 +11,11 @@ sound, and a folded menu. *Default* follows the default for everyone, which
 administrators set in the second column. **Reset to default** clears your own
 choices.
 
+## Ping devices
+
+Administrators turn device pings on or off for everyone and set how often
+(every 30 seconds by default). See [Map and ping](map.md).
+
 ## Developer options
 
 Administrators also see the **Developer options**: unofficial ways into

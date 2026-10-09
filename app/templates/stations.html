@@ -316,6 +316,7 @@ async function remove(s) {
 }
 
 load();
+embedForm(() => getJSON('/api/stations'), openForm);
 setInterval(() => {
   if (document.querySelector('.modal-back.open')) return;
   load();

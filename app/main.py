@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from . import __version__, chatroom, commands, daily, dev_options, jobs, messengers, powerbi_access, reporting, settings_store, stations, system_info
+from . import __version__, chatroom, commands, daily, dev_options, jobs, messengers, ping, powerbi_access, reporting, settings_store, stations, system_info
 from .notifications import startup_notice
 from .config import settings
 from .database import Base, SessionLocal, active_url, engine, migrate_schema
@@ -25,7 +25,7 @@ from .notifiers.whatsapp_linked import link as whatsapp_link
 from .poller import listener, poller
 from .routers import (account, auth_routes, backup_admin, chatroom as chatroom_api, commands as commands_api, comments as comments_api, data,
                       database_admin,
-                      devices, jobs as jobs_api, notifications, pages, rawdb, stations as stations_api, system as system_api,
+                      devices, jobs as jobs_api, notifications, pages, rawdb, stations as stations_api, system as system_api, netmap as netmap_api,
                       ui_settings as ui_settings_api, users)
 from .seed import seed_admin
 from .templating import templates
@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
         daily.scheduler.start()  # daily data for reports
         messengers.reader.start()  # Discord channels and Signal groups: commands and the Chat room
         system_info.sampler.start()  # the System tab's graphs
+        ping.pinger.start()  # response times of the devices (Settings > Ping devices)
     backup_scheduler.start()
     chatroom.install()  # the Chat room keeps its chat's messages and hands "!status" to the commands
     if settings.whatsapp_enabled and dev_options.enabled("whatsapp_linked"):
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
     chatroom.telegram_reader.stop()
     messengers.reader.stop()
     system_info.sampler.stop()
+    ping.pinger.stop()
     daily.scheduler.stop()
     powerbi_access.forwarder.stop()
     backup_scheduler.stop()
@@ -112,6 +114,7 @@ app.include_router(database_admin.router)
 app.include_router(backup_admin.router)
 app.include_router(rawdb.router)
 app.include_router(system_api.router)
+app.include_router(netmap_api.router)
 app.include_router(ui_settings_api.router)
 # HTML pages (registered last so /api/* wins)
 app.include_router(pages.router)

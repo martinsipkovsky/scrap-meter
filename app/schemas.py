@@ -72,6 +72,8 @@ class DeviceOut(BaseModel):
     last_poll_at: Optional[dt.datetime]
     current_job: Optional[str]
     last_values: Optional[dict]
+    # the latest ping (app.ping): ms, method, target, ok, at; None when off or not pinged yet
+    ping: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 

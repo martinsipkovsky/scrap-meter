@@ -18,6 +18,21 @@
 
   {% if user.is_admin %}
   <div class="card" style="margin-top:16px">
+    <h3>Ping devices</h3>
+    <div class="muted" style="margin-bottom:8px">For everyone: the app pings every device and shows the response time on the Map, the Devices tab and the station view. The "Device slow or not answering pings" alert needs it.</div>
+    <div class="dev-option">
+      <button class="switch plain" id="pingSwitch" role="switch" aria-checked="false" onclick="savePing({ enabled: !S.ping.enabled })"><span class="knob"></span>Ping devices</button>
+      <div class="row" style="max-width:320px;margin-top:8px;align-items:center">
+        <label for="pingInterval" style="margin:0">Every</label>
+        <select id="pingInterval" onchange="savePing({ interval_s: +this.value })" style="width:auto">
+          <option value="10">10 seconds</option><option value="30">30 seconds</option><option value="60">minute</option><option value="300">5 minutes</option>
+        </select>
+      </div>
+      <div class="hint">ICMP ping; where that is not allowed, the time to open a TCP connection to the device's port (the result says which). A device that sends its data to the app is pinged at the address it last sent from.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
     <h3>Developer options</h3>
     <div class="muted" style="margin-bottom:8px">Unofficial ways into messengers, off unless turned on. Turning one off stops it and hides it; the linked phone and the history are kept.</div>
     <div id="devRows"></div>
@@ -93,6 +108,20 @@ function render() {
     rows.append(tr);
   }
   if (S.dev_options) renderDev();
+  if (S.ping) renderPing();
+}
+function renderPing() {
+  const sw = document.getElementById('pingSwitch');
+  if (!sw || !S.ping) return;
+  sw.classList.toggle('on', S.ping.enabled); sw.setAttribute('aria-checked', String(S.ping.enabled));
+  const sel = document.getElementById('pingInterval');
+  if (![...sel.options].some(o => +o.value === S.ping.interval_s)) sel.append(el('option', { value: S.ping.interval_s }, S.ping.interval_s + ' seconds'));
+  sel.value = String(S.ping.interval_s); sel.disabled = !S.ping.enabled;
+}
+async function savePing(change) {
+  try { S.ping = await api('PUT', '/api/ui-settings/ping', change); renderPing();
+    toast(S.ping.enabled ? 'Devices are pinged every ' + S.ping.interval_s + ' s' : 'Ping devices is off'); }
+  catch (e) { toast(e.message, true); }
 }
 function renderDev() {
   const box = document.getElementById('devRows'); box.innerHTML = '';

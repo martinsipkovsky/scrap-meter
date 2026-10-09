@@ -6,7 +6,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import dev_options, ui_settings
+from .. import dev_options, ping, ui_settings
 from ..config import settings
 from ..notifiers.whatsapp_linked import link as whatsapp_link
 from ..database import get_db
@@ -28,6 +28,7 @@ def get_settings(user: User = Depends(require_api_user)):
         "can_set_defaults": user.is_admin,
         "dev_options": dev_options.load() if user.is_admin else None,
         "dev_labels": dev_options.OPTIONS if user.is_admin else None,
+        "ping": ping.load() if user.is_admin else None,
     }
 
 
@@ -45,6 +46,16 @@ def save_defaults(payload: dict, user: User = Depends(require_api_user)):
     if not user.is_admin:
         raise HTTPException(403, "Only an administrator can set the defaults for everyone")
     return {"admin_defaults": ui_settings.save_defaults(payload), "defaults": ui_settings.defaults()}
+
+
+@router.put("/ping")
+def save_ping(payload: dict, user: User = Depends(require_api_user)):
+    """Ping devices (administrators): on / off and how often."""
+    if not user.is_admin:
+        raise HTTPException(403, "Only an administrator can change the ping setting")
+    if "enabled" in payload and not isinstance(payload["enabled"], bool):
+        raise HTTPException(400, "enabled must be true or false")
+    return ping.save(payload)
 
 
 @router.put("/dev-options")

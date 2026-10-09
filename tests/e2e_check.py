@@ -346,6 +346,31 @@ def main() -> None:
         sent = wait(lambda: [s for s in fake.get("/fake/sent").json() if "E2E broken" in (s["text"] or "")], timeout=40)
         send("PUT", "/api/notifications/policy", {"production_only": True})
         k.detail = sent[0]["text"][:120]
+    with check("Ping", "Devices are pinged; the Map shows server, devices, stations and their links") as k:
+        send("PUT", "/api/ui-settings/ping", {"enabled": True, "interval_s": 5})
+        dv = wait(lambda: next((d for d in get("/api/devices") if d["name"] == "E2E modbus" and d["ping"]
+                                and d["ping"]["ok"]), None), timeout=40)
+        g = get("/api/map")
+        assert len(g["devices"]) == len(get("/api/devices")) and len(g["stations"]) == len(get("/api/stations"))
+        assert {"station_id": ids["modbus"][1], "device_id": ids["modbus"][0]} in g["links"]
+        send("PUT", "/api/map/layout", {"positions": {"server": [5, 5]}})
+        assert get("/api/map")["server"]["pos"] == [5.0, 5.0]
+        send("DELETE", "/api/map/layout")
+        k.detail = f"E2E modbus: {dv['ping']['ms']} ms by {dv['ping']['method']} to {dv['ping']['target']}"
+    with check("Ping", "Slow response rule: alert after 3 slow pings, then back to normal") as k:
+        send("PUT", "/api/notifications/policy", {"production_only": False})
+        rule = send("POST", "/api/notifications/rules", {"name": "E2E slow", "condition": "slow_response", "threshold": 0.0001,
+                                                         "severity": "warning", "provider_ids": [p1["id"]], "cooldown": 3600,
+                                                         "station_id": ids["modbus"][1], "enabled": True}, expect=201)
+        slow = wait(lambda: [s for s in fake.get("/fake/sent").json() if "E2E modbus" in (s["text"] or "")
+                             and "responds slowly" in s["text"]], timeout=60)
+        send("PATCH", f"/api/notifications/rules/{rule['id']}", {"threshold": 100000})
+        back = wait(lambda: [s for s in fake.get("/fake/sent").json() if "E2E modbus" in (s["text"] or "")
+                             and "normally again" in s["text"]], timeout=30)
+        send("PATCH", f"/api/notifications/rules/{rule['id']}", {"enabled": False})
+        send("PUT", "/api/notifications/policy", {"production_only": True})
+        send("PUT", "/api/ui-settings/ping", {"interval_s": 30})
+        k.detail = slow[0]["text"][:90] + " / " + back[0]["text"][:70]
     with check("Chat commands", "!status in a Discord channel is answered there") as k:
         fake.post("/fake/discord/111111111111111111", json={"author": "Eva", "content": "!status E2E simulator"})
         reply = wait(lambda: [s for s in fake.get("/fake/sent").json() if s["to"] == "111111111111111111"

@@ -39,7 +39,7 @@ import logging
 import socketserver
 import time
 
-from .tcp_listener import ANY_HOST, ListenerManager, TcpListenerDriver
+from .tcp_listener import ANY_HOST, ListenerManager, TcpListenerDriver, last_peer
 
 log = logging.getLogger("cognex.udp_listener")
 
@@ -111,6 +111,7 @@ class _Handler(socketserver.BaseRequestHandler):
                         srv.server_address[1], peer, srv.allowed_host)
             return
         srv.last_rx = time.monotonic()
+        last_peer[srv.device_id] = peer
         if not srv.online:
             srv.online = True
             srv.manager.status(srv.device_id, True, None)

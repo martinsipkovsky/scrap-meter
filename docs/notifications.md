@@ -37,6 +37,7 @@ production state, as before 1.23.
 | Scrap rate ≥ threshold | state | The current job's scrap rate (as shown on the dashboard) reaches the threshold. Entered in %, e.g. `5` |
 | Fail (NOK) count ≥ threshold | state | The current job's NOK count (as shown on the dashboard) reaches the threshold |
 | Station's device disconnected or read error | state | A device the station uses can't be read, has gone offline, or doesn't deliver the value |
+| Device slow or not answering pings | state | A device of the station answered its last 3 pings slower than the threshold (ms, 300 by default) or not at all; once more with "responds normally again" when a ping is fast again. Needs **Settings → Ping devices** (see [Ping](user-guide.md#ping)) |
 | Station stopped, idle or back in production | event | A station's [production state](user-guide.md#production-state) changes |
 | Station changed job | event | A station's job changes |
 | FTP backup failed / FTP backup finished | event | An automatic or *Run now* FTP backup ends |

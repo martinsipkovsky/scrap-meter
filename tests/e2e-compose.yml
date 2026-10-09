@@ -1,0 +1,5 @@
+# The end-to-end check (tests/e2e_run.sh): Signal points at the fake server.
+services:
+  web:
+    environment:
+      SIGNAL_API_URL: http://e2e-fake:8099/signal

@@ -4,6 +4,9 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.22.1 — 2026-10-09
+- Fixes from the full test run: a device that was just added shows the amber `W01` (waiting) instead of a red code until it is read for the first time; on phones, wide tables scroll sideways instead of making the whole page wider; the marks in the Scrap statistics day map stay readable in light mode; the guides opened from the Tutorial fit a phone screen.
+
 ## 1.22.0 — 2026-10-08
 - New **Tutorial** under the version number in the left menu: short pages with pictures on everything the app can do, from getting started to error codes. They are part of the app, so they work without internet, and link to the longer guides.
 

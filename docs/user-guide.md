@@ -59,7 +59,7 @@ view shows the code with the full message.
 
 | Code | Meaning |
 |---|---|
-| W01 | Waiting for the device to connect or send its first data (a listener waits on its port) |
+| W01 | Waiting for the device to connect or send its first data (a listener waits on its port, or the device was just added) |
 | W02 | Waiting for the first value of a counter or job from the device |
 | W03 | A source's device is switched off (disabled on the Devices tab) |
 | E01 | A source's device was deleted |

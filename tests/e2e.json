@@ -1,0 +1,332 @@
+[
+ {
+  "area": "Sign in",
+  "check": "API without a login answers 401, pages redirect to /login",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Sign in",
+  "check": "Wrong password is refused",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Sign in",
+  "check": "Administrator signs in",
+  "ok": true,
+  "detail": "start page /"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a simulator device with its station (simulator)",
+  "ok": true,
+  "detail": "device 5, station 5"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a tcp device with its station (native)",
+  "ok": true,
+  "detail": "device 6, station 6"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a datachannel device with its station (datachannel)",
+  "ok": true,
+  "detail": "device 7, station 7"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a modbus device with its station (modbus)",
+  "ok": true,
+  "detail": "device 8, station 8"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a profinet device with its station (profinet)",
+  "ok": true,
+  "detail": "device 9, station 9"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a tcp_listen device with its station (tcp_listen)",
+  "ok": true,
+  "detail": "device 10, station 10"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a udp_listen device with its station (udp_listen)",
+  "ok": true,
+  "detail": "device 11, station 11"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a slmp_listen device with its station (slmp_listen)",
+  "ok": true,
+  "detail": "device 12, station 12"
+ },
+ {
+  "area": "Devices",
+  "check": "Add a slmp device with its station (slmp)",
+  "ok": true,
+  "detail": "device 13, station 13"
+ },
+ {
+  "area": "Devices",
+  "check": "Add an OPC UA device and a station on its nodes",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Devices",
+  "check": "OPC UA browse lists the server's nodes",
+  "ok": true,
+  "detail": "{\"node_id\": \"i=85\", \"name\": \"Objects\", \"parent\": null, \"children\": [{\"node_id\": \"i=31915\", \"name\": \"Locations\", \"node_class\": \"Object\", \"value\": null, \"data_typ"
+ },
+ {
+  "area": "Devices",
+  "check": "simulator: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 34, \"fail\": 2, \"count\": 36, \"job\": \"SIM_A\"}, job SIM_A, OK 30"
+ },
+ {
+  "area": "Devices",
+  "check": "native: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 132, \"fail\": 11, \"count\": 143, \"job\": \"NM_JOB\"}, job NM_JOB, OK 51"
+ },
+ {
+  "area": "Devices",
+  "check": "datachannel: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 132, \"fail\": 11, \"count\": 143, \"job\": \"DC_JOB\"}, job DC_JOB, OK 51"
+ },
+ {
+  "area": "Devices",
+  "check": "modbus: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 129, \"fail\": 10, \"count\": 139, \"job\": \"MB_JOB\"}, job MB_JOB, OK 48"
+ },
+ {
+  "area": "Devices",
+  "check": "profinet: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 129, \"fail\": 10, \"count\": 139, \"job\": \"PN_JOB\"}, job PN_JOB, OK 48"
+ },
+ {
+  "area": "Devices",
+  "check": "tcp_listen: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 60, \"fail\": 4, \"count\": 64, \"job\": \"TCP_JOB\"}, job TCP_JOB, OK 50"
+ },
+ {
+  "area": "Devices",
+  "check": "udp_listen: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 60, \"fail\": 4, \"count\": 64, \"job\": \"UDP_JOB\"}, job UDP_JOB, OK 50"
+ },
+ {
+  "area": "Devices",
+  "check": "slmp_listen: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 60, \"fail\": 4, \"count\": 64, \"job\": \"SLMP_JOB\"}, job SLMP_JOB, OK 50"
+ },
+ {
+  "area": "Devices",
+  "check": "slmp: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"pass\": 60, \"fail\": 4, \"count\": 64, \"job\": \"PLC_JOB\"}, job PLC_JOB, OK 60"
+ },
+ {
+  "area": "Devices",
+  "check": "opcua: the device delivers values and its station counts",
+  "ok": true,
+  "detail": "values {\"ns=2;s=Line1.Fail\": 3, \"ns=2;s=Line1.Pass\": 109, \"ns=2;s=Line1.Job\": \"JOB_A\"}, job JOB_A, OK 46"
+ },
+ {
+  "area": "Stations",
+  "check": "Stop and start production by hand",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Stations",
+  "check": "Reset counters sets the dashboard counters to zero",
+  "ok": true,
+  "detail": "OK after reset 0"
+ },
+ {
+  "area": "Stations",
+  "check": "Edit a station (idle timeout, HMI window) and the HMI framing check",
+  "ok": true,
+  "detail": "{\"reachable\": true, \"status\": 200, \"blocked\": null, \"error\": null}"
+ },
+ {
+  "area": "Stations",
+  "check": "Scrap warnings switch mutes and unmutes a station",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Dashboard",
+  "check": "Problem codes: E02 for a closed port, W03 for a disabled device",
+  "ok": true,
+  "detail": "W01 before the first read, E02, then W03"
+ },
+ {
+  "area": "Dashboard",
+  "check": "Summary and OEE answer for every station",
+  "ok": true,
+  "detail": "15 stations, overall OEE {'availability': 0.5226, 'performance': 0.4964, 'quality': 0.9466, 'oee': 0.2456, 'stations': 3, 'without_cycle_time': ['E2E broken', 'E2E datachannel', 'E2E modbus', 'E2E native', 'E2E opcua', 'E2E profinet', 'E2E simulator', 'E2E slmp', 'E2E slmp_listen', 'E2E tcp_listen', 'E2E udp_listen'], 'jobs_without_cycle_time': ['DC_JOB', 'JOB_A', 'MB_JOB', 'NM_JOB', 'PLC_JOB', 'P"
+ },
+ {
+  "area": "Stations",
+  "check": "Station view with its chart over 1 h to 7 days",
+  "ok": true,
+  "detail": "OK 33 / NOK 3 over 7 days"
+ },
+ {
+  "area": "Jobs",
+  "check": "Add a job before production and set its cycle time per shot",
+  "ok": true,
+  "detail": "12 s per shot of 4 = 3 s per piece"
+ },
+ {
+  "area": "OEE",
+  "check": "A cycle time gives the simulator station a performance figure",
+  "ok": true,
+  "detail": "A 0.0002 P 4.2783 Q 0.9167 OEE 0.0008"
+ },
+ {
+  "area": "Manual entries",
+  "check": "Add an entry, a correction (asks first), edit and delete",
+  "ok": true,
+  "detail": "entry +8/+2 kept, correction removed"
+ },
+ {
+  "area": "Comments",
+  "check": "Write, list and delete a comment",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Data log",
+  "check": "Readings, exclude and include one, exclude a period",
+  "ok": true,
+  "detail": "period: {'changed': 11}"
+ },
+ {
+  "area": "Scrap statistics",
+  "check": "Today's figures add up and the Excel file downloads",
+  "ok": true,
+  "detail": "overall OK 3187 NOK 157 (stations 3187), xlsx 8450 B"
+ },
+ {
+  "area": "Notifications",
+  "check": "Discord bot and webhook providers, Test send reaches the fake Discord",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Notifications",
+  "check": "Signal (developer option on): linked, groups, provider, Test send",
+  "ok": true,
+  "detail": "+10000000000, 2 groups"
+ },
+ {
+  "area": "Notifications",
+  "check": "Scrap rate rule sends an alert to Discord",
+  "ok": true,
+  "detail": "🚨 ALERT · High scrap on 'E2E simulator' job 'SIM_A': 21.4% (3/14) >= 0.0%"
+ },
+ {
+  "area": "Notifications",
+  "check": "Disconnect rule sends an alert for the broken device",
+  "ok": true,
+  "detail": "⚠️ WARNING · Station 'E2E broken' is disconnected: Device 'E2E broken': TCP read failed: [Errno 111] Connection refused"
+ },
+ {
+  "area": "Chat commands",
+  "check": "!status in a Discord channel is answered there",
+  "ok": true,
+  "detail": "📊 Status 09.10.2026 08:13 / E2E simulator: ▶ in production, job SIM_A /    OK 15 · NOK 3 · scrap 16.7% / Total: OK 15 · NOK 3 "
+ },
+ {
+  "area": "Chat commands",
+  "check": "!mute from a Signal group mutes the station, !unmute turns it on",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Chat commands",
+  "check": "Prefix change, preview, the chats list and !help",
+  "ok": true,
+  "detail": "4 chats; preview {\"reply\": \"\\ud83d\\udcca Status 09.10.2026 08:14\\nE2E broken: \\u23f8 idle, job \\u"
+ },
+ {
+  "area": "Chat room",
+  "check": "A Discord channel as the room: messages in and out",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Settings",
+  "check": "Own settings, defaults for everyone, reset",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Settings",
+  "check": "Developer options off hide WhatsApp and Signal",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Users",
+  "check": "A user with view_dashboard only: allowed pages work, the rest is refused",
+  "ok": true,
+  "detail": "{\"/api/data/readings\": 403, \"/api/notifications/rules\": 403, \"/api/users\": 403, \"/api/database\": 403, \"/api/rawdb/tables\": 403}"
+ },
+ {
+  "area": "Users",
+  "check": "Change password, delete the user",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "area": "Devices",
+  "check": "Export the devices and import them back (existing names are updated)",
+  "ok": true,
+  "detail": "{\"created\": [], \"updated\": [\"E2E broken\", \"E2E datachannel\", \"E2E modbus\", \"E2E native\", \"E2E opcua\", \"E2E profinet\", \"E2E simulator\", \"E2E slmp\", \"E2E slmp_listen\", \"E2E tcp_listen\", \"E2E udp_listen\""
+ },
+ {
+  "area": "Database",
+  "check": "Database tab, backup download, import of that backup",
+  "ok": true,
+  "detail": " restored; readings 96307 -> 96308"
+ },
+ {
+  "area": "Database",
+  "check": "FTP backup: settings, test and a run to the FTP server",
+  "ok": true,
+  "detail": "{\"at\": \"2026-10-09T08:14:18.822232+00:00\", \"trigger\": \"manual\", \"ok\": true, \"file\": \"cognex-backup-20261009-081418.json.gz\", \"size\": 1246052, \"deleted\": 0, \"seconds\": 0.9, \"message\": \"Uploaded cognex-"
+ },
+ {
+  "area": "Power BI",
+  "check": "Power BI access on: the read-only login reads the views through the port",
+  "ok": true,
+  "detail": "96314 rows in powerbi_readings; users table refused"
+ },
+ {
+  "area": "Raw data",
+  "check": "Tables, rows, edit a value, change log, undo, read-only SQL",
+  "ok": true,
+  "detail": "SQL {\"columns\": [\"n\"], \"rows\": [[96321]], \"truncated\": false, \"limit\": 500}; DELETE refused (400)"
+ },
+ {
+  "area": "Pages",
+  "check": "Every page and the Tutorial open for an administrator",
+  "ok": true,
+  "detail": "20 pages"
+ }
+]

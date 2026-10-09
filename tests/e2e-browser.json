@@ -1,0 +1,326 @@
+[
+ {
+  "mode": "dark",
+  "page": "/",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/stations",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/station/5",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/devices",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/jobs",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/data",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/scrap",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/chat",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/notifications",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/users",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/database",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/rawdb",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/settings",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/account",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/changelog",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/tutorial",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/tutorial/oee",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
+  "page": "/tutorial/docs/user-guide",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/stations",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/station/5",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/devices",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/jobs",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/data",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/scrap",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/chat",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/notifications",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/users",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/database",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/rawdb",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/settings",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/account",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/changelog",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/tutorial",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/tutorial/oee",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
+  "page": "/tutorial/docs/user-guide",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/stations",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/station/5",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/devices",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/jobs",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/data",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/scrap",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/chat",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/notifications",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/users",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/database",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/rawdb",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/settings",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/account",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/changelog",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/tutorial",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/tutorial/oee",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/tutorial/docs/user-guide",
+  "ok": true,
+  "problems": []
+ }
+]

@@ -91,6 +91,15 @@ def test_dashboard_problems(client):
     db = SessionLocal()
     try:
         d = db.get(Device, did)
+        d.connected, d.last_error, d.last_poll_at = False, None, None  # added, never read
+        db.commit()
+    finally:
+        db.close()
+    row = next(r for r in client.get("/api/data/summary").json() if r["id"] == sid)
+    assert [(p["code"], p["level"]) for p in row["problems"]] == [("W01", "waiting")]
+    db = SessionLocal()
+    try:
+        d = db.get(Device, did)
         d.connected, d.last_error = False, "Listening on TCP port 5102, waiting for the device to connect"
         db.commit()
     finally:

@@ -696,7 +696,7 @@ def delete_entry(db: Session, reading: Reading) -> None:
 # (W: waiting, nothing failed; E: an error), the station view the code and
 # the message. docs/user-guide.md lists them; never reuse a code.
 PROBLEM_CODES = {
-    "W01": "Waiting for the device to connect or send its first data",
+    "W01": "Waiting for the device to connect or send its first data (also a device not read yet)",
     "W02": "Waiting for the first value of a counter or job from the device",
     "W03": "A source's device is switched off (disabled)",
     "E01": "A source's device was deleted",
@@ -748,6 +748,9 @@ def status(station: Station, devices: dict[int, Device]) -> dict:
             problems.setdefault("A source's device was deleted", "E01")
         elif not device.enabled:
             problems.setdefault(f"Device '{device.name}' is disabled", "W03")
+        elif not device.connected and device.last_error is None and device.last_poll_at is None:
+            # added, not read yet: waiting, nothing has failed
+            problems.setdefault(f"Device '{device.name}': waiting for the first read", "W01")
         elif not device.connected:
             error = device.last_error or "offline"
             problems.setdefault(f"Device '{device.name}': {error}", problem_code(error))

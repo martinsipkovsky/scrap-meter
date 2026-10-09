@@ -50,6 +50,8 @@ container of a throwaway stack with an empty database (another
 - `tests/perf_compare.py`: the statistics and OEE at a fixed moment as JSON;
   run it with the old and the new image on the same database and compare.
 - `tests/perf_poll.py`: the cost of one device read (the poller's work).
+- `tests/e2e_run.sh`: the end-to-end check of [the test report](TEST_REPORT.md)
+  (`e2e_check.py`, `e2e_browser.py`, simulated devices in `e2e_devices.py`).
 - `tests/wiki_demo.py` and `tests/wiki_shots.py`: demo data on a seeded
   throwaway stack and the Tutorial screenshots (`docs/wiki/images`), taken
   with the Playwright image (see the scripts' docstrings).

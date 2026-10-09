@@ -8,7 +8,7 @@ shows the code with the full message.
 
 | Code | Colour | Meaning | What to check |
 |---|---|---|---|
-| W01 | amber | Waiting for the device to connect or send its first data | Is the camera or PLC on, and set to send to the app's port? |
+| W01 | amber | Waiting for the device to connect or send its first data (or just added) | Is the camera or PLC on, and set to send to the app's port? |
 | W02 | amber | Waiting for the first value of a counter or job | The device answers but hasn't given that value yet |
 | W03 | amber | The device is switched off (disabled) | Devices tab: enable it |
 | E01 | red | A source's device was deleted | Stations tab: pick another device |

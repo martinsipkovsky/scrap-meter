@@ -134,6 +134,7 @@ small simulation server (see [Protocols](docs/protocols.md#opc-ua-client-opcua))
 |---|---|
 | [Installation and deployment](docs/installation.md) | Building from source, running on a server, firewall ports, updates, backups |
 | [Configuration](docs/configuration.md) | Environment variables and the Database tab |
+| [Test report](docs/TEST_REPORT.md) | What was tested in the latest release, how, and what could not be tested |
 | [Tutorial](docs/wiki/README.md) | Short pages with pictures on every part of the app (also in the app, under the version number) |
 | [User guide](docs/user-guide.md) | Devices and stations, dashboard and OEE, comments, manual entries, production state, data, statistics, users, export/import, the Raw data tab |
 | [Protocols](docs/protocols.md) | How to connect each device type, with every config field |

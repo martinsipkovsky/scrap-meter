@@ -73,6 +73,12 @@
  },
  {
   "mode": "dark",
+  "page": "/system",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "dark",
   "page": "/settings",
   "ok": true,
   "problems": []
@@ -181,6 +187,12 @@
  },
  {
   "mode": "light",
+  "page": "/system",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "light",
   "page": "/settings",
   "ok": true,
   "problems": []
@@ -284,6 +296,12 @@
  {
   "mode": "phone",
   "page": "/rawdb",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "mode": "phone",
+  "page": "/system",
   "ok": true,
   "problems": []
  },

@@ -72,6 +72,7 @@ app/
   models.py          User, Device, Station, SourceState, Job, CounterState, Reading,
                      StationComment, Notification*, Meta
   counters.py        reset-proof counter deltas (pure, unit-tested)
+  recount.py         recalculating counts from the raw readings (Database tab)
   stations.py        stations and their sources: start rule, counting while in
                      production, readings, manual entries, active devices, the
                      upgrades of 1.4 data (devices became stations) and of

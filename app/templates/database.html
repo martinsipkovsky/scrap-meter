@@ -100,8 +100,35 @@
     </div>
   </div>
   <div id="safetyWrap" style="display:none;margin-top:14px">
-    <div class="muted" style="margin-bottom:4px">Saved automatically before an import (the last 5 are kept on this server):</div>
+    <div class="muted" style="margin-bottom:4px">Saved automatically before an import or a recalculation (the last 5 are kept on this server):</div>
     <div id="safetyList"></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Recalculate counts from raw readings</h2>
+  <p class="muted" style="margin-top:0">Up to version 1.25, when a device reset only one of its counters (for example the OK counter per box, while the NOK counter ran on), the app counted the other counter's whole value again. Every reading is stored with the device's raw counters, so those counts can be worked out again. <em>Check</em> only shows what would change; nothing is changed until you confirm, and the current data is saved first as a backup on this server.</p>
+  <div id="rcLast"></div>
+  <div id="rcMsg"></div>
+  <div class="actions">
+    <button class="btn secondary" id="rcCheck" onclick="recountPreview()">Check what would change</button>
+  </div>
+  <div id="rcBox" style="display:none;margin-top:14px">
+    <div id="rcTable">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Station</th><th>Day</th><th>Readings</th><th>OK now</th><th>OK corrected</th><th>NOK now</th><th>NOK corrected</th><th>Scrap now</th><th>Scrap corrected</th></tr></thead>
+        <tbody id="rcRows"></tbody>
+      </table></div>
+      <div class="hint" style="margin-top:6px">Days in <span id="rcTz"></span>. OK / NOK are the parts the day counts in the statistics (in production, not excluded).</div>
+    </div>
+    <div id="rcUnclear" style="margin-top:10px"></div>
+    <div id="rcApply" style="margin-top:12px">
+      <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="rcConfirm" style="width:auto" onchange="document.getElementById('rcBtn').disabled = !this.checked"/> I have checked the table and want these counts corrected.</label>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn danger" id="rcBtn" disabled onclick="recountApply()">Correct these counts</button>
+        <button class="btn secondary" onclick="recountCancel()">Cancel</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -350,6 +377,7 @@ const KIND = { download: 'downloaded', ftp: 'uploaded to FTP' };
 async function loadBackups() {
   const s = await getJSON('/api/database/backup');
   const lb = s.last_backup;
+  recountLast(s.last_recount);
   const ageDays = lb ? (Date.now() - new Date(lb.at).getTime()) / 86400000 : null;
   if (!lb) box('lastBackup', 'No backup has been made yet. Download one now or set up the automatic FTP backup.', 'warn');
   else if (ageDays > BACKUP_MAX_AGE_DAYS) box('lastBackup', `The last backup is ${Math.floor(ageDays)} days old (${fmtTime(lb.at)}, ${KIND[lb.kind] || lb.kind}). Take a new one.`, 'warn');
@@ -475,6 +503,70 @@ async function runImport() {
   } catch (e) {
     document.getElementById('importBtn').disabled = false;
     box('bmsg', e.message, 'err');
+  }
+}
+
+// ---- Recalculate counts from raw readings ----
+function pct(nok, ok) { return ok + nok > 0 ? (100 * Math.max(nok, 0) / (ok + nok)).toFixed(1) + ' %' : '—'; }
+function recountLast(last) {
+  box('rcLast', last ? `Last recalculation: ${fmtTime(last.at)} by ${last.by}: ${last.readings} readings corrected, ${last.ok} OK and ${last.nok} NOK removed. The data from before it: ${last.safety}.` : '', 'ok');
+}
+function recountCancel() {
+  document.getElementById('rcBox').style.display = 'none';
+  box('rcMsg', '');
+}
+async function recountPreview() {
+  recountCancel();
+  box('rcMsg', 'Reading every stored reading, this can take a while…', 'warn');
+  document.getElementById('rcCheck').disabled = true;
+  try {
+    const r = await getJSON('/api/database/recount?tz=' + encodeURIComponent(TZ));
+    recountLast(r.last);
+    const t = r.total;
+    const tb = document.getElementById('rcRows'); tb.innerHTML = '';
+    for (const st of r.stations) for (const [i, d] of st.days.entries()) {
+      tb.append(el('tr', {},
+        el('td', {}, i ? '' : st.station), el('td', {}, d.day), el('td', {}, String(d.readings)),
+        el('td', {}, String(d.ok)), el('td', {}, d.ok_after === d.ok ? '=' : el('strong', {}, String(d.ok_after))),
+        el('td', {}, String(d.nok)), el('td', {}, d.nok_after === d.nok ? '=' : el('strong', {}, String(d.nok_after))),
+        el('td', {}, pct(d.nok, d.ok)), el('td', {}, pct(d.nok_after, d.ok_after))));
+    }
+    document.getElementById('rcTz').textContent = TZ;
+    const un = document.getElementById('rcUnclear'); un.innerHTML = '';
+    if (t.unclear) {
+      un.append(el('div', { class: 'warnbox' }, `${t.unclear} reading${t.unclear === 1 ? '' : 's'} with a counter reset counted something neither rule explains (a job with a piece rule, or a source that was edited). They are left as they are; correct them with a manual entry if needed.`));
+      const body = el('tbody', {});
+      for (const u of r.unclear) body.append(el('tr', {}, el('td', {}, u.station), el('td', {}, fmtTime(u.at)), el('td', {}, u.job || '—'),
+        el('td', {}, u.raw_ok + ' / ' + u.raw_nok), el('td', {}, u.counted_ok + ' / ' + u.counted_nok), el('td', {}, u.new_ok + ' / ' + u.new_nok)));
+      un.append(el('div', { style: 'overflow-x:auto;margin-top:6px' }, el('table', {},
+        el('thead', {}, el('tr', {}, ...['Station', 'Time', 'Job', 'Raw OK / NOK', 'Counted OK / NOK', 'Rule now would count'].map(h => el('th', {}, h)))), body)));
+    }
+    const any = t.readings > 0;
+    document.getElementById('rcTable').style.display = any ? '' : 'none';
+    document.getElementById('rcApply').style.display = any ? '' : 'none';
+    document.getElementById('rcConfirm').checked = false;
+    document.getElementById('rcBtn').disabled = true;
+    document.getElementById('rcBox').style.display = any || t.unclear ? '' : 'none';
+    box('rcMsg', any
+      ? `${t.readings} of ${t.scanned} readings counted too much: ${t.ok} OK and ${t.nok} NOK would be removed. Nothing has been changed yet.`
+      : `Checked ${t.scanned} readings: nothing to correct.`, any ? 'warn' : 'ok');
+  } catch (e) { box('rcMsg', e.message, 'err'); }
+  document.getElementById('rcCheck').disabled = false;
+}
+async function recountApply() {
+  if (!document.getElementById('rcConfirm').checked) return;
+  if (!confirm('Correct the counts shown in the table? The current data is saved on the server first.')) return;
+  document.getElementById('rcBtn').disabled = true;
+  box('rcMsg', 'Saving the current data and correcting the counts, this can take a while…', 'warn');
+  try {
+    const r = await postJSON('/api/database/recount', { confirm: true });
+    document.getElementById('rcBox').style.display = 'none';
+    box('rcMsg', `Corrected ${r.readings} readings: ${r.ok} OK and ${r.nok} NOK removed. The data from before it was saved as ${r.safety_backup} (listed under Backups); import that file to undo.`, 'ok');
+    recountLast(r.last);
+    loadBackups();
+  } catch (e) {
+    document.getElementById('rcBtn').disabled = false;
+    box('rcMsg', e.message, 'err');
   }
 }
 

@@ -57,6 +57,7 @@ def status(_: User = Depends(require_admin)):
         "ftp_next_run": nxt.isoformat() if nxt else None,
         "safety_backups": backup.safety_backups(),
         "last_import": state.get("last_import"),
+        "last_recount": state.get("last_recount"),
     }
 
 

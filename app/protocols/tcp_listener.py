@@ -163,7 +163,8 @@ class TcpListenerDriver(ProtocolDriver):
             pass_values = [str(v).lower() for v in cfg.get("pass_values") or
                            ("pass", "ok", "1", "good", "p")]
             is_pass = status in pass_values
-            if job != self._last_job:
+            restarted = job != self._last_job
+            if restarted:
                 # new job: start its tally from zero so the accumulator's
                 # baseline for the new job is exactly this part
                 self._events[job] = [0, 0]
@@ -174,7 +175,8 @@ class TcpListenerDriver(ProtocolDriver):
                 job_name=job,
                 raw_pass=tally[0],
                 raw_fail=tally[1],
-                extra={"raw": line, "mode": "event", "status": status},
+                # "restarted": this record is the whole tally (app.counters)
+                extra={"raw": line, "mode": "event", "status": status, "restarted": restarted},
             )
 
         raw_count = 0

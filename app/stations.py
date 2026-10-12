@@ -318,9 +318,12 @@ def _process(db: Session, station: Station, src: dict, devices: dict[int, Device
     if st.job and st.job != job:
         read.job_changed_from = st.job
     st.job = job
-    from_zero = bool((devices[src["device_id"]].last_values or {}).get("_from_zero"))
+    vals = devices[src["device_id"]].last_values or {}
+    from_zero = bool(vals.get("_from_zero"))
     if st.baselined or from_zero:
-        prev = (st.last_pass, st.last_fail, st.last_count) if st.baselined else (0, 0, 0)
+        # a listener that started its own tally again counts from zero
+        restarted = from_zero and bool(vals.get("_restarted"))
+        prev = (st.last_pass, st.last_fail, st.last_count) if st.baselined and not restarted else (0, 0, 0)
         d_ok, d_nok, d_count = deltas(prev, (ok or 0, nok or 0, count or 0))
         if count is None:
             d_count = d_ok + d_nok

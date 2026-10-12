@@ -56,8 +56,11 @@ versions keep working.
   (multi-cavity moulds), per job, so a station that changes job is weighed
   correctly.
 - **Reset-proof counters:** if an operator resets the counters on the device,
-  the running totals keep going. A job change freezes the old job's totals and
-  starts new ones.
+  the running totals keep going, also when only one of them is reset (an OK
+  counter per box next to a NOK counter that runs on). A job change freezes
+  the old job's totals and starts new ones. Counts made by versions up to
+  1.25, which counted such a NOK counter again, can be recalculated from the
+  stored raw readings on the Database tab.
 - **Production state:** a station goes into production when a source makes,
   say, 2 OK pieces within a minute (set per source), and leaves it when no
   source counts OK for its idle timeout. Counters only change while in

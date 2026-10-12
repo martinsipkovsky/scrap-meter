@@ -45,6 +45,14 @@ If a device's counters are reset between two readings, parts counted after the
 last reading and before the reset can't be seen. Running totals are never
 reduced. A shorter poll interval, or a push protocol, narrows the gap.
 
+Counters are judged one by one, so a counter that was not reset is not
+counted again. When a device resets all its counters and one of them is
+already above its old value at the next read (NOK 1, reset, NOK 2), two reads
+cannot tell that from a plain rise. The app then decides by how many pieces
+the reset counters have made since (see
+[How counting works](user-guide.md#how-counting-works)); the count can be off
+by that small old value at most.
+
 ## OEE assumes 24 hours of planned time
 
 There are no shifts, breaks or planned stops yet, so the OEE meter counts the

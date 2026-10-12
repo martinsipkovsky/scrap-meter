@@ -199,6 +199,25 @@ def main() -> None:
             k.detail = (f"values {json.dumps({x: dv['last_values'].get(x) for x in list(dv['last_values'])[:4]})}, "
                         f"job {row['current_job']}, OK {row['active_job']['total_pass']}")
 
+    with check("Devices", "Only the OK counter of a device resets: the NOK counter is not counted again") as k:
+        tcp_sid = ids["tcp_listen"][1]
+
+        def tcp_totals():
+            rows = get(f"/api/stations/{tcp_sid}/counters")
+            return sum(r["total_pass"] for r in rows), sum(r["total_fail"] for r in rows)
+
+        def pushed(text, want):
+            push_tcp(text)
+            return wait(lambda: tcp_totals() == want, timeout=15)
+
+        push_tcp("TCP_JOB,61,40\r\n")
+        push_tcp("TCP_JOB,62,40\r\n")
+        time.sleep(2)
+        ok0, nok0 = tcp_totals()
+        assert pushed("TCP_JOB,0,40\r\n", (ok0, nok0)), tcp_totals()          # OK reset, NOK runs on
+        assert pushed("TCP_JOB,2,41\r\n", (ok0 + 2, nok0 + 1)), tcp_totals()
+        k.detail = f"OK {ok0} -> {ok0 + 2}, NOK {nok0} -> {nok0 + 1} across the reset (NOK counter at 40)"
+
     # ---- stations, production, problems --------------------------------------
     sim_sid = ids["simulator"][1]
     with check("Stations", "Stop and start production by hand") as k:
@@ -460,6 +479,11 @@ def main() -> None:
                 if b.get(t) != af.get(t)}
         assert not diff, diff
         k.detail = f"{info.get('backend') or ''} restored; readings {b.get('readings')} -> {af.get('readings')}"
+    with check("Database", "Recalculate counts from raw readings: the preview, and nothing changes without a confirmation") as k:
+        r = get("/api/database/recount", params={"tz": "Europe/Prague"})
+        assert r["total"]["scanned"] > 0, r["total"]
+        assert c.post("/api/database/recount", json={}).status_code == 400
+        k.detail = json.dumps(r["total"])
     with check("Database", "FTP backup: settings, test and a run to the FTP server") as k:
         send("PUT", "/api/database/backup/ftp", {"enabled": True, "host": dev, "port": 2121, "user": "e2e",
                                                 "password": "e2e-ftp-pw", "folder": "/", "tls": False})

@@ -4,6 +4,11 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.26.0 — 2026-10-12
+- Fixed: when a device reset only one of its counters (for example the OK counter per box, while the NOK counter ran on), the app counted the other counter's whole value again as new pieces, which showed as single tall NOK bars and a far too high scrap rate. Each counter is now judged on its own: only a counter that dropped starts again from zero.
+- New on the Database tab (administrators): **Recalculate counts from raw readings**. *Check what would change* finds the readings that counted too much this way and shows the OK / NOK of each station and day now and corrected. Nothing changes until you confirm; the current data is first saved as a backup on the server, which can be imported to undo it.
+- A listener in event mode (one record per part) no longer misses the first part of a new job when it is the same kind (OK or NOK) as the only parts of the job before.
+
 ## 1.25.0 — 2026-10-09
 - New **Map** tab after Devices: the Scrap Meter server, every device with its address, protocol, status colour and problem code (as on the dashboard) and ping time, and the stations that count them, with the ports the app listens on. Click a device or station to edit it in its usual form; drag things around, and the places are kept for everyone (**Auto layout** puts them back). Works without internet.
 - The app pings every device (every 30 s by default) and shows the response time on the Map, as a new **Ping** column on the Devices tab and per device on the station view, or *no reply*. It uses ICMP, or the time to open a TCP connection to the device's port where ICMP gets no answer; a device that sends its data to the app is pinged at the address it last sent from. **Settings → Ping devices** (administrators) turns it off or changes how often.

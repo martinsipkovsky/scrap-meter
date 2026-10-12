@@ -256,13 +256,14 @@ class SlmpServerDriver(ProtocolDriver):
                 return None  # nothing inspected yet, just the camera starting up
             status = self._value(cfg.get("status_device"))
             pass_values = {int(v) for v in (cfg.get("pass_values") or [1])}
-            if job != self._last_job:
+            restarted = job != self._last_job
+            if restarted:
                 self._events[job] = [0, 0]
                 self._last_job = job
             tally = self._events.setdefault(job, [0, 0])
             tally[0 if status in pass_values else 1] += 1
             return Sample(job_name=job, raw_pass=tally[0], raw_fail=tally[1],
-                          extra={"mode": "event", "trigger": trigger, "status": status})
+                          extra={"mode": "event", "trigger": trigger, "status": status, "restarted": restarted})
 
         values = (job, self._value(cfg.get("pass_device")), self._value(cfg.get("fail_device")),
                   self._value(cfg.get("count_device")))

@@ -197,7 +197,7 @@ Two Docker volumes hold everything that must survive an update:
 | Volume | Contents |
 |---|---|
 | `db_data` | The bundled PostgreSQL database: users, devices, counters, readings, comments, alerts |
-| `app_data` | `/srv/data` in the app container: the database choice and FTP backup settings saved on the Database tab (also copied into `db_data`), backups taken before an import, and the OPC UA client certificate |
+| `app_data` | `/srv/data` in the app container: the database choice and FTP backup settings saved on the Database tab (also copied into `db_data`), backups taken before an import or a recalculation, and the OPC UA client certificate |
 
 The easiest backup is on the Database tab: **Download backup**, or the
 automatic backup to an FTP server (see [Configuration](configuration.md#backups-database-tab)).

@@ -323,12 +323,17 @@ increase is added to the station's running total for the source's job. While
 it is not, nothing is added (see [Production state](#production-state)).
 
 - **Counter reset on a device:** the app sees a counter drop, treats the new
-  value as counted from zero, and keeps adding. A drop in one of a source's
-  counters means the device reset all of them. Each source is checked on its
-  own, so resetting the reject counter of one device does not touch the OK
-  count of another. Banked totals are never lost, but parts counted between
-  the last read and the reset can't be seen, so poll often enough for your
-  line speed.
+  value as counted from zero, and keeps adding. Each counter is checked on
+  its own (since 1.26): when only the OK counter is reset, for example per
+  box, the NOK counter carries on from its old value and is not counted
+  again. Banked totals are never lost, but parts counted between the last
+  read and the reset can't be seen, so poll often enough for your line speed.
+  One case cannot be told from two reads alone: after a reset of all
+  counters, one of them may already be above its old value at the next read
+  (NOK 1, reset, NOK 2). The app takes such a counter as reset too only when
+  it rose and its old value was no more than the pieces the reset counters
+  have made since; otherwise it counts the rise. Either way the possible
+  error is at most that small old value.
 - **Job change:** the jobs the sources run now are the station's current jobs;
   the other jobs' totals are frozen. If an earlier job comes back, its totals
   continue where they stopped.
@@ -725,6 +730,32 @@ backups regularly; the tab warns when the last one is more than 7 days old.
 Backups made by earlier versions (Cognex Monitor, Scrap Meter 1.4) can be
 imported; their devices become stations as on an update. See
 [Configuration](configuration.md#backups-database-tab) for details.
+
+### Recalculate counts from raw readings
+
+Up to version 1.25 the app took a drop of one counter as a reset of all of a
+source's counters. A device whose OK counter was reset on its own (per box,
+per shift) while its NOK counter ran on therefore had the whole NOK counter
+counted again at every such reset: single tall NOK bars on the station view
+and a scrap rate far too high. Version 1.26 counts this correctly, and this
+section of the Database tab corrects the counts made before:
+
+1. **Check what would change** reads every stored reading (each one holds the
+   device's raw counters) and lists, per station and day, how many readings
+   counted too much and the day's OK / NOK and scrap now and corrected.
+   Nothing is changed.
+2. Tick the box and press **Correct these counts**. The app first saves the
+   current data as a backup on the server (`...-before-recalculation.json.gz`,
+   listed under Backups; import it to undo), then corrects those readings,
+   the running totals after them, the dashboard counters and the daily data.
+   Devices keep being read meanwhile.
+
+A reading is only corrected when what it counted is exactly what the old rule
+gave. Readings where that is not so (a job with a
+[piece rule](#pictures-and-pieces), a source that was edited at that moment)
+are listed as unclear and left as they are; correct those with a
+[manual entry](#manual-entries) if needed. Manual entries, excluded readings
+and comments are not touched. Running it again finds nothing more to do.
 
 The tab's **Reading the data** section is a short manual for reading all data
 from the database with Power BI, Excel or SQL: connection details, the

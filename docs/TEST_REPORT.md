@@ -1,15 +1,24 @@
-# Test report: Scrap Meter 1.25.0
+# Test report: Scrap Meter 1.26.0
 
-Date: 2026-10-09. Tested on the development PC (Windows 11, Docker 29.8,
+Date: 2026-10-12. Tested on the development PC (Windows 11, Docker 29.8,
 Docker Compose 5.5) with the image built from this repository.
 
 ## Summary
 
 | Run | Result |
 |---|---|
-| Automated test suite (pytest, 31 files) | **214 passed**, 0 failed |
-| End-to-end check of every tab through the app's API, on a throwaway stack with simulated devices | **59 passed**, 0 failed |
+| Automated test suite (pytest, 32 files) | **221 passed**, 0 failed |
+| End-to-end check of every tab through the app's API, on a throwaway stack with simulated devices | **61 passed**, 0 failed |
 | Browser check of 20 pages in dark mode, light mode and at phone width | **60 passed**, 0 failed |
+
+Re-run for 1.26.0 (a counter that was not reset is not counted again): the
+end-to-end check resets only the OK counter of a device that pushes its
+counters and confirms the NOK counter is not counted again, and reads the
+preview of the Database tab's recalculation, which refuses to change anything
+without a confirmation. The recalculation itself was run in a browser on a
+second throwaway stack: data counted by the 1.25.0 image (62 OK / 477 NOK
+where 9 NOK were made) was corrected after the update, with the backup saved
+first; see the Database row below.
 
 Re-run for 1.25.0 (Map, ping): the end-to-end check waits for a real ICMP
 ping of a simulated device, reads the Map and saves and resets its layout,
@@ -83,7 +92,7 @@ afterwards. The raw results are in [tests/e2e.json](../tests/e2e.json) and
 | Settings | Own settings, defaults for everyone, reset, light / system mode on every page | E2E; browser | Pass |
 | Developer options | Off hides and stops WhatsApp and Signal; only administrators change them; an older server keeps what it used | E2E; pytest | Pass |
 | Users and permissions | A user with only *view_dashboard* is refused data, notifications, users, database and raw data (403), cannot stop production; password change; delete | E2E; pytest | Pass |
-| Database tab and backups | Backup download, import of that backup (stations, devices, jobs, users, rules unchanged afterwards), FTP backup test and run to an FTP server | E2E; pytest (7 tests) | Pass |
+| Database tab and backups | Backup download, import of that backup (stations, devices, jobs, users, rules unchanged afterwards), FTP backup test and run to an FTP server; recalculating counts from raw readings (preview per station and day, backup first, corrected readings, totals and dashboard counters, a second run finds nothing) | E2E; pytest (7 + 6 tests); browser | Pass |
 | Power BI | Power BI access switched on: the read-only login reads `powerbi_readings` through the app's port and is refused the `users` table; daily data rebuilt | E2E | Pass |
 | Raw data | Tables, rows, edit a value, change log, undo, read-only SQL; a `DELETE` is refused | E2E; pytest | Pass |
 | Tutorial and Changelog | All pages, pictures and links exist; open in the app | E2E; browser; pytest | Pass |

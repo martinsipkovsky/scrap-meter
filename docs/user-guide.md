@@ -681,6 +681,14 @@ permission (every user has it unless an administrator takes it away).
   group are answered as before.
 - Photos, videos and files without a caption show as "[photo]", "[video]" or
   "[file]".
+- Nothing from a WhatsApp group shows up, or commands typed there get no
+  answer, while messages written here do go out: look at the *WhatsApp phone*
+  card on the Notifications tab. Its "Received since the app started" line
+  counts what WhatsApp delivers and **Client log** lists the client's
+  warnings and errors (see
+  [Notifications](notifications.md#commands-or-group-messages-do-not-arrive)).
+  Versions 1.16.0 to 1.26.0 dropped every incoming WhatsApp message; update
+  to 1.26.1 or later.
 - A Telegram bot only sees every message of a group when its privacy mode is
   off (@BotFather, `/setprivacy`) or it is an admin of the group; otherwise
   only commands and replies to the bot reach the room.
@@ -800,7 +808,7 @@ messengers, off unless someone turns them on.
 
 | Option | What it does |
 |---|---|
-| WhatsApp virtual client (QR login) | The app logs in as a linked device of a phone (the *WhatsApp phone* card on the Notifications tab) and sends from its number; its groups can get alerts, answer chat commands and be the Chat room. WhatsApp does not allow unofficial clients. |
+| WhatsApp virtual client (QR login) | The app logs in as a linked device of a phone (the *WhatsApp phone* card on the Notifications tab) and sends from its number; its groups can get alerts, answer chat commands and be the Chat room. The card also says what arrived since the app started and lists the client's warnings and errors (**Client log**). WhatsApp does not allow unofficial clients. |
 | Signal (signal-cli) | Signal through the signal-cli service next to the app (see [Notifications](notifications.md#signal)): the *Signal phone* card, the Signal provider, commands and the Chat room in Signal groups. |
 
 Turning an option off stops it and hides it: its card on the Notifications

@@ -24,7 +24,8 @@ messengers, off unless turned on.
 ![Developer options](images/settings-developer.png)
 
 - **WhatsApp virtual client (QR login)**: the app logs in as a linked device
-  of a phone and sends from its number.
+  of a phone and sends from its number. Its box on the Notifications tab
+  also says what arrived from WhatsApp and shows the client's log.
 - **Signal (signal-cli)**: Signal through a small service next to the app.
 
 Turning one off stops and hides it; the linked phone and the history stay.

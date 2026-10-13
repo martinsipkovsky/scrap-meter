@@ -120,12 +120,32 @@ the app reconnects by itself and the box shows the error meanwhile.
 The client runs in a separate process in the app container. Its log lines are
 in `docker compose logs web`, starting with `whatsapp`.
 
-Since 1.26.1 the *WhatsApp phone* box also shows what arrived since the app
-started (messages WhatsApp delivered, how many in groups, the last group
-message, messages that could not be decrypted) and, under **Client log**, the
-client's warnings and errors. Commands that get no answer while test messages
-go out: check that line first. "Nothing yet" after someone wrote in a group
-means WhatsApp is not delivering to the linked device.
+#### Commands or group messages do not arrive
+
+Sending and receiving are separate: **Test send** can work while commands
+typed in a group get no answer. Since 1.26.1 the *WhatsApp phone* box shows
+the receiving side, so no container log is needed (useful on a NAS where
+`docker` is out of reach):
+
+- **Received since the app started** counts the messages WhatsApp delivered
+  to the app, how many of them were in groups, and when and in which group the
+  last one came. Write something in a group from another phone; the line
+  should count it within a few seconds.
+- "Nothing yet" after someone wrote in a group: WhatsApp is not delivering to
+  the linked device. Check that the phone is online and still lists *Scrap
+  Meter* under Linked devices; otherwise log out and link it again.
+- "N could not be decrypted": the app got the message but not its key.
+  WhatsApp usually sends it again by itself; if the number keeps growing, log
+  out and link the phone again.
+- The count grows but a command gets no answer: the **Chat commands** log
+  further down the page says why (not allowed in that group, unknown command,
+  sent too fast). A message older than two minutes when it arrives is not
+  answered.
+- **Client log** lists the WhatsApp client's last 60 warnings and errors,
+  newest first.
+
+Versions 1.16.0 to 1.26.0 dropped every incoming WhatsApp message (alerts and
+commands typed in the Chat room tab still worked); 1.26.1 fixed it.
 
 ### Commands in WhatsApp groups
 

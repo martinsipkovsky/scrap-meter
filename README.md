@@ -98,6 +98,8 @@ versions keep working.
 - **Chat commands:** `!status` (or your own commands) in a WhatsApp or Signal group or Discord channel
   answers with live production state, OK / NOK and scrap per station;
   each command can list only the stations active in the last N days.
+  The WhatsApp phone box shows what arrived and the client's warnings and
+  errors, so a missing answer can be traced without the container log.
   `!mute <station>` silences a station's alerts until its job changes, like
   the Scrap warnings switch on the station view.
 - **Changelog:** the version at the bottom of the menu opens the list of

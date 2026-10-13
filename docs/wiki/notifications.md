@@ -27,4 +27,9 @@ station's state, OK, NOK and scrap; `!status Line 1` only that station;
 
 ![Chat commands](images/notifications-commands.png)
 
+A command typed in a WhatsApp group gets no answer? The *WhatsApp phone* box
+at the top of the tab says how many messages arrived since the app started
+and lists the client's warnings and errors under **Client log**; see
+[Commands or group messages do not arrive](../notifications.md#commands-or-group-messages-do-not-arrive).
+
 More: [Notifications](../notifications.md).

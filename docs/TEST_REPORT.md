@@ -1,4 +1,4 @@
-# Test report: Scrap Meter 1.26.0
+# Test report: Scrap Meter 1.26.1
 
 Date: 2026-10-12. Tested on the development PC (Windows 11, Docker 29.8,
 Docker Compose 5.5) with the image built from this repository.
@@ -7,9 +7,16 @@ Docker Compose 5.5) with the image built from this repository.
 
 | Run | Result |
 |---|---|
-| Automated test suite (pytest, 32 files) | **221 passed**, 0 failed |
+| Automated test suite (pytest, 33 files) | **226 passed**, 0 failed |
 | End-to-end check of every tab through the app's API, on a throwaway stack with simulated devices | **61 passed**, 0 failed |
 | Browser check of 20 pages in dark mode, light mode and at phone width | **60 passed**, 0 failed |
+
+Re-run for 1.26.1 (incoming WhatsApp group messages were dropped since
+1.16.0): tests/test_whatsapp_link.py feeds the linked client's events, shaped
+as the real client sends them, through the app's own routing and checks that a
+group message reaches the commands; the earlier tests called the command
+handler directly and so missed it. No phone is linked on the test PC, so the
+fix was not run against WhatsApp itself.
 
 Re-run for 1.26.0 (a counter that was not reset is not counted again): the
 end-to-end check resets only the OK counter of a device that pushes its

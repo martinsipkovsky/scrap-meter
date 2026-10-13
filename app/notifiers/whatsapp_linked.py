@@ -25,6 +25,8 @@ commands over a multiprocessing pipe:
                       {"event": "message", "id": ..., "ts": ..., "chat": "…@g.us", "chat_name": ...,
                        "sender": ..., "sender_name": ..., "from_me": ..., "text": "!status",
                        "media": false}
+                      {"event": "seen", "group": true, "text": true}  (every message WhatsApp delivers)
+                      {"event": "unreadable", "chat": "…@g.us", "group": true}  /  {"event": "log", ...}
 
 Incoming messages: every group message with text (a photo, video or file
 without a caption comes as "[photo]" and the like, with media true) is passed
@@ -33,6 +35,11 @@ keeps the messages of its chat, and app.commands answers the ones that start
 with the command prefix and are less than two minutes old). Messages the app
 sent itself are never passed on, so a reply can not trigger another command;
 the parent reports each message it sends to ``on_sent`` instead.
+
+What arrives is counted (``WhatsAppLink.received``: messages WhatsApp
+delivered, group messages passed on, messages that could not be decrypted),
+and the client's warnings and errors are kept (``WhatsAppLink.log``). The
+Notifications page shows both, for servers whose container log is out of reach.
 
 The login (the session keys) is stored by whatsmeow in the environment
 database (its own whatsmeow_* tables in the Postgres container, which is
@@ -44,6 +51,7 @@ Troubleshooting: the child's log lines go to the container log
 """
 from __future__ import annotations
 
+import collections
 import logging
 import multiprocessing as mp
 import queue
@@ -66,6 +74,9 @@ MESSAGE_MAX_AGE = 120  # seconds; older messages (delivered after a reconnect) a
 MESSAGE_MAX_LEN = 4000
 RESTART_DELAY = 20  # seconds before a linked client that stopped is started again,
 RESTART_DELAY_MAX = 600  # doubling after each failure up to this
+NAME_LOOKUP_TIMEOUT = 5  # seconds a message waits for its group's name before it goes on without it
+LOG_KEEP = 60  # warnings and errors of the client kept for the Notifications page
+LOG_PER_MINUTE = 30
 
 
 def session_store() -> str:
@@ -120,6 +131,51 @@ def _message_text(m) -> tuple[str, bool]:
     return "", False
 
 
+def emit_named(emit, info: dict, lookup, timeout: float = NAME_LOOKUP_TIMEOUT) -> None:
+    """Pass a message on with its group's name. The name is a request to
+    WhatsApp that can take long or never answer; the message then goes on
+    without it after ``timeout`` seconds (exactly once either way)."""
+    once = threading.Lock()
+
+    def go(name) -> None:
+        if once.acquire(blocking=False):
+            emit({**info, "chat_name": name})
+
+    def named() -> None:
+        try:
+            name = lookup()
+        except Exception:  # noqa: BLE001
+            name = None
+        go(name)
+
+    timer = threading.Timer(timeout, go, args=(None,))
+    timer.daemon = True
+    timer.start()
+    threading.Thread(target=named, daemon=True).start()
+
+
+class _Forward(logging.Handler):
+    """The client's warnings and errors, sent to the parent (at most
+    LOG_PER_MINUTE a minute)."""
+
+    def __init__(self, emit) -> None:
+        super().__init__(logging.WARNING)
+        self._emit, self._minute, self._count = emit, 0, 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            minute = int(record.created // 60)
+            if minute != self._minute:
+                self._minute, self._count = minute, 0
+            self._count += 1
+            if self._count > LOG_PER_MINUTE:
+                return
+            self._emit({"event": "log", "ts": record.created, "level": record.levelname, "name": record.name,
+                        "text": record.getMessage()[:500]})
+        except Exception:  # noqa: BLE001 - logging must never break the client
+            pass
+
+
 def _child(conn, store: str, pair: bool) -> None:  # pragma: no cover - needs WhatsApp
     import os
 
@@ -132,6 +188,8 @@ def _child(conn, store: str, pair: bool) -> None:  # pragma: no cover - needs Wh
         with lock:
             conn.send(msg)
 
+    logging.getLogger().addHandler(_Forward(emit))
+
     try:
         from neonize.client import ClientFactory, NewClient
         from neonize.events import (
@@ -142,6 +200,7 @@ def _child(conn, store: str, pair: bool) -> None:  # pragma: no cover - needs Wh
             PairStatusEv,
             StreamReplacedEv,
             TemporaryBanEv,
+            UndecryptableMessageEv,
         )
         from neonize.proto.waCompanionReg.WAWebProtobufsCompanionReg_pb2 import DeviceProps
         from neonize.utils.jid import Jid2String, JIDToNonAD
@@ -215,21 +274,31 @@ def _child(conn, store: str, pair: bool) -> None:  # pragma: no cover - needs Wh
     def _message(_c, ev):
         try:
             src = ev.Info.MessageSource
-            if not src.IsGroup or ev.Info.ID in sent_ids:
+            if ev.Info.ID in sent_ids:
                 return
             text, media = _message_text(ev.Message)
-            if not text:
-                return  # reactions, edits, deletions, polls...
+            emit({"event": "seen", "group": bool(src.IsGroup), "text": bool(text)})
+            if not src.IsGroup or not text:
+                return  # private chats; reactions, edits, deletions, polls...
             ts = ev.Info.Timestamp
             ts = ts / 1000 if ts > 10**11 else ts  # seconds or milliseconds
             chat = JIDToNonAD(src.Chat)
             info = {"event": "message", "id": ev.Info.ID, "ts": ts or time.time(), "chat": Jid2String(chat),
                     "sender": src.Sender.User or None, "sender_name": ev.Info.Pushname or None,
                     "from_me": bool(src.IsFromMe), "text": text[:MESSAGE_MAX_LEN], "media": media}
-            # looking up the group name is a request to WhatsApp: not on the event thread
-            threading.Thread(target=lambda: emit({**info, "chat_name": group_name(chat)}), daemon=True).start()
+            # looking up the group name is a request to WhatsApp: not on the
+            # event thread, and the message does not wait for it for long
+            emit_named(emit, info, lambda: group_name(chat))
         except Exception as exc:  # noqa: BLE001
             logging.getLogger("whatsapp").warning("could not read a message: %s", exc)
+
+    @client.event(UndecryptableMessageEv)
+    def _unreadable(_c, ev):
+        try:
+            src = ev.Info.MessageSource
+            emit({"event": "unreadable", "group": bool(src.IsGroup), "chat": Jid2String(JIDToNonAD(src.Chat))})
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("whatsapp").warning("could not read an undecryptable message: %s", exc)
 
     def run() -> None:
         try:
@@ -303,6 +372,10 @@ class WhatsAppLink:
         self.on_sent = None
         self._inbox: "queue.Queue[dict]" = queue.Queue()
         self._worker: threading.Thread | None = None
+        # what arrived since the app started (the Notifications page shows it)
+        self.received = {"seen": 0, "groups": 0, "passed": 0, "last_at": None, "last_chat": None,
+                         "unreadable": 0, "unreadable_at": None}
+        self.log: "collections.deque[dict]" = collections.deque(maxlen=LOG_KEEP)
 
     # ---- process management ------------------------------------------------
     def running(self) -> bool:
@@ -394,7 +467,9 @@ class WhatsAppLink:
 
     def _handle(self, msg: dict) -> None:
         with self._lock:
-            if "id" in msg:
+            # an answer to a request has an id and no event; a "message" event
+            # carries the WhatsApp message's id, which is not a request id
+            if "event" not in msg and "id" in msg:
                 waiter = self._pending.pop(msg["id"], None)
                 if waiter is not None:
                     waiter["reply"] = msg
@@ -402,7 +477,21 @@ class WhatsAppLink:
                 return
             ev = msg.get("event")
             if ev == "message":
+                self.received["passed"] += 1
+                self.received["last_at"] = time.time()
+                self.received["last_chat"] = msg.get("chat_name") or msg.get("chat")
                 self._dispatch(msg)
+            elif ev == "seen":
+                self.received["seen"] += 1
+                self.received["groups"] += bool(msg.get("group"))
+            elif ev == "unreadable":
+                self.received["unreadable"] += 1
+                self.received["unreadable_at"] = time.time()
+                self._note("WARNING", "A " + ("group" if msg.get("group") else "private") + " message"
+                           + (f" in {msg['chat']}" if msg.get("chat") else "") + " could not be decrypted.")
+            elif ev == "log":
+                self.log.append({"ts": msg.get("ts") or time.time(), "level": msg.get("level"),
+                                 "text": f"{msg.get('name')}: {msg.get('text')}"})
             elif ev == "qr":
                 self.state, self.qr, self.qr_at = "qr", msg["code"], time.time()
             elif ev == "paired":
@@ -421,9 +510,13 @@ class WhatsAppLink:
                 self.error = "The phone logged this app out (removed it from Linked devices)."
             elif ev == "error":
                 self.error = msg.get("error")
+                self._note("ERROR", self.error or "error")
                 log.warning("WhatsApp: %s", self.error)
                 if self.state != "connected":
                     self.state = "error"
+
+    def _note(self, level: str, text: str) -> None:
+        self.log.append({"ts": time.time(), "level": level, "text": text})
 
     def _dispatch(self, msg: dict) -> None:
         if self.on_message is None:
@@ -507,6 +600,8 @@ class WhatsAppLink:
                 "error": self.error,
                 "running": self.running(),
                 "since": self.since,
+                "received": dict(self.received),
+                "log": list(self.log),
             }
 
 

@@ -4,6 +4,11 @@ What changed in each release of Scrap Meter, newest first. The app shows this
 file on its Changelog page (the version number at the bottom of the left menu).
 Releases before 1.2.0 had no version number; they are listed as 1.0 and 1.1.
 
+## 1.26.1 — 2026-10-13
+- Fixed: chat commands typed in a WhatsApp group (`!status`, `!help`, `!mute`, your own) got no answer, and the Chat room showed nothing that others wrote in a WhatsApp group. Since 1.16.0 the app mistook every incoming WhatsApp message for the answer to one of its own requests and dropped it. Sending alerts and commands typed in the Chat room tab were not affected; Discord and Signal were not affected.
+- A WhatsApp group message no longer waits without limit for WhatsApp to tell the group's name: after 5 seconds it goes on without the name.
+- The *WhatsApp phone* box on the Notifications page now says what arrived since the app started: how many messages WhatsApp delivered, how many were in groups, when and where the last group message came, and how many could not be decrypted. Below it, **Client log** lists the WhatsApp client's warnings and errors, for servers whose container log can not be reached.
+
 ## 1.26.0 — 2026-10-12
 - Fixed: when a device reset only one of its counters (for example the OK counter per box, while the NOK counter ran on), the app counted the other counter's whole value again as new pieces, which showed as single tall NOK bars and a far too high scrap rate. Each counter is now judged on its own: only a counter that dropped starts again from zero.
 - New on the Database tab (administrators): **Recalculate counts from raw readings**. *Check what would change* finds the readings that counted too much this way and shows the OK / NOK of each station and day now and corrected. Nothing changes until you confirm; the current data is first saved as a backup on the server, which can be imported to undo it.

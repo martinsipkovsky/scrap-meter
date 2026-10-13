@@ -120,6 +120,13 @@ the app reconnects by itself and the box shows the error meanwhile.
 The client runs in a separate process in the app container. Its log lines are
 in `docker compose logs web`, starting with `whatsapp`.
 
+Since 1.26.1 the *WhatsApp phone* box also shows what arrived since the app
+started (messages WhatsApp delivered, how many in groups, the last group
+message, messages that could not be decrypted) and, under **Client log**, the
+client's warnings and errors. Commands that get no answer while test messages
+go out: check that line first. "Nothing yet" after someone wrote in a group
+means WhatsApp is not delivering to the linked device.
+
 ### Commands in WhatsApp groups
 
 With a phone linked, people in a WhatsApp group can ask the app for figures:

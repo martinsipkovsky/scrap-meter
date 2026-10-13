@@ -9,6 +9,9 @@
   <div class="toolbar"><h2 style="border:none">WhatsApp phone</h2><div class="actions" id="waActions"></div></div>
   <div class="card" id="waCard">
     <div id="waState" class="muted">Loading…</div>
+    <div id="waReceived" class="hint" style="display:none;margin-top:8px"></div>
+    <details id="waLog" style="display:none;margin-top:8px"><summary class="hint" style="cursor:pointer"></summary>
+      <pre id="waLogLines" style="white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;margin:8px 0 0"></pre></details>
     <div id="waQr" style="display:none;margin-top:12px">
       <img id="waQrImg" alt="WhatsApp QR code" style="background:#fff;border-radius:8px;width:240px;height:240px;image-rendering:pixelated" />
       <ol class="muted" style="margin:10px 0 0 18px;padding:0;line-height:1.6">
@@ -221,8 +224,31 @@ async function waLoad() {
     acts.append(el('button', { class: 'btn small', onclick: waLink }, 'Link phone'));
   }
   if (s.state !== 'connected') document.getElementById('waGroups').style.display = 'none';
+  waReceived(s);
   clearTimeout(waTimer);
   waTimer = setTimeout(waLoad, s.state === 'qr' || s.state === 'starting' ? 2000 : 8000);
+}
+// what the client received since the app started, and its warnings and errors
+function waReceived(s) {
+  const box = document.getElementById('waReceived'), log = document.getElementById('waLog');
+  const r = s.received || {}, lines = s.log || [];
+  box.style.display = s.state === 'connected' ? 'block' : 'none';
+  if (s.state === 'connected') {
+    let text = 'Received since the app started: ';
+    if (!r.seen && !r.unreadable) {
+      text += 'nothing yet. Commands and the Chat room need the group messages to arrive here: write something in a group from another phone and this line should count it within a few seconds.';
+    } else {
+      text += (r.seen || 0) + (r.seen === 1 ? ' message' : ' messages') + ' (' + (r.groups || 0) + ' in groups)';
+      if (r.last_at) text += ', the last group message at ' + fmtClock(new Date(r.last_at * 1000)) + (r.last_chat ? ' in ' + r.last_chat : '');
+      text += '.';
+    }
+    if (r.unreadable) text += ' ' + r.unreadable + ' could not be decrypted (the last at ' + fmtClock(new Date(r.unreadable_at * 1000)) + '): WhatsApp usually sends them again by itself; if it stays like this, log out and link the phone again.';
+    box.textContent = text;
+  }
+  log.style.display = lines.length ? 'block' : 'none';
+  log.querySelector('summary').textContent = 'Client log (' + lines.length + (lines.length === 1 ? ' warning or error)' : ' warnings and errors)');
+  document.getElementById('waLogLines').textContent = lines.slice().reverse()
+    .map(l => fmtFull(new Date(l.ts * 1000)) + '  ' + (l.level || '') + '  ' + l.text).join('\n');
 }
 async function waLink() { try { await postJSON('/api/notifications/whatsapp/link'); } catch (e) { toast(e.message, true); } waLoad(); }
 async function waCancel() { try { await postJSON('/api/notifications/whatsapp/cancel'); } catch (e) { toast(e.message, true); } waLoad(); }
